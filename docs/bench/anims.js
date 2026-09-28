@@ -735,11 +735,170 @@
     ],
   };
 
+  // 3x. Kiss, hand to visor: the right hand comes up to the right end of the visor and the right eye winks,
+  // a small pink heart leaves the fingertips and floats off the top right while the visor warms, then rest.
+  function kissA({arm = 0, wink = 0, kiss = false, at = null, warm = false} = {}) {
+    let b = echoPing(false);
+    if (arm) {                                                        // right arm up along col 17, as thumbsUp moves it
+      for (let r = 7; r <= 10; r++) set(b, r, 17, 0);                // off the side (col 16 stays as the shoulder)
+      for (let r = 7 - arm; r <= 9 - arm; r++) set(b, r, 17, 1);     // arm 1 rows 6..8 (on the way), arm 2 rows 5..7
+      if (arm === 2) set(b, 6, 16, 1);                                // hand turned in on the visor row, beside its right end
+    }
+    if (wink) set(b, 6, 13, 3);                                       // right eye half: top cell goes visor, as the echo blink
+    if (wink === 2) { set(b, 7, 12, 2); set(b, 7, 14, 2); }           // shut: the closed-eye line '222', as the skinned sleep
+    if (kiss) set(b, 5, 16, 7);                                       // the kiss, pink at the fingertips
+    if (at) b = heart(b, at[0], at[1], HEART_S, 7);                   // HEART_S top left at (row, col), clipped off the edge
+    if (warm) for (const r of [6, 7]) for (let c = 6; c <= 14; c++) if (b[r][c] === 3) b[r][c] = 8;
+    return b;
+  }
+  const echoKissA = {
+    name: 'ECHO · kiss', key: 'echo_kiss', fwname: 'echo kiss', category: 'Mode',
+    intent: 'Proposal. The right hand comes up to the right end of the visor and the right eye winks, a small pink heart leaves the fingertips and floats off the top right while the visor warms, then the arm drops and the antenna pings; judge whether the hand reads as touching the visor.',
+    palette: LOVE_PALETTE,
+    frames: [
+      {hold: 1000, grid: echoPing(false)},
+      {hold: 110, grid: kissA({arm: 1})},                                    // arm on its way up
+      {hold: 240, grid: kissA({arm: 2})},                                    // hand at the right end of the visor
+      {hold: 70,  grid: kissA({arm: 2, wink: 1})},                           // right eye half shut
+      {hold: 360, grid: kissA({arm: 2, wink: 2})},                           // wink
+      {hold: 280, grid: kissA({arm: 2, wink: 2, kiss: true})},               // the kiss: pink at the fingertips
+      {hold: 200, grid: kissA({arm: 2, wink: 2, at: [3, 17], warm: true})},  // heart leaves the hand, visor warms
+      {hold: 180, grid: kissA({arm: 2, wink: 2, at: [2, 17], warm: true})},
+      {hold: 180, grid: kissA({arm: 2, wink: 1, at: [1, 17], warm: true})},  // eye opening
+      {hold: 180, grid: kissA({arm: 2, at: [0, 18], warm: true})},           // off the top right corner
+      {hold: 150, grid: kissA({arm: 2, at: [-1, 19]})},                      // last trace, visor cools
+      {hold: 110, grid: kissA({arm: 1})},                                    // arm coming down
+      {hold: 600, grid: echoPing(false)},
+      {hold: 140, grid: echoPing(true)},
+      {hold: 1100, grid: echoPing(false)},
+    ],
+  };
+
+  // 3m. summon demon, variant A "the circle": the creature raises both arms, a red summoning circle
+  // draws itself on the ground one segment at a time and pulses, its eyes flash red, a small horned
+  // ember-eyed demon climbs out of the circle's right rim horns first, hovers with a little bob twice,
+  // sinks back in, the circle fades segment by segment, arms come down and the antenna pings. A loud,
+  // playful ritual whose rest state is plain arms-down idle. Helpers carry an A suffix so sibling
+  // summon variants can be pasted into the same scope without a name clash.
+  const SUMMON_PALETTE_A = [...echo.palette, '#e0665a', '#ffd166'];   // 7 ritual red, 8 demon ember
+  const summonRestA = echoPing(false);                                 // arms-down rest, antenna tip off
+  // both arms up, the way thumbsUp lifts the right arm: col 4 and col 16 become the body edge on rows
+  // 7..9, the hanging arms (col 3 and col 17, rows 7..10) are cleared and raised up col 3 and col 17
+  // from the shoulder row 7, hands turned out at row 2 (cols 2..3 and 17..18). Visor and eyes untouched.
+  function summonArmsUpA(g) {
+    const b = clone(g);
+    for (let r = 7; r <= 9; r++) { set(b, r, 16, 1); set(b, r, 17, 0); set(b, r, 4, 1); set(b, r, 3, 0); }
+    set(b, 10, 17, 0); set(b, 10, 3, 0);
+    for (let r = 3; r <= 7; r++) { set(b, r, 17, 1); set(b, r, 3, 1); }         // arms up
+    set(b, 2, 17, 1); set(b, 2, 18, 1); set(b, 2, 3, 1); set(b, 2, 2, 1);       // hands
+    return b;
+  }
+  // halfway pose for the raise and the lower: arms rooted at the shoulder (row 7) up to row 5 with the
+  // hands turned out, so the tween reads as a swing up rather than a jump.
+  function summonArmsHalfA(g) {
+    const b = clone(g);
+    for (let r = 7; r <= 9; r++) { set(b, r, 16, 1); set(b, r, 17, 0); set(b, r, 4, 1); set(b, r, 3, 0); }
+    set(b, 10, 17, 0); set(b, 10, 3, 0);
+    for (let r = 5; r <= 7; r++) { set(b, r, 17, 1); set(b, r, 3, 1); }   // half raised, rooted at row 7
+    set(b, 5, 18, 1); set(b, 5, 2, 1);                                    // hands
+    return b;
+  }
+  // eyes flash: the upper cell of each eye flares ritual red while the lower cell stays dark (index 2),
+  // so both eyes stay present and the visor band stays whole.
+  function summonEyesRedA(g) { const b = clone(g); set(b, 6, 7, 7); set(b, 6, 13, 7); return b; }
+  // summoning circle on rows 17..19, cols 4..16: an oval ring in three segments (front arc, side edges,
+  // back arc + two inner marks). Drawn and faded one segment per frame; the colour pulses between 7 and 8.
+  const SUMMON_RING_A = [
+    [[19, 6], [19, 7], [19, 8], [19, 9], [19, 10], [19, 11], [19, 12], [19, 13], [19, 14]],                    // 0 front arc
+    [[18, 4], [18, 5], [18, 15], [18, 16]],                                                                    // 1 side edges
+    [[17, 6], [17, 7], [17, 8], [17, 9], [17, 10], [17, 11], [17, 12], [17, 13], [17, 14], [18, 9], [18, 11]], // 2 back arc + marks
+  ];
+  function summonCircleA(g, n, color) {
+    const b = clone(g);
+    for (let s = 0; s < n && s < SUMMON_RING_A.length; s++) for (const [r, c] of SUMMON_RING_A[s]) set(b, r, c, color);
+    return b;
+  }
+  // little demon, 3 wide by 4 tall at cols 17..19: one clear column off the body and the right foot
+  // (col 15), so it reads as its own creature and not as a red growth on the flank. Rows below the
+  // circle's rim (row 18) are not drawn, so it climbs out horns first and sinks back the same way.
+  const DEMON_A = [[0, 0, 7], [0, 2, 7], [1, 0, 7], [1, 1, 7], [1, 2, 7], [2, 0, 8], [2, 1, 7], [2, 2, 8], [3, 0, 7], [3, 1, 7], [3, 2, 7]];   // horns, head, ember eyes, lower body
+  function summonDemonA(g, top) { const b = clone(g); for (const [dr, dc, v] of DEMON_A) if (top + dr <= 18) set(b, top + dr, 17 + dc, v); return b; }
+  const summonUpA = summonArmsUpA(summonRestA);
+  const echoSummonA = {
+    name: 'ECHO · summon demon', key: 'echo_summon', fwname: 'echo summon', category: 'Mode',
+    intent: 'Proposal. Both arms rise, a red circle draws itself on the ground and pulses, the eyes flash red and a small horned demon climbs out of the circle, bobs, and sinks back before the circle fades and the arms come down; judge whether it reads as one playful ritual and still as this creature.',
+    palette: SUMMON_PALETTE_A,
+    frames: [
+      {hold: 800, grid: summonRestA},                                            // rest (loop anchor)
+      {hold: 160, grid: summonArmsHalfA(summonRestA)},                           // begin raise
+      {hold: 220, grid: summonUpA},                                              // arms up
+      {hold: 190, grid: summonCircleA(summonUpA, 1, 7)},                         // circle: front arc
+      {hold: 190, grid: summonCircleA(summonUpA, 2, 7)},                         // circle: side edges
+      {hold: 200, grid: summonCircleA(summonUpA, 3, 7)},                         // circle full
+      {hold: 150, grid: summonCircleA(summonUpA, 3, 8)},                         // circle pulse (bright)
+      {hold: 150, grid: summonCircleA(summonUpA, 3, 7)},                         // circle pulse (back)
+      {hold: 150, grid: summonEyesRedA(summonCircleA(summonUpA, 3, 8))},         // eyes flash red, circle bright
+      {hold: 150, grid: summonEyesRedA(summonCircleA(summonUpA, 3, 7))},         // eyes still red, circle back
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 17)},       // horns break the rim
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 16)},       // head and ember eyes out
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 15)},       // standing on the rim
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 14)},       // rise
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 13)},       // rise
+      {hold: 150, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 12)},       // rise
+      {hold: 300, grid: summonDemonA(summonCircleA(summonUpA, 3, 8), 11)},       // hover up (pulse)
+      {hold: 220, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 12)},       // bob down 1
+      {hold: 300, grid: summonDemonA(summonCircleA(summonUpA, 3, 8), 11)},       // hover up (pulse)
+      {hold: 220, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 12)},       // bob down 2
+      {hold: 300, grid: summonDemonA(summonCircleA(summonUpA, 3, 8), 11)},       // hover up (pulse, last)
+      {hold: 130, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 13)},       // drop
+      {hold: 130, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 15)},       // drop onto the rim
+      {hold: 130, grid: summonDemonA(summonCircleA(summonUpA, 3, 7), 17)},       // sinking, horns and head left
+      {hold: 200, grid: summonCircleA(summonUpA, 3, 7)},                         // demon gone, circle full
+      {hold: 160, grid: summonCircleA(summonUpA, 2, 7)},                         // fade back arc + marks
+      {hold: 160, grid: summonCircleA(summonUpA, 1, 7)},                         // fade side edges
+      {hold: 160, grid: summonUpA},                                              // circle gone, arms up
+      {hold: 160, grid: summonArmsHalfA(summonRestA)},                           // arms lowering
+      {hold: 200, grid: echoPing(true)},                                         // arms down, antenna pings
+      {hold: 600, grid: summonRestA},                                            // rest (loops to frame 0)
+    ],
+  };
+
+  // 3x. kiss (pucker): no arm move. The eyes go soft and a two cell pink pucker holds just under the visor
+  // centre; on the mwah the body hops a row, the antenna pings and a heart and two pink sparks stream off up and right.
+  const kissBFace = (ping, pucker) => {                                   // soft eyes and warm visor, pucker optional
+    const g = softEyes(echoPing(ping));
+    if (pucker) { set(g, 9, 10, 7); set(g, 9, 11, 7); }                   // one body row under the band, so it reads as lips
+    return g;
+  };
+  const kissBHearts = (g, list) => list.reduce((b, [r, c, cells]) => heart(b, r, c, cells, 7), g);
+  const KISS_B_DOT = [[0, 0]];                                            // a spark is one pink cell
+  // Everything moves one cell up and one right per step. The heart pops beside the head on the hop and
+  // slides off the right edge, clipped by the lattice (heart() skips cells past the edge); two sparks follow
+  // it off the cheek, a step apart, and leave at the same edge, so nothing vanishes mid air.
+  const echoKissB = {
+    name: 'ECHO · kiss (pucker)', key: 'echo_kiss_b', fwname: 'echo kiss b', category: 'Mode',
+    intent: 'Proposal. Face only, no arm: the eyes go soft and a two cell pink pucker holds under the visor, then a hop and an antenna ping send a small heart and two pink sparks off up and to the right; judge whether the two cell pucker reads as a kiss.',
+    palette: LOVE_PALETTE,
+    frames: [
+      {hold: 800, grid: echoPing(false)},
+      {hold: 380, grid: kissBFace(false, false)},                                                           // eyes soften
+      {hold: 700, grid: kissBFace(false, true)},                                                            // the pucker, a beat
+      {hold: 200, grid: kissBHearts(bob(kissBFace(true, true), -1), [[3, 16, HEART_S]])},                   // mwah: hop, ping, a heart pops
+      {hold: 200, grid: kissBHearts(kissBFace(false, false), [[2, 17, HEART_S], [5, 16, KISS_B_DOT]])},
+      {hold: 200, grid: kissBHearts(kissBFace(false, false), [[1, 18, HEART_S], [4, 17, KISS_B_DOT], [6, 16, KISS_B_DOT]])},   // the heart slides off the edge
+      {hold: 200, grid: kissBHearts(kissBFace(false, false), [[0, 19, HEART_S], [3, 18, KISS_B_DOT], [5, 17, KISS_B_DOT]])},   // its last sliver
+      {hold: 200, grid: kissBHearts(kissBFace(false, false), [[2, 19, KISS_B_DOT], [4, 18, KISS_B_DOT]])},
+      {hold: 200, grid: kissBHearts(kissBFace(false, false), [[3, 19, KISS_B_DOT]])},
+      {hold: 500, grid: kissBFace(false, false)},                                                           // afterglow
+      {hold: 1400, grid: echoPing(false)},
+    ],
+  };
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
