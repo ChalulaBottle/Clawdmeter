@@ -40,6 +40,16 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   days with yday % 3 == 0 "echo coffee" becomes "echo double coffee". Logged as `splash: morning ->`.
   Serial `stats` toggles the usage screen for captures. Captures `docs/media/lcd4/clock-device.png`,
   `morning-device.png`.
+- **Batch of ten (2026-09-28 ~12:05), exported, compiled, NOT flashed (no USB data):** echo happy
+  (> < eyes), echo ssh (packet to a tower), echo loading (visor = braille bar), echo eye spin, echo
+  kiss + kiss b, echo summon (one variant; the "materialise behind" lane was stopped by a content
+  classifier), echo openclaw, echo headphones + Clawd headphones (from the operator's cc1.jpg).
+  Workflows wf_43b9a4ec-423, wf_249afe03-8d1, wf_21f58478-9f8 (design lane + frame audit each;
+  `scratchpad/integrate_snippet.js` splices audited snippets before the "Shared library" marker).
+  SPLASH_ANIM_COUNT 67, flash 27.1%, GROUP_MAX 14, new ones in the rotation groups. GIFs in
+  docs/media/anims + discord (120/320) + Temp Media ECHO pack; README + landing + ECHO page boards
+  say "Built" until the flash flips them to "On device". Also queued by the operator: coffee held by
+  the handle (below). **Next flash = auto-rotate + these ten in one go; then device captures.**
 - **PAUSED 2026-09-28 ~08:20 (operator off to school).** Everything above is committed and pushed
   (`481faa7`). Queued, not started: **coffee held by the handle** (operator: "a coffee version that
   looks like its holding a coffee cup from the coffee handle"): new mug with a handle on the right,
