@@ -239,7 +239,7 @@ ${groups}
 <footer>
   <main>
     <p class="kick">Credit</p>
-    <p><strong>Clawdmeter ECHO edition, by Digital Orukami for ECHO Club.</strong> Forked from the Clawdmeter originally created by Hermann Björgvin; the ECHO creature, its animations, the new hardware build, this hub direction and the ECHO edition UI and UX are original work by Digital Orukami, with more add ons and more devices to come. Board documentation, schematic and reference code from Waveshare. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
+    <p>Forked from Clawdmeter, originally by Hermann Björgvin. The Claude like ECHO creature was created by Digital Orukami; its animations and the add ons are designed for the larger board, and the firmware was rewritten to accommodate the new hardware and add ons. Board documentation, schematic and reference code from Waveshare; no licence is granted beyond what upstream grants. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
   </main>
 </footer>
 </body>
