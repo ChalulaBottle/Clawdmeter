@@ -20,6 +20,7 @@ ap.add_argument("--title", default="CLAWDMETER|ECHO EDITION")
 ap.add_argument("--mug", action="store_true", help="hand the creature echo coffee's mug (cells 7..9 + the hand)")
 ap.add_argument("--creature", type=float, default=0.38, help="creature height as a fraction of the sticker")
 ap.add_argument("--qr", type=float, default=0.25, help="QR tile side as a fraction of the sticker")
+ap.add_argument("--notext", action="store_true", help="no title, url or kick: creature and code only")
 ap.add_argument("--out", default=os.path.join("docs", "media", "sticker"))
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -56,10 +57,10 @@ img.paste(inner, (bw, bw), rounded_mask(S - 2 * bw, S - 2 * bw, R - bw))
 dr = ImageDraw.Draw(img)
 
 # pixel-style title: render small, upscale nearest
-lines = a.title.split("|")
+lines = [] if a.notext else a.title.split("|")
 small = ImageFont.truetype(FONT, 16)
 scale = max(4, S // 300)
-y = int(S * 0.09)
+y = int(S * (0.07 if a.notext else 0.09))
 for ln in lines:
     tw = int(small.getlength(ln)); tile = Image.new("RGBA", (tw + 2, 22), (0, 0, 0, 0))
     ImageDraw.Draw(tile).text((1, 0), ln, font=small, fill=CYAN + (255,))
@@ -105,14 +106,15 @@ for r in range(n):
         if mat[r][c]:
             x, yy = (quiet + c) * mod, (quiet + r) * mod
             td.rectangle([x, yy, x + mod - 1, yy + mod - 1], fill=INK + (255,))
-tx, ty = (S - tile_side) // 2, S - bw - int(S * 0.075) - tile_side
+tx, ty = (S - tile_side) // 2, S - bw - int(S * (0.045 if a.notext else 0.075)) - tile_side
 img.paste(tile, (tx, ty), tile)
 
 # url under the tile, kick above the creature, mono
-f_u = ImageFont.truetype(FONT, S // 50); f_k = ImageFont.truetype(FONT, S // 56)
-dr.text((S // 2, ty + tile_side + S // 60), a.url.replace("https://", "").rstrip("/"), font=f_u, fill=(200, 216, 216), anchor="ma")
-dr.text((S // 2, S - bw - S // 30), "ECHO · BUILD · DIGITAL ORUKAMI", font=f_k, fill=TEAL, anchor="ma")
+if not a.notext:
+    f_u = ImageFont.truetype(FONT, S // 50); f_k = ImageFont.truetype(FONT, S // 56)
+    dr.text((S // 2, ty + tile_side + S // 60), a.url.replace("https://", "").rstrip("/"), font=f_u, fill=(200, 216, 216), anchor="ma")
+    dr.text((S // 2, S - bw - S // 30), "ECHO · BUILD · DIGITAL ORUKAMI", font=f_k, fill=TEAL, anchor="ma")
 
-out = os.path.join(a.out, f"sticker-neon-{a.anim}{'-mug' if a.mug else ''}-{S}.png")
+out = os.path.join(a.out, f"sticker-neon-{a.anim}{'-mug' if a.mug else ''}{'-notext' if a.notext else ''}-{S}.png")
 img.save(out, dpi=(600, 600))
 print(out, f"{S}px; QR {n}x{n}, module {mod}px, ECC H")
