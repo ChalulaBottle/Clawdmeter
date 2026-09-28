@@ -7,11 +7,60 @@
     "palette_size": 6
   },
   {
+    "filename": "coffee_morning.html",
+    "name": "coffee morning",
+    "category": "Idle",
+    "frame_count": 15,
+    "palette_size": 6
+  },
+  {
     "filename": "echo_idle.html",
     "name": "echo idle",
     "category": "Idle",
     "frame_count": 8,
     "palette_size": 7
+  },
+  {
+    "filename": "echo_float.html",
+    "name": "echo float",
+    "category": "Idle",
+    "frame_count": 8,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_two_agents.html",
+    "name": "two agents",
+    "category": "Active",
+    "frame_count": 13,
+    "palette_size": 7
+  },
+  {
+    "filename": "token_burner.html",
+    "name": "token burner",
+    "category": "Active",
+    "frame_count": 8,
+    "palette_size": 8
+  },
+  {
+    "filename": "ultramode.html",
+    "name": "ultramode",
+    "category": "Mode",
+    "frame_count": 27,
+    "palette_size": 7
+  },
+  {
+    "filename": "credits_out.html",
+    "name": "credits out",
+    "category": "Mode",
+    "frame_count": 10,
+    "palette_size": 7
+  },
+  {
+    "filename": "ctf_hoodie.html",
+    "name": "ctf hoodie",
+    "category": "Idle",
+    "frame_count": 8,
+    "palette_size": 8
   },
   {
     "filename": "echo_breathe.html",
@@ -68,5 +117,110 @@
     "category": "Idle",
     "frame_count": 24,
     "palette_size": 7
+  },
+  {
+    "filename": "model_haiku.html",
+    "name": "model haiku",
+    "category": "Model",
+    "frame_count": 8,
+    "palette_size": 6
+  },
+  {
+    "filename": "model_sonnet.html",
+    "name": "model sonnet",
+    "category": "Model",
+    "frame_count": 9,
+    "palette_size": 7
+  },
+  {
+    "filename": "model_opus.html",
+    "name": "model opus",
+    "category": "Model",
+    "frame_count": 4,
+    "palette_size": 8
+  },
+  {
+    "filename": "model_fable.html",
+    "name": "model fable",
+    "category": "Model",
+    "frame_count": 20,
+    "palette_size": 7
+  },
+  {
+    "filename": "mode_opus_enter.html",
+    "name": "opus enter",
+    "category": "Mode",
+    "frame_count": 16,
+    "palette_size": 10
+  },
+  {
+    "filename": "mode_opus_work.html",
+    "name": "opus work",
+    "category": "Mode",
+    "frame_count": 9,
+    "palette_size": 10
+  },
+  {
+    "filename": "mode_ultracode_enter.html",
+    "name": "ultracode enter",
+    "category": "Mode",
+    "frame_count": 12,
+    "palette_size": 7
+  },
+  {
+    "filename": "mode_ultracode_work.html",
+    "name": "ultracode work",
+    "category": "Mode",
+    "frame_count": 9,
+    "palette_size": 7
+  },
+  {
+    "filename": "mode_agents_split.html",
+    "name": "agents split",
+    "category": "Mode",
+    "frame_count": 11,
+    "palette_size": 7
+  },
+  {
+    "filename": "mode_agents_join.html",
+    "name": "agents join",
+    "category": "Mode",
+    "frame_count": 8,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_think_spin.html",
+    "name": "echo think spin",
+    "category": "Active",
+    "frame_count": 8,
+    "palette_size": 8
+  },
+  {
+    "filename": "echo_think_deep.html",
+    "name": "echo think deep",
+    "category": "Active",
+    "frame_count": 16,
+    "palette_size": 8
+  },
+  {
+    "filename": "echo_work.html",
+    "name": "echo work",
+    "category": "Active",
+    "frame_count": 16,
+    "palette_size": 8
+  },
+  {
+    "filename": "echo_write.html",
+    "name": "echo write",
+    "category": "Active",
+    "frame_count": 23,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_read.html",
+    "name": "echo read",
+    "category": "Active",
+    "frame_count": 10,
+    "palette_size": 6
   }
 ]
