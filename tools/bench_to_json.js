@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+/**
+ * Writes the bench animations (docs/bench/anims.js) as claudepix-format JSON
+ * into tools/echo_anims/, one file per animation plus _index.json, so
+ * tools/convert_to_c.js --in tools/echo_anims can emit a header block and
+ * tools/anim_gif.py can render GIFs for docs/media.
+ *
+ * Usage: node tools/bench_to_json.js [--out DIR]
+ */
+const fs = require('fs');
+const path = require('path');
+const BENCH = require(path.join(__dirname, '..', 'docs', 'bench', 'anims.js'));
+
+const args = process.argv.slice(2);
+const i = args.indexOf('--out');
+const OUT = path.resolve(i >= 0 ? args[i + 1] : path.join(__dirname, 'echo_anims'));
+fs.mkdirSync(OUT, { recursive: true });
+
+const index = [];
+for (const a of BENCH.anims) {
+  const json = {
+    filename: a.key + '.html',
+    name: a.name.replace(/\s*·\s*/g, ' '),
+    category: a.category,
+    description: a.intent,
+    palette: a.palette,
+    frame_count: a.frames.length,
+    frames: a.frames.map(f => ({ hold: f.hold, grid: f.grid })),
+  };
+  fs.writeFileSync(path.join(OUT, a.key + '.json'), JSON.stringify(json, null, 1));
+  index.push({ filename: json.filename, name: json.name, category: json.category, frame_count: json.frame_count, palette_size: a.palette.length });
+  console.log(`${a.key}: ${a.frames.length} frames, palette ${a.palette.length}`);
+}
+fs.writeFileSync(path.join(OUT, '_index.json'), JSON.stringify(index, null, 2));
+console.log(`wrote ${index.length} animations to ${OUT}`);

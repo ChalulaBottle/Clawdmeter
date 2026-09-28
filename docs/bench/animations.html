@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clawd animation bench</title>
+<meta name="description" content="Side by side bench for new 20x20 Clawdmeter splash animations: the stock creature, a coffee variant, and an ECHO creature. One master clock, same lattice, exportable in the claudepix JSON the firmware converter reads.">
+<style>
+:root{--bg:#06090b;--surf:#0c1214;--surf2:#111a1d;--line:#1d2b2f;--edge:#2c4045;--text:#d8e6e6;--muted:#7d9698;--echo:#35e0c0;--warn:#e0b25a;
+  --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,monospace;--head:Bahnschrift,"Segoe UI Semibold",system-ui,sans-serif}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f2f6f5;--surf:#fff;--surf2:#eef3f2;--line:#cfdad8;--edge:#a9bbb8;--text:#0f1a1a;--muted:#4a5f5e;--echo:#0e8a74;--warn:#8a6a1c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--mono);padding:16px}
+h1{font:800 22px/1.1 var(--head);text-transform:uppercase;letter-spacing:.02em;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 14px;max-width:90ch}
+.master{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 12px;background:var(--surf2);border:1px solid var(--line);margin-bottom:14px}
+.master label{display:flex;gap:8px;align-items:center;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+button{font:700 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:9px 12px;background:var(--surf);color:var(--text);border:1px solid var(--edge);cursor:pointer;
+  clip-path:polygon(0 6px,6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%)}
+button.primary{background:var(--echo);color:#03110e;border-color:var(--echo)}
+input[type=range]{accent-color:var(--echo)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.cell{background:var(--surf);border:1px solid var(--line);padding:14px;position:relative;min-width:0;
+  clip-path:polygon(0 12px,12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%)}
+.cell h2{font:800 15px/1.2 var(--head);text-transform:uppercase;margin:0 0 2px}
+.cell .intent{color:var(--muted);font-size:12px;margin:0 0 10px;min-height:2.6em}
+canvas{display:block;width:100%;max-width:280px;height:auto;image-rendering:pixelated;background:#000;border:1px solid var(--line)}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.mini{width:60px !important;height:60px !important}
+.meta{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
+.meta b{color:var(--text);font-weight:600}
+.sw{display:inline-block;width:12px;height:12px;vertical-align:-2px;border:1px solid var(--edge);margin-right:2px}
+.help{color:var(--warn);font-size:12px;margin-top:16px;max-width:100ch}
+.help li::before{content:"⠿  "}.help ul{list-style:none;padding:0;margin:6px 0 0}
+textarea{width:100%;height:120px;background:var(--surf2);color:var(--text);border:1px solid var(--line);font:11px var(--mono);margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<h1>Clawd animation bench</h1>
+<p class="sub">Three 20 by 20 creatures on one clock, drawn at the device's cell size (24 px on the 480 panel) and at splash-thumbnail size. Stock Clawd is the reference; the other two are proposals. Each cell prints its own frame count, palette and holds. Export gives claudepix-format JSON that <code>tools/convert_to_c.js</code> already reads.</p>
+
+<div class="master">
+  <button class="primary" id="play">Pause</button>
+  <button id="step">Step one frame</button>
+  <button id="reset">Restart all</button>
+  <label>Speed <input type="range" id="speed" min="25" max="300" value="100"> <span id="speedv">100%</span></label>
+  <label>Glitch <input type="checkbox" id="glitch" checked> ECHO glitch split on</label>
+  <span id="clock" style="color:var(--muted);font-size:12px"></span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="help">
+  <ul>
+    <li>Judge on the device size canvas; the small one only checks that the creature survives as a thumbnail.</li>
+    <li>Steam and the glitch are the loud states. The coffee cell spends 80% of its cycle in the quiet hold; decide on that, not on the sip.</li>
+    <li>Palette rule from the firmware: 10 colours max per animation, index 0 is transparent (drawn as panel black), cells are palette indices.</li>
+  </ul>
+</div>
+
+<script src="anims.js"></script>
+<script>
+// Definitions live in anims.js (shared with tools/bench_to_json.js). Everything below is the bench.
+const G = window.BENCH.G;
+const anims = window.BENCH.anims;
+</script>
+<script type="text/plain" id="legacy-definitions">
+// ---------- shared lattice helpers ----------
+const G = 20;
+const rows = s => s.trim().split(/\n/).map(l => l.trim().split('').map(Number));
+const clone = g => g.map(r => r.slice());
+const set = (g, r, c, v) => { if (r>=0&&r<G&&c>=0&&c<G) g[r][c] = v; return g; };
+
+// Stock Clawd, frame 0 of claudepix "idle blink" (tools/claudepix_data/idle_blink.json), brand tint applied by the converter.
+const BASE = rows(`
+00000000000000000000
+00000000000000000000
+00000000000000000000
+00000000000000000000
+00000111111111110000
+00000111111111110000
+00000112111112110000
+00011112111112111100
+00011111111111111100
+00011111111111111100
+00010111111111110100
+00000111111111110000
+00000111111111110000
+00000111111111110000
+00000100100010010000
+00000100100010010000
+00000100100010010000
+00000000000000000000
+00000000000000000000
+00000000000000000000`);
+
+const blink = g => { const b = clone(g); set(b,6,7,1); set(b,6,13,1); return b; };            // eyes half: only row 7 dark
+const shut  = g => { const b = blink(g); set(b,7,7,1); set(b,7,13,1); set(b,7,6,2); set(b,7,8,2); set(b,7,12,2); set(b,7,14,2); return b; }; // squint line
+
+// ---------- 1. Stock Clawd: idle blink (reference) ----------
+const stock = {
+  name: 'Stock Clawd · idle blink', key: 'idle_blink',
+  intent: 'Reference. The creature as it ships; every proposal must still read as this animal.',
+  palette: ['transparent', '#D97757', '#0f0f0f'],
+  frames: [
+    {hold: 2400, grid: BASE}, {hold: 60, grid: blink(BASE)}, {hold: 100, grid: shut(BASE)}, {hold: 60, grid: blink(BASE)},
+    {hold: 1600, grid: BASE}, {hold: 60, grid: blink(BASE)}, {hold: 80, grid: shut(BASE)}, {hold: 60, grid: blink(BASE)},
+    {hold: 80, grid: BASE}, {hold: 60, grid: blink(BASE)}, {hold: 80, grid: shut(BASE)}, {hold: 60, grid: blink(BASE)},
+  ],
+};
+
+// ---------- 2. Clawd with coffee ----------
+// Mug (3 cream, 4 coffee) held in the raised right arm, cols 16..18, rows 8..10. Steam (5) drifts above it.
+// Every ~6 s the mug lifts one row to the mouth, eyes squint (a sip), then settles.
+function mugAt(g, top) {
+  const b = clone(g);
+  set(b, top, 16, 4); set(b, top, 17, 4);                 // coffee surface
+  set(b, top+1, 16, 3); set(b, top+1, 17, 3); set(b, top+1, 18, 3);  // mug + handle
+  set(b, top+2, 16, 3); set(b, top+2, 17, 3);
+  if (top === 8) { set(b, 10, 17, 3); }                    // hand under the mug replaces the arm tip
+  return b;
+}
+const STEAM = [ [[5,17],[6,18]], [[5,18],[6,17],[7,18]], [[4,17],[5,18],[6,18]], [[5,17],[6,17]] ];
+function steam(g, i) { const b = clone(g); for (const [r,c] of STEAM[i % STEAM.length]) if (b[r][c] === 0) set(b, r, c, 5); return b; }
+const coffeeBase = mugAt(BASE, 8);
+const coffee = {
+  name: 'Clawd · coffee', key: 'idle_coffee',
+  intent: 'Proposal. Same body, right arm holds a mug; steam is the only motion at rest, a sip every six seconds.',
+  palette: ['transparent', '#D97757', '#0f0f0f', '#e9e1d2', '#5a3524', '#cfd8dc'],
+  frames: [],
+};
+{
+  const f = coffee.frames;
+  for (let k = 0; k < 8; k++) f.push({hold: 420, grid: steam(coffeeBase, k)});          // 3.4 s quiet steam
+  f.push({hold: 60, grid: steam(blink(coffeeBase), 0)});                                 // blink
+  f.push({hold: 100, grid: steam(shut(coffeeBase), 1)});
+  f.push({hold: 60, grid: steam(blink(coffeeBase), 2)});
+  for (let k = 0; k < 4; k++) f.push({hold: 420, grid: steam(coffeeBase, k)});          // 1.7 s quiet
+  const sip = mugAt(BASE, 7);                                                              // mug up one row
+  f.push({hold: 120, grid: steam(sip, 1)});
+  f.push({hold: 700, grid: steam(shut(sip), 2)});                                        // eyes squint while sipping
+  f.push({hold: 120, grid: steam(sip, 3)});
+  f.push({hold: 500, grid: steam(coffeeBase, 0)});
+}
+
+// ---------- 3. ECHO creature ----------
+// ECHO tokens: body deep teal (--echo-deep 17836f), visor band in --echo 35e0c0 with dark eyes,
+// antenna stub whose tip pings in --ping 6fe9ff, feet in the darker teal. Glitch split: for 60 ms the
+// visor rows shift right by one and paint in --ping, the site's own "glitch split" accent. Breathes once
+// every 4 s by lifting the top two rows one cell.
+const echoBase = (() => {
+  const b = clone(BASE);
+  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (b[r][c] === 1) b[r][c] = 1;   // body index 1 = echo-deep
+  // visor band rows 6..7, cols 6..14
+  for (let c = 6; c <= 14; c++) { set(b, 6, c, 3); set(b, 7, c, 3); }
+  // eyes: 2x2 dark blocks inside the visor (braille-cell feel)
+  set(b,6,7,2); set(b,7,7,2); set(b,6,13,2); set(b,7,13,2);
+  // antenna: stub at col 15 rows 2..3, tip at row 1
+  set(b,3,15,1); set(b,2,15,1); set(b,1,15,4);
+  // feet darker
+  for (let r = 14; r <= 16; r++) for (const c of [5,8,12,15]) set(b, r, c, 5);
+  return b;
+})();
+const echoPing = on => { const b = clone(echoBase); set(b,1,15, on ? 4 : 1); return b; };
+const echoGlitch = () => { const b = clone(echoBase); for (const r of [6,7,8]) { const row = b[r].slice(); for (let c = G-1; c > 0; c--) b[r][c] = row[c-1]; } for (let c = 0; c < G; c++) if (b[6][c] === 3 || b[7][c] === 3) { b[6][c] = b[6][c] === 3 ? 6 : b[6][c]; b[7][c] = b[7][c] === 3 ? 6 : b[7][c]; } return b; };
+const echoBreathe = () => { const b = clone(echoBase); b.splice(4, 1); b.splice(13, 0, new Array(G).fill(0)); b[13] = echoBase[13].slice(); return b; };
+const echo = {
+  name: 'ECHO creature · idle', key: 'echo_idle',
+  intent: 'Proposal. Clawd\'s silhouette in ECHO\'s tokens: deep teal body, teal visor with dark eyes, a pinging antenna, one glitch split per cycle.',
+  palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#6fe9ff'],
+  frames: [
+    {hold: 1800, grid: echoPing(false)}, {hold: 140, grid: echoPing(true)}, {hold: 1400, grid: echoPing(false)},
+    {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 900, grid: echoPing(false)},
+    {hold: 140, grid: echoPing(true)}, {hold: 700, grid: echoBreathe()}, {hold: 900, grid: echoPing(false)},
+  ],
+};
+
+</script>
+<script>
+// ---------- bench ----------
+const grid = document.getElementById('grid');
+const state = anims.map(() => ({i: 0, t: 0}));
+let playing = true, speed = 1, last = performance.now(), clockMs = 0;
+
+function paint(cv, a, g) {
+  const ctx = cv.getContext('2d'); const s = cv.width / G;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) { const v = g[r][c]; if (!v) continue; ctx.fillStyle = a.palette[v] || '#f0f'; ctx.fillRect(c*s, r*s, s, s); }
+}
+anims.forEach((a, k) => {
+  const d = document.createElement('div'); d.className = 'cell';
+  const totalMs = a.frames.reduce((s, f) => s + f.hold, 0);
+  const quiet = a.frames.filter(f => f.hold >= 400).reduce((s, f) => s + f.hold, 0);
+  d.innerHTML = `<h2>${a.name}</h2><p class="intent">${a.intent}</p>
+    <div class="row"><canvas width="480" height="480" data-k="${k}"></canvas><canvas class="mini" width="60" height="60" data-k="${k}"></canvas></div>
+    <div class="meta"><b>${a.frames.length} frames</b> · cycle ${(totalMs/1000).toFixed(1)} s · quiet holds ${(100*quiet/totalMs).toFixed(0)}% of cycle · palette ${a.palette.length}:
+    ${a.palette.map(p => `<span class="sw" style="background:${p==='transparent'?'#000':p}"></span>`).join('')}<br>
+    frame <span class="fi">0</span> · hold <span class="fh">${a.frames[0].hold}</span> ms · cells lit <span class="fc">0</span> of 400</div>
+    <div class="row" style="margin-top:10px"><button data-exp="${k}">Export JSON</button></div><textarea readonly></textarea>`;
+  grid.appendChild(d);
+});
+const cvs = [...document.querySelectorAll('canvas')];
+function draw() {
+  anims.forEach((a, k) => {
+    const st = state[k]; const f = a.frames[st.i];
+    const g = (f.glitch && !document.getElementById('glitch').checked) ? a.frames[0].grid : f.grid;
+    cvs.filter(c => +c.dataset.k === k).forEach(c => paint(c, a, g));
+    const cell = grid.children[k];
+    cell.querySelector('.fi').textContent = st.i; cell.querySelector('.fh').textContent = f.hold;
+    cell.querySelector('.fc').textContent = g.flat().filter(Boolean).length;
+  });
+  document.getElementById('clock').textContent = 'master clock ' + (clockMs/1000).toFixed(1) + ' s';
+}
+function tick(now) {
+  const dt = (now - last) * speed; last = now;
+  if (playing) { clockMs += dt; anims.forEach((a, k) => { const st = state[k]; st.t += dt; while (st.t >= a.frames[st.i].hold) { st.t -= a.frames[st.i].hold; st.i = (st.i + 1) % a.frames.length; } }); }
+  draw(); requestAnimationFrame(tick);
+}
+document.getElementById('play').onclick = e => { playing = !playing; e.target.textContent = playing ? 'Pause' : 'Play'; };
+document.getElementById('step').onclick = () => { playing = false; document.getElementById('play').textContent = 'Play'; anims.forEach((a, k) => { state[k].i = (state[k].i + 1) % a.frames.length; state[k].t = 0; }); };
+document.getElementById('reset').onclick = () => { state.forEach(s => { s.i = 0; s.t = 0; }); clockMs = 0; };
+document.getElementById('speed').oninput = e => { speed = e.target.value / 100; document.getElementById('speedv').textContent = e.target.value + '%'; };
+grid.addEventListener('click', e => {
+  const k = e.target.dataset.exp; if (k === undefined) return;
+  const a = anims[k]; const ta = e.target.closest('.cell').querySelector('textarea');
+  const json = {filename: a.key + '.html', name: a.name, category: 'ECHO', description: a.intent, palette: a.palette, frame_count: a.frames.length,
+    frames: a.frames.map(f => ({hold: f.hold, grid: f.grid}))};
+  ta.style.display = 'block'; ta.value = JSON.stringify(json); ta.select();
+});
+if (location.hash === '#still') playing = false;
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

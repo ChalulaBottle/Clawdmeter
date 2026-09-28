@@ -1,0 +1,23 @@
+[
+  {
+    "filename": "idle_blink.html",
+    "name": "Stock Clawd idle blink",
+    "category": "Idle",
+    "frame_count": 12,
+    "palette_size": 3
+  },
+  {
+    "filename": "idle_coffee.html",
+    "name": "Clawd coffee",
+    "category": "Idle",
+    "frame_count": 19,
+    "palette_size": 6
+  },
+  {
+    "filename": "echo_idle.html",
+    "name": "ECHO creature idle",
+    "category": "ECHO",
+    "frame_count": 8,
+    "palette_size": 7
+  }
+]
