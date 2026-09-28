@@ -643,11 +643,38 @@
     });
   }
 
+  // 3o. Happy eyes: the eyes scrunch into > < chevrons (the visor grows up a row so a three-row
+  // chevron fits) and blink back and forth with the plain eyes: a quick pair, then a long happy
+  // hold with a bounce, then back. The echo skin blinks by painting the eye visor-colour, not body.
+  function happyEyes(g) {
+    const b = clone(g);
+    for (let c = 6; c <= 14; c++) set(b, 5, c, 3);                          // visor grows a row
+    set(b, 6, 7, 3); set(b, 7, 7, 3); set(b, 6, 13, 3); set(b, 7, 13, 3);   // plain eyes go
+    for (const [r, c] of [[5, 6], [6, 7], [7, 6]])   set(b, r, c, 2);       // >
+    for (const [r, c] of [[5, 14], [6, 13], [7, 14]]) set(b, r, c, 2);      // <
+    return b;
+  }
+  const echoBlinkFrame = g => { const b = clone(g); set(b, 6, 7, 3); set(b, 6, 13, 3); return b; };
+  const echoHappy = {
+    name: 'ECHO · happy eyes', key: 'echo_happy', fwname: 'echo happy', category: 'Idle',
+    intent: 'Proposal. The eyes scrunch into > < and blink back and forth with the plain eyes: a quick pair, a long happy hold with a bounce. Judge whether the chevrons read as eyes at 20 cells.',
+    palette: echo.palette,
+    frames: [
+      {hold: 900, grid: echoPing(false)},
+      {hold: 500, grid: happyEyes(echoBase)}, {hold: 260, grid: echoBase},
+      {hold: 500, grid: happyEyes(echoBase)}, {hold: 260, grid: echoPing(true)},
+      {hold: 700, grid: happyEyes(echoBase)}, {hold: 220, grid: happyEyes(bob(echoBase, -1))},
+      {hold: 700, grid: happyEyes(echoBase)}, {hold: 220, grid: happyEyes(bob(echoBase, -1))},
+      {hold: 900, grid: happyEyes(echoBase)},
+      {hold: 60, grid: echoBlinkFrame(echoBase)}, {hold: 1300, grid: echoPing(false)},
+    ],
+  };
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, jobDone, love, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
