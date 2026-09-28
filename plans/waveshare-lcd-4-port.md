@@ -132,6 +132,44 @@ keep PPCP flags, 16 MB partitions, `-DBOARD_HAS_PSRAM`, `-DARDUINO_USB_CDC_ON_BO
 - [ ] M5 battery % on V4 (flip `BOARD_HAS_BATTERY`), README + CLAUDE.md board lists updated
 - [ ] M6 hardware docs copied into `docs/hardware/lcd4/`; case work starts (separate repo)
 
+## Direction (operator, 2026-09-27 ~23:30): from meter to hub
+
+"We will be adding adapters, sensors, and other features and tools to this little fun meter. It will
+be a central smart home control hub as well that can control the home lab." Nothing below is built;
+it is the shape the port must not fight.
+
+**Architecture rule: the board renders and reports, a host decides.** Every GPIO is spoken for by the
+RGB panel, so the 4" board grows through its buses (I2C, RS485, CAN, Wi-Fi/BLE) and through
+satellites, never through pins. Control logic, credentials and integrations live on a host on the
+LAN (fox-pool is the natural one, it already runs THE DOCK and the relay fleet); the board holds a
+device token and speaks one small protocol. That keeps the firmware small, keeps secrets off a
+desk device, and means a new integration is a host-side page, not a reflash.
+
+**Integration hooks to design into the firmware now:**
+1. **Page registry.** Screens become entries in a table (name, layout, data source, tap targets)
+   rather than the two hard-coded ones. Usage, Fox status, Kismet status, home controls, sensor
+   panel all use it. Upstream's `ui_show_screen` grows a list; touch (or the BOOT cycle) walks it.
+2. **One transport for pages: JSON over WebSocket to the host** (BLE stays only for the Clawdmeter
+   usage feed, so upstream's daemon keeps working unchanged). Payload = page id + fields; commands
+   go back the same socket. Token per device, LAN bind only (same P0 gates as the room puck plan).
+3. **Local sensor bus.** I2C header (SDA 15 / SCL 7, shared with touch, CH32, RTC) with a runtime
+   probe table: known addresses get a driver, readings are published to the host, the host decides
+   what to show. First candidates: SHT4x (temperature/humidity), SCD40 (CO2), VL53L1X or LD2410
+   over I2C (presence, wakes the screen). RS485 for Modbus gear, CAN for anything automotive/lab.
+4. **Home control plane = Home Assistant (or its MQTT broker)**, not bespoke device code. The host
+   maps HA entities to page fields and tap actions; the board never knows what a light is.
+   Home lab actions (Proxmox, Docker, fleet health) come through the same host page layer, calling
+   the AEGIS relays / THE DOCK APIs that already exist.
+5. **Satellites** for what the board cannot carry: voice (the room puck plan, S3-BOX-3), Zigbee/Thread
+   (ESP32-C6), LoRa and sniffers. They talk to the host, the 4" board is their shared face.
+6. **Buzzer and backlight as outputs** exposed to the host (alerts, night dimming) through the same
+   command channel.
+
+**Sequencing suggestion (operator gates each):** touch working → page registry + WebSocket transport
+with the usage page as the first registered page → Fox status page → first I2C sensor (presence)
+→ HA bridge on the host → home controls page → home lab page. A hub deserves its own name before
+the first public post about it; not yet.
+
 ## Known risks (name, do not solve in v1)
 
 - RGB framebuffer in PSRAM plus NimBLE traffic can flicker or drift; bounce buffer is the fix if seen.

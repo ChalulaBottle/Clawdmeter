@@ -187,6 +187,35 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
   </main>
 </section>
 
+<!-- Band 5, dark: where it goes. Direction stated 2026-09-27; nothing here is built yet and the copy says so. -->
+<section class="band dark">
+  <main>
+    <p class="kick">Where it goes</p>
+    <h2>From meter to hub</h2>
+    <p class="muted" style="max-width:70ch"><strong>The plan is a central smart home and home lab control hub with this screen as its face.</strong> Adapters, sensors and tools get added over time. One rule keeps that from turning a desk toy into a liability: <strong>the board renders and reports, a host decides.</strong> Every pin on the 4 inch board is already spoken for by the panel, so it grows through its buses and through satellites, and the logic, the credentials and the integrations live on a host on the LAN.</p>
+    <div class="grid3" style="margin-top:22px">
+      <div class="panel">
+        <h3>Pages, not screens</h3>
+        <p class="muted">A page registry in the firmware: usage, Fox status, Kismet, home controls, sensors. Each page is JSON over a WebSocket from the host, with a device token and a LAN only bind. A new integration is a host page, not a reflash.</p>
+      </div>
+      <div class="panel">
+        <h3>Sensors on the bus</h3>
+        <p class="muted">The I2C header probes known addresses at boot and gets a driver per hit: temperature and humidity, CO2, presence to wake the screen. RS485 for Modbus gear, CAN for the lab. Voice, Zigbee and LoRa ride on small satellite boards that report to the same host.</p>
+      </div>
+      <div class="panel">
+        <h3>Home Assistant does the controlling</h3>
+        <p class="muted">Lights, plugs and scenes come through Home Assistant or its MQTT broker; home lab actions come through the AEGIS relays and THE DOCK that already run the fleet. The board never learns what a light is, it shows a field and sends a tap.</p>
+      </div>
+    </div>
+    <div class="help" style="margin-top:22px">
+      <ul>
+        <li>Order of work, each step gated: touch working, then the page registry and transport with usage as the first page, then Fox status, then the first sensor, then the Home Assistant bridge, then home controls, then the home lab page.</li>
+        <li>Nothing in this band exists yet. The state board above is the truth about today.</li>
+      </ul>
+    </div>
+  </main>
+</section>
+
 <footer>
   <main>
     <p class="kick">Credit</p>
