@@ -49,7 +49,8 @@ if a.mug or a.bigmug:
             for c in range(c0m, c1m): grid[r][c] = 7
         grid[top + 1][c1m] = 7; grid[top + 2][c1m] = 7      # handle
         grid[11][16] = 1; grid[11][17] = 1                   # hand
-        for r, c in ((top - 3, 16), (top - 2, 17), (top - 1, 16), (top - 2, 15), (top - 4, 17)):
+        # steam climbs to the right of the antenna only; a cell at column 15 read as part of the stalk
+        for r, c in ((top - 3, 16), (top - 2, 17), (top - 1, 16), (top - 4, 17)):
             if 0 <= r < 20 and grid[r][c] == 0: grid[r][c] = 9
     else:
         mg = m["frames"][0]["grid"]
@@ -76,14 +77,28 @@ for r in range(r0, r1 + 1):
             x, y = ox + (c - c0) * cell, oy + (r - r0) * cell
             dr.rectangle([x, y, x + cell - 1, y + cell - 1], fill=pal[v] + (255,))
 
-# contour: dilate the alpha in steps (MaxFilter is square, which suits pixel art)
+# contour: dilate the alpha (MaxFilter is square, which suits pixel art), then a morphological
+# CLOSE (extra dilate, erode back) so narrow slots between the legs and around the steam fill in,
+# and a flood fill from the corner so no interior hole survives. A die cutter wants one blob with
+# no slot narrower than about 1/8 in and no islands.
+def dilate(m, px):
+    remaining = px
+    while remaining > 0:
+        k = min(15, remaining); k = k if k % 2 == 1 else k + 1
+        m = m.filter(ImageFilter.MaxFilter(k)); remaining -= k // 2 * 2
+    return m
+def erode(m, px):
+    remaining = px
+    while remaining > 0:
+        k = min(15, remaining); k = k if k % 2 == 1 else k + 1
+        m = m.filter(ImageFilter.MinFilter(k)); remaining -= k // 2 * 2
+    return m
+CLOSE = int(0.12 * a.dpi)
 mask = art.split()[3]
-grown = mask
-step = 15
-remaining = CONTOUR
-while remaining > 0:
-    k = min(step, remaining); k = k if k % 2 == 1 else k + 1
-    grown = grown.filter(ImageFilter.MaxFilter(k)); remaining -= k // 2 * 2
+grown = erode(dilate(mask, CONTOUR + CLOSE), CLOSE)
+outside = grown.copy(); ImageDraw.floodfill(outside, (0, 0), 128)   # 128 marks the outside
+holes = outside.point(lambda v: 255 if v == 0 else 0)                # 0 = unreached = a hole
+grown = Image.eval(Image.composite(Image.new("L", (S, S), 255), grown, holes), lambda v: v)
 white = Image.new("RGBA", (S, S), (255, 255, 255, 255)); white.putalpha(grown)
 out = Image.alpha_composite(white, art)
 
