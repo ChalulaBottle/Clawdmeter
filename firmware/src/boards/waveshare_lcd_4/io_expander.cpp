@@ -86,6 +86,9 @@ bool io_expander_init(void) {
         write_reg(IOX_CH32_ADDR, CH32_REG_OUTPUT, out_state);
         delay(200);   // Waveshare waits this long before touching the panel
         Serial.println("IO expander: CH32V003 @0x24 (board rev V4)");
+        // Read back what the CH32 thinks it holds, so a write that ACKs but
+        // does not land shows up in the log instead of as a dark panel.
+        io_expander_dump_regs();
         return true;
     }
     if (probe(IOX_TCA9554_ADDR)) {
@@ -128,6 +131,73 @@ void io_expander_set_backlight(uint8_t level) {
 
 void io_expander_set_buzzer(bool on) {
     set_bit(variant == IOX_CH32 ? CH32_BIT_BUZZER : TCA_PIN_BUZZER, on);
+}
+
+void io_expander_touch_reset(bool assert_reset) {
+    set_bit(variant == IOX_CH32 ? CH32_BIT_TP_RST : TCA_PIN_TP_RST, !assert_reset);
+}
+
+// Datasheet GT911 reset on the CH32 board, where both RST and INT are
+// expander pins: hold RST low with INT at the address-select level, release
+// RST, keep INT there >5 ms, then hand INT back to the controller by making
+// that one expander bit an input (DIR bit clear). INT low -> 0x5D, high -> 0x14.
+void io_expander_gt911_reset(bool int_high) {
+    if (variant != IOX_CH32) {
+        io_expander_touch_reset(true);
+        delay(20);
+        io_expander_touch_reset(false);
+        delay(100);
+        return;
+    }
+    write_reg(IOX_CH32_ADDR, CH32_REG_DIR, CH32_DIR_DEFAULT);       // all outputs
+    out_state &= ~(1u << CH32_BIT_TP_RST);
+    if (int_high) out_state |=  (1u << CH32_BIT_TP_INT);
+    else          out_state &= ~(1u << CH32_BIT_TP_INT);
+    write_reg(IOX_CH32_ADDR, CH32_REG_OUTPUT, out_state);
+    delay(20);
+    out_state |= (1u << CH32_BIT_TP_RST);
+    write_reg(IOX_CH32_ADDR, CH32_REG_OUTPUT, out_state);
+    delay(60);
+    write_reg(IOX_CH32_ADDR, CH32_REG_DIR, (uint8_t)(CH32_DIR_DEFAULT & ~(1u << CH32_BIT_TP_INT)));
+    delay(100);
+    Serial.printf("GT911 reset done (INT %s during reset, now input); ", int_high ? "high" : "low");
+    io_expander_dump_regs();
+}
+
+bool io_expander_reg_write(uint8_t reg, uint8_t val) {
+    if (variant == IOX_NONE) return false;
+    // Keep the shadow honest when the poke interface writes the output register.
+    if (reg == out_reg()) out_state = val;
+    return write_reg(out_addr(), reg, val);
+}
+
+int io_expander_reg_read(uint8_t reg) {
+    if (variant == IOX_NONE) return -1;
+    uint8_t v = 0;
+    if (!read_regs(out_addr(), reg, &v, 1)) return -1;
+    return v;
+}
+
+void io_expander_dump_regs(void) {
+    if (variant == IOX_CH32) {
+        int r[6];
+        for (uint8_t i = 0; i < 6; i++) r[i] = io_expander_reg_read((uint8_t)(0x02 + i));
+        Serial.printf("CH32 regs: DIR=0x%02X OUT=0x%02X IN=0x%02X PWM=0x%02X ADC=0x%02X RTC=0x%02X\n",
+                      r[0], r[1], r[2], r[3], r[4], r[5]);
+    } else if (variant == IOX_TCA9554) {
+        Serial.printf("TCA9554 regs: IN=0x%02X OUT=0x%02X POL=0x%02X CFG=0x%02X\n",
+                      io_expander_reg_read(0x00), io_expander_reg_read(0x01),
+                      io_expander_reg_read(0x02), io_expander_reg_read(0x03));
+    }
+}
+
+void io_expander_i2c_scan_log(void) {
+    Serial.print("I2C scan:");
+    for (uint8_t a = 0x08; a < 0x78; a++) {
+        Wire.beginTransmission(a);
+        if (Wire.endTransmission() == 0) Serial.printf(" 0x%02X", a);
+    }
+    Serial.println();
 }
 
 int io_expander_battery_mv(void) {

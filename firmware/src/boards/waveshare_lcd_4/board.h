@@ -54,6 +54,11 @@
 #define LCD_VSYNC_FRONT      10
 #define LCD_VSYNC_PULSE      8
 #define LCD_VSYNC_BACK       20
+// The LCD peripheral scans the framebuffer straight out of PSRAM. When BLE or
+// LVGL stalls PSRAM the scan-out underruns and the picture tears and drifts.
+// A bounce buffer in internal RAM (this many lines, DMA-fed) decouples the two;
+// 10 lines x 480 px x 2 B = 9.6 KB per buffer, two of them.
+#define LCD_BOUNCE_LINES     10
 
 // ---- I2C bus (expander + touch + charger + RTC share one bus) ----
 #define IIC_SDA              15
@@ -61,7 +66,9 @@
 
 // ---- Touch (GT911, inline I2C reader, 16-bit registers) ----
 // Address is picked by the INT level while reset releases; probe both.
-#define TP_INT               16
+// On V4 both TP_RST and TP_INT are CH32 expander pins (EXIO1 / EXIO2), so
+// there is no ESP GPIO to interrupt on; the reader polls. GPIO16 is SYS_OUT
+// (power latch), never touch it.
 #define GT911_ADDR_A         0x5D
 #define GT911_ADDR_B         0x14
 
@@ -73,8 +80,11 @@
 #define TCA_PIN_SD           3      // Waveshare holds this LOW at startup
 #define TCA_PIN_BUZZER       5
 #define IOX_CH32_ADDR        0x24
+#define CH32_BIT_CHG_STAT    0      // "change" net from the ETA6098 charger
 #define CH32_BIT_TP_RST      1
+#define CH32_BIT_TP_INT      2
 #define CH32_BIT_LCD_RST     3
+#define CH32_BIT_SD_CS       4
 #define CH32_BIT_SYS_EN      5      // battery power latch — never clear while running
 #define CH32_BIT_BUZZER      6
 #define CH32_BIT_RTC_INT     7

@@ -2,11 +2,15 @@
 
 ## RESUME STATE
 
-- **Status:** BOARD FOLDER WRITTEN (all 11 files) + `[env:waveshare_lcd_4]` appended; first build in
-  progress. Factory firmware backed up.
-- **Exact next action:** get `pio run -d firmware -e waveshare_lcd_4` to link; fix whatever the
-  compiler says about `Arduino_ESP32RGBPanel` / `Arduino_RGB_Display` argument lists in GFX 1.6.x.
-  Then log intent in `C:\Users\OOrte\SYSTEM_CHANGE_LOG.md` and flash to COM11.
+- **Status:** RUNNING ON HARDWARE (commit a2f01d4 + working tree). Board is **V4** (CH32V003
+  @0x24). Panel up, backlight via CH32 PWM works, BLE paired to the Windows tray daemon and
+  receiving usage payloads every 60 s. Splash visibly tears/drifts (bounce buffer added in the
+  working tree, not yet observed). **Touch dead:** GT911 never ACKs at 0x5D/0x14; bus scan shows
+  only 0x24 and 0x51. BOOT now plays the PWR role (short = cycle screens, long = pair); no HID key.
+- **Exact next action:** flash the working tree (adds `serial_cmd.cpp` pokes: `iox`, `iox w RR VV`,
+  `scan`, `gt`, `tprst`, `bl N`) and experiment live on CH32 bits 1 (TP_RST) and 2 (TP_INT) and
+  the DIR register until the GT911 answers; then commit. Then confirm the bounce buffer cured the
+  tearing with the operator watching, and take a `screenshot` for docs/media.
 - **Toolchain gotcha:** the pinned pioarduino platform 55.03.38-1 refuses PlatformIO Core < 6.1.19;
   this box had 6.1.18. Fix: `~/.platformio/penv/Scripts/python.exe -m pip install -U platformio`.
 - **Windows helpers (scratchpad, copy to `tools/` when they prove out):** `serial_tail.py COM11 [s] [cmd]`
@@ -58,6 +62,12 @@ Once ported, the same image becomes the base for a Fox status page and a Kismet 
     ADC 0x06 (battery, 10-bit, Vbat = raw*3.3/1023*3.0), RTC_INT 0x07. Bits: 1 TP_RST, 3 LCD_RST,
     5 **SYS_EN (power latch, never clear)**, 6 buzzer. Power-on: DIR 0xFF, OUT 0x00, 200 ms,
     OUT = SYS_EN|LCD_RST|TP_RST.
+- **V4 schematic facts (`ESP32-S3-Touch-LCD-4 V4.0.pdf`, net list), verified 2026-09-27:**
+  EXIO0 = charger "change"/status, EXIO1 = TP_RST, **EXIO2 = TP_INT (touch INT is on the CH32,
+  not on any ESP pin)**, EXIO3 = LCD_RST, EXIO4 = SD_CS, EXIO5 = SYS_EN, EXIO6 = BEE_EN,
+  EXIO7 = RTC_INT, EXIO_PWM = backlight (AP3032 BL_EN), EXIO_ADC = battery divider.
+  **ESP GPIO16 = SYS_OUT (power latch), never drive it.** TP_VCC is straight 3V3. Touch, RTC,
+  CH32 and charger share SDA15/SCL7. The GT911 address is therefore chosen by CH32 bit 2.
 - **Buttons:** BOOT on GPIO0 (shared with CAN RX, fine as input). PWRKEY goes to the power chip,
   not to an ESP GPIO. RESET is hardware.
 - **Battery:** SW6106 charger @0x3C (registers unknown); on V4 the CH32 ADC gives Vbat.

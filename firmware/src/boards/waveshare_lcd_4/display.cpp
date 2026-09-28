@@ -25,7 +25,10 @@ void display_hal_init(void) {
         LCD_G0, LCD_G1, LCD_G2, LCD_G3, LCD_G4, LCD_G5,
         LCD_B0, LCD_B1, LCD_B2, LCD_B3, LCD_B4,
         LCD_HSYNC_POLARITY, LCD_HSYNC_FRONT, LCD_HSYNC_PULSE, LCD_HSYNC_BACK,
-        LCD_VSYNC_POLARITY, LCD_VSYNC_FRONT, LCD_VSYNC_PULSE, LCD_VSYNC_BACK);
+        LCD_VSYNC_POLARITY, LCD_VSYNC_FRONT, LCD_VSYNC_PULSE, LCD_VSYNC_BACK,
+        0 /* pclk_active_neg */, GFX_NOT_DEFINED /* prefer_speed */, false /* big endian */,
+        0 /* de_idle_high */, 0 /* pclk_idle_high */,
+        LCD_BOUNCE_LINES * LCD_WIDTH /* bounce buffer, see board.h */);
     gfx = new Arduino_RGB_Display(
         LCD_WIDTH, LCD_HEIGHT, panel, LCD_ROTATION, true /* auto_flush */,
         bus, GFX_NOT_DEFINED /* RST: via expander in board_init */,

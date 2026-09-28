@@ -7,20 +7,20 @@
 // charging / VBUS state is unknowable and both report false. Battery voltage
 // is readable only on V4 through the CH32's ADC; older revisions get -1.
 //
-// PWRKEY is wired to the power chip, not to an ESP GPIO, so the PWR-role
-// edges main.cpp expects (hold-to-pair) are synthesised from a LONG hold of
-// the BOOT button. Short BOOT presses are deliberately NOT reported as PWR
-// short presses: input_hal already turns those into the HID Space key, and
-// reporting them here as well would fire both actions per tap.
+// PWRKEY is wired to the power chip, not to an ESP GPIO, and BOOT is the only
+// button the ESP can see. A desk display needs screen cycling and pairing more
+// than it needs a Space key, so BOOT plays the PWR role here (input.cpp
+// reports no primary button, so no HID key fires):
+//   short    — fired on release if the hold was shorter than PWR_LONG_MS
 //   long     — fired once when a hold crosses PWR_LONG_MS
-//   release  — fired on the release edge of a hold that went long
-//   short    — never (see above)
+//   release  — fired on every release edge
 
 #define BATTERY_POLL_MS  2000
 #define PWR_POLL_MS      50
 #define PWR_LONG_MS      1500
 
 static int      cached_pct        = -1;
+static bool     pwr_pressed_flag  = false;
 static bool     pwr_long_flag     = false;
 static bool     pwr_released_flag = false;
 static bool     last_pwr_state    = false;
@@ -64,7 +64,8 @@ void power_hal_tick(void) {
                 pwr_long_fired = true;
             }
         } else if (!pwr_now && last_pwr_state) {     // release edge
-            if (pwr_long_fired) pwr_released_flag = true;
+            pwr_released_flag = true;
+            if (!pwr_long_fired) pwr_pressed_flag = true;  // short press
         }
         last_pwr_state = pwr_now;
     }
@@ -74,7 +75,10 @@ int  power_hal_battery_pct(void) { return cached_pct; }
 bool power_hal_is_charging(void) { return false; }
 bool power_hal_is_vbus_in(void)  { return false; }
 
-bool power_hal_pwr_pressed(void) { return false; }
+bool power_hal_pwr_pressed(void) {
+    if (pwr_pressed_flag) { pwr_pressed_flag = false; return true; }
+    return false;
+}
 
 bool power_hal_pwr_long_pressed(void) {
     if (pwr_long_flag) { pwr_long_flag = false; return true; }

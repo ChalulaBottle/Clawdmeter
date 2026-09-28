@@ -1,5 +1,6 @@
 #include "../../hal/touch_hal.h"
 #include "board.h"
+#include "io_expander.h"
 #include <Arduino.h>
 #include <Wire.h>
 
@@ -10,7 +11,11 @@
 //   0x8150..        point 0: track id, X lo, X hi, Y lo, Y hi, size lo/hi
 // The status register must be written back to 0 after each frame or the
 // controller stops producing new ones. The address (0x5D or 0x14) is chosen
-// by the INT level while reset releases in board_init(); we probe both.
+// by the INT level while reset releases; both reset and INT sit on the CH32
+// expander on this board, so board_init() decides that and we probe both.
+//
+// No ESP interrupt line exists for touch here, so the reader polls every
+// TOUCH_POLL_MS. One status read at 400 kHz is well under a millisecond.
 //
 // Coordinates arrive panel-native (0..479). The panel is driven at rotation 2,
 // so both axes are mirrored here to match what LVGL draws.
@@ -18,18 +23,13 @@
 #define GT911_REG_PID     0x8140
 #define GT911_REG_STATUS  0x814E
 #define GT911_REG_POINT0  0x8150
-#define TOUCH_POLL_MS     20
+#define TOUCH_POLL_MS     15
 
-static uint8_t           gt_addr = 0;
-static volatile bool     touch_data_ready = false;
-static volatile bool     touch_pressed = false;
-static volatile uint16_t touch_x = 0;
-static volatile uint16_t touch_y = 0;
-static uint32_t          last_poll_ms = 0;
-
-static void IRAM_ATTR touch_isr(void) {
-    touch_data_ready = true;
-}
+static uint8_t  gt_addr = 0;
+static bool     touch_pressed = false;
+static uint16_t touch_x = 0;
+static uint16_t touch_y = 0;
+static uint32_t last_poll_ms = 0;
 
 static bool gt_read(uint16_t reg, uint8_t* buf, uint8_t len) {
     Wire.beginTransmission(gt_addr);
@@ -79,36 +79,45 @@ static void touch_read_into_shared_state(void) {
 static bool gt_probe(uint8_t addr) {
     gt_addr = addr;
     uint8_t pid[4] = {0};
-    if (!gt_read(GT911_REG_PID, pid, 4)) return false;
+    if (!gt_read(GT911_REG_PID, pid, 4)) { gt_addr = 0; return false; }
     Serial.printf("Touch GT911 PID=%c%c%c%c (addr 0x%02X)\n",
                   pid[0] ? pid[0] : '?', pid[1] ? pid[1] : '?',
                   pid[2] ? pid[2] : '?', pid[3] ? pid[3] : '?', addr);
     return true;
 }
 
+// Shared with the serial poke interface so the probe can be re-run live.
+bool touch_gt911_probe_now(void) {
+    return gt_probe(GT911_ADDR_A) || gt_probe(GT911_ADDR_B);
+}
+
 void touch_hal_init(void) {
-    // Reset already pulsed through the expander in board_init(); the GT911
-    // needs ~50 ms after that before it answers.
+    // board_init() released TP_RST with INT driven low; try that first, then
+    // the datasheet sequence for each address-select level.
     delay(50);
-    if (!gt_probe(GT911_ADDR_A) && !gt_probe(GT911_ADDR_B)) {
+    bool found = touch_gt911_probe_now();
+    if (!found) {
+        io_expander_gt911_reset(false);
+        found = gt_probe(GT911_ADDR_A) || gt_probe(GT911_ADDR_B);
+    }
+    if (!found) {
+        io_expander_gt911_reset(true);
+        found = gt_probe(GT911_ADDR_B) || gt_probe(GT911_ADDR_A);
+    }
+    if (!found) {
         gt_addr = 0;
         Serial.println("Touch GT911 not found at 0x5D or 0x14");
+        io_expander_i2c_scan_log();
         return;
     }
     gt_write(GT911_REG_STATUS, 0x00);
-    pinMode(TP_INT, INPUT_PULLUP);
-    attachInterrupt(TP_INT, touch_isr, FALLING);
-    Serial.println("Touch attached on INT pin");
+    Serial.println("Touch GT911 polling");
 }
 
 void touch_hal_read(uint16_t* x, uint16_t* y, bool* pressed) {
     if (gt_addr) {
         uint32_t now = millis();
-        // INT gives us fast first contact; the timed poll covers the GT911's
-        // configurable INT polarity and a missed release edge so a stuck
-        // "pressed" state always clears.
-        if (touch_data_ready || touch_pressed || now - last_poll_ms >= TOUCH_POLL_MS) {
-            touch_data_ready = false;
+        if (touch_pressed || now - last_poll_ms >= TOUCH_POLL_MS) {
             last_poll_ms = now;
             touch_read_into_shared_state();
         }

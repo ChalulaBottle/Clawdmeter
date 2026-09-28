@@ -176,6 +176,14 @@ static void send_screenshot() {
 #endif
 }
 
+// Boards may claim serial commands the shared set does not know (hardware
+// bring-up pokes, register dumps). Weak default: nothing claimed.
+extern "C" bool board_serial_command(const char* cmd);
+extern "C" __attribute__((weak)) bool board_serial_command(const char* cmd) {
+    (void)cmd;
+    return false;
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
@@ -188,6 +196,8 @@ static void check_serial_cmd() {
             // device that is being flashed over that same cable.
             else if (strcmp(cmd_buf, "charge") == 0)   charge_anim_play(true);
             else if (strcmp(cmd_buf, "uncharge") == 0) charge_anim_play(false);
+            else if (cmd_pos > 0 && !board_serial_command(cmd_buf))
+                Serial.printf("unknown command: %s\n", cmd_buf);
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
             cmd_buf[cmd_pos++] = c;
