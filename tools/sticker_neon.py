@@ -17,6 +17,9 @@ ap.add_argument("--anim", default="echo_idle")
 ap.add_argument("--url", default="https://chalulabottle.github.io/Clawdmeter/")
 ap.add_argument("--size", type=int, default=1800)
 ap.add_argument("--title", default="CLAWDMETER|ECHO EDITION")
+ap.add_argument("--mug", action="store_true", help="hand the creature echo coffee's mug (cells 7..9 + the hand)")
+ap.add_argument("--creature", type=float, default=0.38, help="creature height as a fraction of the sticker")
+ap.add_argument("--qr", type=float, default=0.25, help="QR tile side as a fraction of the sticker")
 ap.add_argument("--out", default=os.path.join("docs", "media", "sticker"))
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -65,12 +68,24 @@ for ln in lines:
 
 # creature, centred, ~44% of height
 d = json.load(open(os.path.join("tools", "echo_anims", a.anim + ".json")))
-pal = [hexrgb(p) for p in d["palette"]]; grid = d["frames"][0]["grid"]
+pal = [hexrgb(p) for p in d["palette"]]; grid = [row[:] for row in d["frames"][0]["grid"]]
+if a.mug:
+    # borrow the mug from echo coffee: its palette puts cream/coffee/steam at 7, 8, 9; pad ours to match
+    m = json.load(open(os.path.join("tools", "echo_anims", "echo_coffee.json")))
+    mpal = [hexrgb(p) for p in m["palette"]]
+    while len(pal) < 7: pal.append(None)
+    pal = pal[:7] + mpal[7:10]
+    mg = m["frames"][0]["grid"]
+    for r in range(20):
+        for c in range(20):
+            if mg[r][c] in (7, 8, 9): grid[r][c] = mg[r][c]
+    grid[11][16] = 1                                             # the hand under the mug
+    cols_all = [c for c in range(20) if any(grid[r][c] for r in range(20))]
 rows = [r for r in range(20) if any(grid[r])]; cols = [c for c in range(20) if any(grid[r][c] for r in range(20))]
 r0, r1, c0, c1 = min(rows), max(rows), min(cols), max(cols)
 ch, cw = r1 - r0 + 1, c1 - c0 + 1
-cell = int(S * 0.27 / ch)
-ox, oy = (S - cw * cell) // 2, y + S // 40
+cell = int(S * a.creature / ch)
+ox, oy = (S - cw * cell) // 2, y + S // 60
 for r in range(r0, r1 + 1):
     for c in range(c0, c1 + 1):
         v = grid[r][c]
@@ -81,7 +96,7 @@ for r in range(r0, r1 + 1):
 # QR on a rounded gradient tile
 qr = qrcode.QRCode(error_correction=ERROR_CORRECT_H, border=0); qr.add_data(a.url); qr.make(fit=True)
 mat = qr.get_matrix(); n = len(mat)
-tile_side = int(S * 0.30); quiet = 4
+tile_side = int(S * a.qr); quiet = 4
 mod = tile_side // (n + 2 * quiet); qside = mod * n; tile_side = mod * (n + 2 * quiet)
 tile = gradient(tile_side, tile_side); tile = tile.convert("RGBA"); tile.putalpha(rounded_mask(tile_side, tile_side, tile_side // 9))
 td = ImageDraw.Draw(tile)
@@ -90,7 +105,7 @@ for r in range(n):
         if mat[r][c]:
             x, yy = (quiet + c) * mod, (quiet + r) * mod
             td.rectangle([x, yy, x + mod - 1, yy + mod - 1], fill=INK + (255,))
-tx, ty = (S - tile_side) // 2, S - bw - int(S * 0.085) - tile_side
+tx, ty = (S - tile_side) // 2, S - bw - int(S * 0.075) - tile_side
 img.paste(tile, (tx, ty), tile)
 
 # url under the tile, kick above the creature, mono
@@ -98,6 +113,6 @@ f_u = ImageFont.truetype(FONT, S // 50); f_k = ImageFont.truetype(FONT, S // 56)
 dr.text((S // 2, ty + tile_side + S // 60), a.url.replace("https://", "").rstrip("/"), font=f_u, fill=(200, 216, 216), anchor="ma")
 dr.text((S // 2, S - bw - S // 30), "ECHO · BUILD · DIGITAL ORUKAMI", font=f_k, fill=TEAL, anchor="ma")
 
-out = os.path.join(a.out, f"sticker-neon-{a.anim}-{S}.png")
+out = os.path.join(a.out, f"sticker-neon-{a.anim}{'-mug' if a.mug else ''}-{S}.png")
 img.save(out, dpi=(600, 600))
 print(out, f"{S}px; QR {n}x{n}, module {mod}px, ECC H")
