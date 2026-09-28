@@ -56,6 +56,13 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_ssh.html",
+    "name": "echo ssh",
+    "category": "Active",
+    "frame_count": 19,
+    "palette_size": 7
+  },
+  {
     "filename": "token_burner.html",
     "name": "token burner",
     "category": "Active",
@@ -91,6 +98,13 @@
     "palette_size": 9
   },
   {
+    "filename": "echo_happy.html",
+    "name": "echo happy",
+    "category": "Idle",
+    "frame_count": 12,
+    "palette_size": 7
+  },
+  {
     "filename": "echo_consult.html",
     "name": "echo consult",
     "category": "Active",
@@ -110,6 +124,62 @@
     "category": "Idle",
     "frame_count": 8,
     "palette_size": 8
+  },
+  {
+    "filename": "echo_loading.html",
+    "name": "echo loading",
+    "category": "Thinking",
+    "frame_count": 19,
+    "palette_size": 8
+  },
+  {
+    "filename": "echo_kiss.html",
+    "name": "echo kiss",
+    "category": "Mode",
+    "frame_count": 15,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_summon.html",
+    "name": "echo summon",
+    "category": "Mode",
+    "frame_count": 31,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_kiss_b.html",
+    "name": "echo kiss b",
+    "category": "Mode",
+    "frame_count": 11,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_eye_spin.html",
+    "name": "echo eye spin",
+    "category": "Thinking",
+    "frame_count": 18,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_openclaw.html",
+    "name": "echo openclaw",
+    "category": "Active",
+    "frame_count": 20,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_headphones.html",
+    "name": "echo headphones",
+    "category": "Idle",
+    "frame_count": 13,
+    "palette_size": 9
+  },
+  {
+    "filename": "clawd_headphones.html",
+    "name": "headphones",
+    "category": "Idle",
+    "frame_count": 16,
+    "palette_size": 7
   },
   {
     "filename": "echo_breathe.html",

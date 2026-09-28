@@ -43,6 +43,14 @@
 > |---|---|---|---|---|
 > | ![](docs/media/anims/echo_walk.gif) | ![](docs/media/anims/job_done.gif) | ![](docs/media/anims/echo_love.gif) | ![](docs/media/anims/echo_consult.gif) | ![](docs/media/anims/ultra_cube.gif) |
 >
+> | echo happy | echo ssh | echo loading | echo eye spin | echo kiss |
+> |---|---|---|---|---|
+> | ![](docs/media/anims/echo_happy.gif) | ![](docs/media/anims/echo_ssh.gif) | ![](docs/media/anims/echo_loading.gif) | ![](docs/media/anims/echo_eye_spin.gif) | ![](docs/media/anims/echo_kiss.gif) |
+>
+> | echo kiss b | echo summon | echo openclaw | echo headphones | headphones |
+> |---|---|---|---|---|
+> | ![](docs/media/anims/echo_kiss_b.gif) | ![](docs/media/anims/echo_summon.gif) | ![](docs/media/anims/echo_openclaw.gif) | ![](docs/media/anims/echo_headphones.gif) | ![](docs/media/anims/clawd_headphones.gif) |
+>
 > **Model tiers**, one family, four signatures (Haiku, Sonnet, Opus, Fable):
 >
 > ![Model tier creatures](docs/media/sheets/model-tiers.png)
