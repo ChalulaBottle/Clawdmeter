@@ -224,6 +224,8 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "askclr") == 0)   ui_approve_clear();
             // The button press, from the bench: same arm delay, same BLE answer.
             else if (strcmp(cmd_buf, "ok") == 0)       ui_approve_accept();
+            // The stats toggle, from the bench (screenshots of the usage screen).
+            else if (strcmp(cmd_buf, "stats") == 0)    ui_toggle_splash();
             else if (cmd_pos > 0 && !board_serial_command(cmd_buf))
                 Serial.printf("unknown command: %s\n", cmd_buf);
             cmd_pos = 0;

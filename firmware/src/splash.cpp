@@ -4,6 +4,7 @@
 #include "charge_anim.h"
 #include "theme.h"
 #include "usage_rate.h"
+#include "ui.h"          // ui_local_time for the morning coffee pick
 #include "hal/board_caps.h"
 #include "hal/display_hal.h"
 #include <Arduino.h>
@@ -73,7 +74,53 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
 static int  forced_idx = -1;
 static char forced_req[24] = "";
 
+// Mornings (MORNING_FROM..MORNING_TO local, once the daemon has sent the clock):
+// the idle and normal-pace groups mostly show the creature with its coffee.
+// Two mugs on every third day of the year, one otherwise. Two picks in three
+// come from here so the other creatures still get a turn.
+#define MORNING_FROM 6
+#define MORNING_TO   10
+static const char* MORNING_NAMES[] = { "coffee morning", "echo coffee", "coffee" };
+static const char* MORNING_DOUBLE  = "echo double coffee";
+#define MORNING_MAX (sizeof(MORNING_NAMES) / sizeof(MORNING_NAMES[0]))
+static int8_t  morning_list[MORNING_MAX];
+static int8_t  morning_double_idx = -1;
+static uint8_t morning_size = 0;
+static uint8_t morning_rotation = 0;
+
+static int8_t find_anim(const char* want) {
+    for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
+        if (strcmp(splash_anims[i].name, want) == 0) return (int8_t)i;
+    }
+    return -1;
+}
+
+static void resolve_morning_list(void) {
+    morning_size = 0;
+    for (size_t s = 0; s < MORNING_MAX; s++) {
+        int8_t idx = find_anim(MORNING_NAMES[s]);
+        if (idx >= 0) morning_list[morning_size++] = idx;
+    }
+    morning_double_idx = find_anim(MORNING_DOUBLE);
+}
+
+// The coffee pick for right now, or -1 when it is not morning, the clock is
+// unknown, or this rotation is one of the "other creatures" turns.
+static int morning_pick(void) {
+    int hour, yday;
+    if (morning_size == 0 || !ui_local_time(&hour, &yday)) return -1;
+    if (hour < MORNING_FROM || hour >= MORNING_TO) return -1;
+    uint8_t turn = morning_rotation++;
+    if (turn % 3 == 2) return -1;
+    int8_t idx = morning_list[turn % morning_size];
+    if (morning_double_idx >= 0 && yday % 3 == 0 && strcmp(splash_anims[idx].name, "echo coffee") == 0) {
+        idx = morning_double_idx;   // a two-mug day
+    }
+    return idx;
+}
+
 static void resolve_group_lists(void) {
+    resolve_morning_list();
     for (int g = 0; g < GROUP_COUNT; g++) {
         group_size[g] = 0;
         for (int s = 0; s < GROUP_MAX; s++) {
@@ -454,9 +501,19 @@ void splash_pick_for_current_rate(void) {
     if (g < 0 || g >= GROUP_COUNT) g = 0;
     if (group_size[g] == 0) return;
 
-    uint8_t slot = group_rotation[g] % group_size[g];
-    group_rotation[g]++;
-    int8_t idx = group_lists[g][slot];
+    int8_t idx = -1;
+    if (g <= 1) {   // idle / normal pace: mornings lean on the coffee creatures
+        int m = morning_pick();
+        if (m >= 0) {
+            idx = (int8_t)m;
+            Serial.printf("splash: morning -> %s\n", splash_anims[idx].name);
+        }
+    }
+    if (idx < 0) {
+        uint8_t slot = group_rotation[g] % group_size[g];
+        group_rotation[g]++;
+        idx = group_lists[g][slot];
+    }
     if (idx < 0) return;
 
     cur_anim = (uint16_t)idx;

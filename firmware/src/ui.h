@@ -17,6 +17,10 @@ screen_t ui_get_current_screen(void);
 void ui_update_ble_status(ble_state_t state, const char* name, const char* mac);
 void ui_update_battery(int percent, bool charging);
 
+// Local wall-clock as last sent by the daemon (payload t/tf), advanced on the
+// device. false until the daemon has sent it (clock off in its config).
+bool ui_local_time(int* hour, int* yday);
+
 // Approve overlay: a Claude Code permission prompt relayed by the host. It sits
 // over whatever screen is up until the button/tap answers it, the host clears
 // it, or expire_s runs out (0 = the default window).

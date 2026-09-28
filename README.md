@@ -37,6 +37,8 @@
 > |---|---|---|---|
 > | ![](docs/media/anims/credits_out.gif) | ![](docs/media/anims/ctf_hoodie.gif) | ![](docs/media/anims/echo_coffee.gif) | ![](docs/media/anims/echo_double_coffee.gif) |
 >
+> Mornings are coffee: with the daemon's `clock=auto` option on, the device knows the local time and from 6 to 10 AM two picks in three come from the coffee creatures, two mugs on every third day.
+>
 > | echo walk | job done | echo love | echo consult | ultra cube |
 > |---|---|---|---|---|
 > | ![](docs/media/anims/echo_walk.gif) | ![](docs/media/anims/job_done.gif) | ![](docs/media/anims/echo_love.gif) | ![](docs/media/anims/echo_consult.gif) | ![](docs/media/anims/ultra_cube.gif) |

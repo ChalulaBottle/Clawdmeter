@@ -33,6 +33,13 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   pair_tick). Serial pokes `ask` / `ok` / `askclr`. 166 daemon tests pass. Tray restarted (PID 20852).
   Capture `docs/media/lcd4/approve-device.png`. **Hook NOT installed in settings** (operator gated);
   snippet in README § Approve.
+- **Clock + morning coffee (2026-09-28 ~08:10):** daemon config `%LOCALAPPDATA%\Clawdmeter\config`
+  now has `clock=auto` → payload `t`/`tf` → usage title shows the live time (12 h detected from
+  Windows). `ui_local_time(&hour,&yday)` exposes it; `splash.cpp` `morning_pick()`: 06:00 to 10:00
+  local, groups idle/normal, two picks in three come from {coffee morning, echo coffee, coffee}; on
+  days with yday % 3 == 0 "echo coffee" becomes "echo double coffee". Logged as `splash: morning ->`.
+  Serial `stats` toggles the usage screen for captures. Captures `docs/media/lcd4/clock-device.png`,
+  `morning-device.png`.
 - **Exact next action:** operator decides whether to add the PermissionRequest hook to their
   settings (README snippet). Then the activity table below into hooks (same gate). Touch-to-see-usage
   = BOOT today (`pwr_toggles_stats`); a tap needs the GT911 answer (factory image test waits on the

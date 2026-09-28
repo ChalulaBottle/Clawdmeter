@@ -989,6 +989,16 @@ void ui_tick_anim(void) {
     lv_label_set_text(lbl_anim, buf);
 }
 
+bool ui_local_time(int* hour, int* yday) {
+    if (clock_base_epoch <= 0) return false;
+    time_t cur = (time_t)(clock_base_epoch + (lv_tick_get() - clock_base_ms) / 1000);
+    struct tm tmv;
+    gmtime_r(&cur, &tmv);   // epoch is already local wall-clock
+    if (hour) *hour = tmv.tm_hour;
+    if (yday) *yday = tmv.tm_yday;
+    return true;
+}
+
 static screen_t prev_non_splash_screen = SCREEN_USAGE;
 static void apply_battery_visibility(void) {
     if (!battery_img) return;
