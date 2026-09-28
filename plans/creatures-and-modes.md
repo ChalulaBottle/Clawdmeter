@@ -55,5 +55,42 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
    hooks themselves go into the operator's settings only with the operator's yes (update-config skill).
 5. **Site.** New creatures and modes land in the landing band and README table; GIFs regenerate.
 
+## Activity → creature mapping (operator 2026-09-28 ~01:20: "responsive to the Claude activities")
+
+The board never infers activity; the host names the animation through the payload `a` field
+(daemon merges `state.json`, written by `clawdmeter_state.py`, called by Claude Code hooks). The
+board decides only what it can see in its own payload (usage %, status). Table to implement:
+
+| Signal | Where it is known | Creature (`a`) |
+|---|---|---|
+| idle, morning (local time before 10:00) | daemon (clock) | `coffee morning`, else `coffee` / `echo idle` rotation |
+| thinking (assistant turn, no tool) | hook: PreToolUse absent for >5 s after UserPromptSubmit | `echo think` |
+| working (tool calls flowing) | hook: PreToolUse / PostToolUse | `echo work` |
+| writing files | hook: PostToolUse on Edit/Write | `echo write` |
+| subagents running (n) | hook: SubagentStart / SubagentStop counter | 1: `echo idle`, 2: `two agents`, 3+: `ultracode work`; `n` badge |
+| workflow / ultracode start | hook on Workflow tool use | `ultracode enter` then `ultramode` while running |
+| model tier in use | Claude Code status line / model env | `haiku` / `sonnet` / `opus` / `fable` |
+| tokens this turn > 500k | hook: budget / usage reading | `token burner` |
+| session limit hit | board: payload `st` != allowed or session ≥ 100 % | `credits out` (board-local, no host needed) |
+| CTF work | hook: cwd under a CTF folder (htb-*, ctf, holmes-launch) or a `mode: ctf` set by hand | `ctf hoodie` |
+| Opus / heavy reasoning | model tier + effort | `opus enter` then `opus work` |
+
+Hooks go into the operator's settings only with the operator's yes (update-config skill); until
+then `clawdmeter_state.py set --anim <name>` drives it by hand and the serial poke `anim <name>` for tests.
+
+## Queued by the operator (2026-09-28, ~01:00): "this will turn into a big project now"
+
+- **Clock page**: local time on the device. The payload already carries `t` (epoch) and `tf`
+  (12/24) from the csb-buddy branch (`main.cpp` parses them); the daemon must send them and a
+  clock screen must render them. First page-registry candidate after usage.
+- **Countdown timers**: named timers pushed from the host (CTF start/end, lab windows), shown as
+  a big mono countdown with the creature reacting at T minus 5 and at zero.
+- **CTF updates**: scoreboard rank / solves / next challenge from the club's CTF tooling, as a page
+  fed by a host script; ties to the ECHO CTF records page. Same "host decides" rule.
+- Creature asks landed tonight: `echo float` (body drifts over planted legs), `coffee morning`
+  (waking up with the mug). More families coming from the workflow lanes.
+These belong to the hub plan's page registry (see `waveshare-lcd-4-port.md` § Direction); do not
+hand-roll a fourth screen before the registry exists.
+
 ## Not in scope tonight
 Touch (hardware thread), the page registry / WebSocket transport (hub plan), a hub name.

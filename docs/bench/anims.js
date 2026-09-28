@@ -83,6 +83,33 @@
     f.push({hold: 500, grid: steam(coffeeBase, 0)});
   }
 
+  // 2b. Coffee, morning. Same mug, but the creature is waking up: eyes shut, a slow half-open,
+  // shut again, a long first open, a sip with the eyes closed, then awake. One cycle ~12 s, mostly still.
+  const coffeeMorning = {
+    name: 'Clawd · coffee morning', key: 'coffee_morning', fwname: 'coffee morning', category: 'Idle',
+    intent: 'Proposal. Holding the coffee and slowly waking up: shut, half, shut, open, sip, awake. Judge the slowness.',
+    palette: coffee.palette,
+    frames: [],
+  };
+  {
+    const f = coffeeMorning.frames, sip = mugAt(BASE, 6);
+    f.push({hold: 1400, grid: steam(shut(coffeeBase), 0)});
+    f.push({hold: 900,  grid: steam(shut(coffeeBase), 1)});
+    f.push({hold: 500,  grid: steam(blink(coffeeBase), 2)});   // half open
+    f.push({hold: 1100, grid: steam(shut(coffeeBase), 3)});    // nope, back to sleep
+    f.push({hold: 700,  grid: steam(shut(coffeeBase), 0)});
+    f.push({hold: 450,  grid: steam(blink(coffeeBase), 1)});
+    f.push({hold: 1300, grid: steam(coffeeBase, 2)});          // first real open
+    f.push({hold: 160,  grid: steam(blink(coffeeBase), 3)});
+    f.push({hold: 900,  grid: steam(coffeeBase, 0)});
+    f.push({hold: 160,  grid: steam(sip, 1)});
+    f.push({hold: 1400, grid: steam(shut(sip), 2)});           // long sip, eyes closed
+    f.push({hold: 160,  grid: steam(sip, 3)});
+    f.push({hold: 1600, grid: steam(coffeeBase, 0)});          // awake now
+    f.push({hold: 90,   grid: steam(blink(coffeeBase), 1)});
+    f.push({hold: 700,  grid: steam(coffeeBase, 2)});
+  }
+
   // 3. ECHO creature. ECHO tokens: body --echo-deep 17836f, visor band --echo 35e0c0 with dark eyes,
   // antenna tip pings in --ping 6fe9ff, feet darker teal. Glitch split: for 60 ms rows 6..8 shift right
   // by one and the visor paints in --ping (the site's own glitch split accent). Breathes once per cycle.
@@ -110,6 +137,202 @@
       {hold: 1800, grid: echoPing(false)}, {hold: 140, grid: echoPing(true)}, {hold: 1400, grid: echoPing(false)},
       {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 900, grid: echoPing(false)},
       {hold: 140, grid: echoPing(true)}, {hold: 700, grid: echoBreathe()}, {hold: 900, grid: echoPing(false)},
+    ],
+  };
+
+  // 3b. ECHO float: the body drifts left, centre, right and bobs up a row while the legs stay
+  // planted, like something hovering on its feet. Torso = rows 0..13 of the ECHO base, legs = rows 14+.
+  function floatFrame(dx, dy) {
+    const b = clone(echoBase);
+    for (let r = 0; r <= 13; r++) for (let c = 0; c < G; c++) b[r][c] = 0;        // clear torso
+    for (let r = 0; r <= 13; r++) for (let c = 0; c < G; c++) {
+      const v = echoBase[r][c]; if (!v) continue;
+      set(b, r + dy, c + dx, v);
+    }
+    return b;
+  }
+  const echoFloat = {
+    name: 'ECHO · float', key: 'echo_float', fwname: 'echo float', category: 'Idle',
+    intent: 'Proposal. The body floats back and forth over planted legs, one cell each way with a bob at the turn.',
+    palette: echo.palette,
+    frames: [
+      {hold: 480, grid: floatFrame(0, 0)}, {hold: 260, grid: floatFrame(-1, 0)}, {hold: 420, grid: floatFrame(-1, -1)},
+      {hold: 260, grid: floatFrame(-1, 0)}, {hold: 480, grid: floatFrame(0, 0)}, {hold: 260, grid: floatFrame(1, 0)},
+      {hold: 420, grid: floatFrame(1, -1)}, {hold: 260, grid: floatFrame(1, 0)},
+    ],
+  };
+
+  // 3c. Two agents: the ECHO creature splits into two 10x10 minis side by side and rejoins.
+  // 2x2 majority downsample of the ECHO base; minis placed at (5, 0) and (5, 10).
+  function downsample(g) {
+    const m = [];
+    for (let r = 0; r < G; r += 2) {
+      const row = [];
+      for (let c = 0; c < G; c += 2) {
+        const v = [g[r][c], g[r][c + 1], g[r + 1][c], g[r + 1][c + 1]].filter(Boolean);
+        if (!v.length) { row.push(0); continue; }
+        const cnt = {}; let best = v[0];
+        for (const x of v) { cnt[x] = (cnt[x] || 0) + 1; if (cnt[x] > cnt[best]) best = x; }
+        row.push(best);
+      }
+      m.push(row);
+    }
+    return m;
+  }
+  function blit(dst, mini, r0, c0) { for (let r = 0; r < mini.length; r++) for (let c = 0; c < mini[r].length; c++) if (mini[r][c]) set(dst, r0 + r, c0 + c, mini[r][c]); return dst; }
+  const echoMini = downsample(echoBase);
+  const empty = () => Array.from({length: G}, () => new Array(G).fill(0));
+  const twoAgents = (dr) => blit(blit(empty(), echoMini, 5, 0 + dr), echoMini, 5, 10 - dr);   // dr pulls them together
+  const echoTwoAgents = {
+    name: 'ECHO · two agents', key: 'echo_two_agents', fwname: 'two agents', category: 'Active',
+    intent: 'Proposal. One creature splits into two agents and rejoins: glitch, split, work apart, merge.',
+    palette: echo.palette,
+    frames: [
+      {hold: 1200, grid: echoPing(false)}, {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 140, grid: echoPing(true)},
+      {hold: 60, grid: echoGlitch(), glitch: true},
+      {hold: 260, grid: twoAgents(3)}, {hold: 260, grid: twoAgents(1)}, {hold: 1600, grid: twoAgents(0)},
+      {hold: 300, grid: blit(blit(empty(), echoMini, 5, 0), echoMini, 5, 10).map((row, r) => row.map((v, c) => (v === 4 && r === 5) ? 4 : v))},
+      {hold: 700, grid: twoAgents(0)}, {hold: 260, grid: twoAgents(1)}, {hold: 260, grid: twoAgents(3)},
+      {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 900, grid: echoPing(false)},
+    ],
+  };
+
+  // 3d. Token burner: past the budget line the creature is on fire. Amber and alert flames flicker
+  // above the body and embers drift up the sides; the visor goes alert. Loud on purpose: this is the
+  // state that should make you look up.
+  const FIRE_PALETTE = ['transparent', '#17836f', '#06090b', '#e0665a', '#6fe9ff', '#0f5a4c', '#e0b25a', '#eafffb'];
+  const FLAME_ROWS = [
+    // each entry: [row, col, palette index]; four flicker phases over the head (rows 1..3) and sides
+    [[3,6,6],[3,8,3],[3,10,6],[3,12,3],[3,14,6],[2,7,3],[2,11,6],[2,13,3],[1,9,6],[8,3,6],[9,17,6]],
+    [[3,5,3],[3,7,6],[3,9,3],[3,11,6],[3,13,3],[3,15,6],[2,6,6],[2,10,3],[2,14,6],[1,8,3],[1,12,6],[7,3,3],[10,17,3]],
+    [[3,6,6],[3,9,6],[3,12,3],[3,14,6],[2,8,3],[2,12,6],[1,10,3],[0,10,6],[9,3,6],[8,17,6]],
+    [[3,5,6],[3,8,3],[3,11,3],[3,13,6],[3,15,3],[2,7,6],[2,9,3],[2,13,6],[1,11,3],[1,7,6],[6,3,3],[6,17,6]],
+  ];
+  function fireFrame(k) {
+    const b = clone(echoBase);
+    set(b, 1, 15, 3);                                                    // antenna tip burns
+    for (let c = 6; c <= 14; c++) { if (b[6][c] === 3) b[6][c] = 3 + 0; if (b[7][c] === 3) b[7][c] = 3; }
+    for (const [r, c, v] of FLAME_ROWS[k % FLAME_ROWS.length]) if (b[r][c] === 0) set(b, r, c, v);
+    return b;
+  }
+  const tokenBurner = {
+    name: 'ECHO · token burner', key: 'token_burner', fwname: 'token burner', category: 'Active',
+    intent: 'Proposal. Past 500k tokens the creature is on fire: amber and alert flames over the head, embers up the sides, visor gone alert. The loud state.',
+    palette: FIRE_PALETTE,
+    frames: [0, 1, 2, 3, 0, 2, 1, 3].map(k => ({hold: 110 + (k % 2) * 40, grid: fireFrame(k)})),
+  };
+
+  // 3e. Ultramode: the creature dissolves into a rotating wireframe cube, the cube throws off a swirl
+  // of braille-like dots, everything collapses back into the creature, and it dives in again.
+  // Cube: eight 3D vertices rotated about Y (and tilted) and projected orthographically onto the
+  // 20x20 lattice; edges drawn with Bresenham. Dots: two counter-rotating rings.
+  function line(b, x0, y0, x1, y1, v) {
+    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1, err = dx + dy;
+    for (;;) { set(b, y0, x0, v); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; } if (e2 <= dx) { err += dx; y0 += sy; } }
+  }
+  function cubeFrame(angle, size, v) {
+    const b = empty(), cs = Math.cos(angle), sn = Math.sin(angle), tilt = 0.55;
+    const P = [];
+    for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+      const rx = x * cs + z * sn, rz = -x * sn + z * cs;                    // spin about Y
+      const ry = y * Math.cos(tilt) - rz * Math.sin(tilt);                  // tilt toward the viewer
+      P.push([Math.round(9.5 + rx * size), Math.round(9.5 + ry * size)]);
+    }
+    const E = [[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+    for (const [i, j] of E) line(b, P[i][0], P[i][1], P[j][0], P[j][1], v);
+    return b;
+  }
+  function swirl(base, k, n, radius, v, dir) {
+    const b = clone(base);
+    for (let i = 0; i < n; i++) {
+      const t = dir * (k * 0.35) + i * (2 * Math.PI / n);
+      set(b, Math.round(9.5 + Math.sin(t) * radius), Math.round(9.5 + Math.cos(t) * radius), v);
+    }
+    return b;
+  }
+  function dissolve(g, k) { const b = clone(g); for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (b[r][c] && ((r * 7 + c * 13 + k * 5) % 4) < k) b[r][c] = 0; return b; }
+  const ultra = {
+    name: 'ECHO · ultramode', key: 'ultramode', fwname: 'ultramode', category: 'Mode',
+    intent: 'Proposal. The creature dissolves into a rotating wireframe cube that throws off spinning braille dots, collapses back into itself, then dives in again.',
+    palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb'],
+    frames: [],
+  };
+  {
+    const f = ultra.frames;
+    f.push({hold: 900, grid: echoPing(false)});
+    f.push({hold: 60, grid: echoGlitch(), glitch: true});
+    for (let k = 1; k <= 3; k++) f.push({hold: 90, grid: dissolve(echoBase, k)});          // dissolve out
+    for (let k = 0; k < 12; k++) {                                                            // cube spins, dots swirl
+      let g = cubeFrame(k * Math.PI / 6, 5, 3);
+      g = swirl(g, k, 6, 8.5, 4, 1);
+      g = swirl(g, k, 4, 6.5, 6, -1);
+      f.push({hold: 110, grid: g});
+    }
+    for (let k = 0; k < 4; k++) f.push({hold: 80, grid: swirl(cubeFrame(k * Math.PI / 6 + Math.PI, 5 - k, 3), 12 + k, 6, 8.5 - k, 4, 1)});  // cube shrinks
+    for (let k = 3; k >= 1; k--) f.push({hold: 90, grid: dissolve(echoBase, k)});          // reassemble
+    f.push({hold: 1400, grid: echoPing(true)});
+    f.push({hold: 60, grid: echoGlitch(), glitch: true});
+    f.push({hold: 700, grid: echoPing(false)});
+  }
+
+  // 3f. Credits out: the creature cries out. Visor alert-red, a wide open mouth, tears streaming
+  // from both eyes, the body shaking a cell either way, and every fourth beat a full white-out scream.
+  // Deliberately loud from the first frame to the last: this is the one state that should never be
+  // mistaken for idle.
+  const CRY_PALETTE = ['transparent', '#17836f', '#06090b', '#e0665a', '#6fe9ff', '#0f5a4c', '#eafffb'];
+  function cryFrame(dx, tearPhase, scream) {
+    const b = empty();
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) { const v = echoBase[r][c]; if (v) set(b, r, c + dx, scream ? (v === 2 ? 2 : 6) : v); }
+    // mouth: wide open, dark, rows 10..11 cols 8..12
+    for (let r = 10; r <= 11; r++) for (let c = 8; c <= 12; c++) set(b, r, c + dx, 2);
+    if (!scream) {
+      // tears fall from under each eye, two streams, phase-shifted
+      const drops = [[8, 6], [9, 6], [11, 6], [12, 6], [8, 14], [10, 14], [11, 14], [13, 14]];
+      drops.forEach(([r, c], i) => { if ((i + tearPhase) % 3 !== 0) set(b, r + (tearPhase % 2), c + dx, 4); });
+      // antenna tip: alert
+      set(b, 1, 15 + dx, 3);
+    }
+    return b;
+  }
+  const creditsOut = {
+    name: 'ECHO · credits out', key: 'credits_out', fwname: 'credits out', category: 'Mode',
+    intent: 'Proposal. The alarm: visor alert, mouth wide, tears streaming, body shaking, a white scream every fourth beat. Loud on purpose.',
+    palette: CRY_PALETTE,
+    frames: [
+      {hold: 140, grid: cryFrame(0, 0, false)}, {hold: 120, grid: cryFrame(-1, 1, false)}, {hold: 140, grid: cryFrame(0, 2, false)},
+      {hold: 120, grid: cryFrame(1, 0, false)}, {hold: 70, grid: cryFrame(0, 1, true)},
+      {hold: 140, grid: cryFrame(0, 1, false)}, {hold: 120, grid: cryFrame(1, 2, false)}, {hold: 140, grid: cryFrame(0, 0, false)},
+      {hold: 120, grid: cryFrame(-1, 1, false)}, {hold: 70, grid: cryFrame(0, 2, true)},
+    ],
+  };
+
+  // 3g. CTF hoodie: when Claude is working a CTF the creature pulls on a black hoodie. Body goes to
+  // hoodie charcoal, a hood wraps the head (row above, both temples), drawstrings hang from the
+  // collar in flash, feet stay teal, visor stays teal so it is still ours. Slow blink, a glance
+  // left and right, otherwise still: this is a long-session skin.
+  const HOODIE_PALETTE = ['transparent', '#1b2326', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#17836f'];
+  function hoodieFrame(eyeDx, eyesOpen) {
+    const b = clone(echoBase);
+    // hood: row 3 across the head, temples down rows 4..7 one cell outside the body
+    for (let c = 5; c <= 15; c++) set(b, 3, c, 1);
+    for (let r = 4; r <= 6; r++) { set(b, r, 4, 1); set(b, r, 16, 1); }
+    set(b, 2, 15, 1); set(b, 1, 15, 4);                                    // antenna pokes through the hood
+    // drawstrings
+    set(b, 8, 9, 6); set(b, 9, 9, 6); set(b, 8, 11, 6); set(b, 9, 11, 6);
+    // eyes: shift within the visor, or shut
+    for (let r = 6; r <= 7; r++) for (let c = 6; c <= 14; c++) if (b[r][c] === 2) b[r][c] = 3;
+    if (eyesOpen) { for (let r = 6; r <= 7; r++) { set(b, r, 7 + eyeDx, 2); set(b, r, 13 + eyeDx, 2); } }
+    else { set(b, 7, 7, 2); set(b, 7, 13, 2); }
+    return b;
+  }
+  const ctfHoodie = {
+    name: 'ECHO · CTF hoodie', key: 'ctf_hoodie', fwname: 'ctf hoodie', category: 'Idle',
+    intent: 'Proposal. Working a CTF: black hoodie up, drawstrings, teal visor still showing. Slow blink and a glance either way; a long-session skin.',
+    palette: HOODIE_PALETTE,
+    frames: [
+      {hold: 2200, grid: hoodieFrame(0, true)}, {hold: 90, grid: hoodieFrame(0, false)}, {hold: 1400, grid: hoodieFrame(0, true)},
+      {hold: 700, grid: hoodieFrame(-1, true)}, {hold: 1600, grid: hoodieFrame(0, true)}, {hold: 700, grid: hoodieFrame(1, true)},
+      {hold: 90, grid: hoodieFrame(1, false)}, {hold: 1200, grid: hoodieFrame(0, true)},
     ],
   };
 
@@ -179,7 +402,7 @@
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, echo, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoFloat, echoTwoAgents, tokenBurner, ultra, creditsOut, ctfHoodie, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

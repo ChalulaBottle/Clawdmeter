@@ -29,6 +29,14 @@
 > |---|---|---|---|
 > | ![](docs/media/anims/echo_sleep.gif) | ![](docs/media/anims/echo_bounce.gif) | ![](docs/media/anims/echo_sway.gif) | ![](docs/media/anims/echo_think.gif) |
 >
+> | echo float | coffee morning | two agents | token burner | ultramode |
+> |---|---|---|---|---|
+> | ![](docs/media/anims/echo_float.gif) | ![](docs/media/anims/coffee_morning.gif) | ![](docs/media/anims/echo_two_agents.gif) | ![](docs/media/anims/token_burner.gif) | ![](docs/media/anims/ultramode.gif) |
+>
+> | credits out | ctf hoodie |
+> |---|---|
+> | ![](docs/media/anims/credits_out.gif) | ![](docs/media/anims/ctf_hoodie.gif) |
+>
 > Full progress board with states: [chalulabottle.github.io/Clawdmeter#creatures](https://chalulabottle.github.io/Clawdmeter/#creatures).
 >
 > The Clawdmeter itself — the device, the firmware, the board ports, the LVGL
