@@ -18,9 +18,11 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const index = [];
 for (const a of BENCH.anims) {
+  if (a.reference) continue;   // stock animations already live in the firmware under their own names
   const json = {
     filename: a.key + '.html',
-    name: a.name.replace(/\s*·\s*/g, ' '),
+    // firmware name: short, space separated, what the host's "a" field sends (splash_set_anim)
+    name: a.fwname || a.name.replace(/\s*·\s*/g, ' ').toLowerCase(),
     category: a.category,
     description: a.intent,
     palette: a.palette,

@@ -39,7 +39,7 @@
 
   // 1. Stock Clawd: idle blink (reference)
   const stock = {
-    name: 'Stock Clawd · idle blink', key: 'idle_blink', category: 'Idle',
+    name: 'Stock Clawd · idle blink', key: 'idle_blink', category: 'Idle', reference: true,
     intent: 'Reference. The creature as it ships; every proposal must still read as this animal.',
     palette: ['transparent', '#D97757', '#0f0f0f'],
     frames: [
@@ -64,7 +64,7 @@
   const steam = (g, i) => { const b = clone(g); for (const [r, c] of STEAM[i % STEAM.length]) if (b[r][c] === 0) set(b, r, c, 5); return b; };
   const coffeeBase = mugAt(BASE, 7);
   const coffee = {
-    name: 'Clawd · coffee', key: 'idle_coffee', category: 'Idle',
+    name: 'Clawd · coffee', key: 'idle_coffee', fwname: 'coffee', category: 'Idle',
     intent: 'Proposal. Same body, right arm holds a mug; steam is the only motion at rest, a sip every six seconds.',
     palette: ['transparent', '#D97757', '#0f0f0f', '#e9e1d2', '#5a3524', '#cfd8dc'],
     frames: [],
@@ -103,7 +103,7 @@
   };
   const echoBreathe = () => { const b = clone(echoBase); b.splice(4, 1); b.splice(13, 0, echoBase[13].slice()); return b; };
   const echo = {
-    name: 'ECHO creature · idle', key: 'echo_idle', category: 'ECHO',
+    name: 'ECHO creature · idle', key: 'echo_idle', fwname: 'echo idle', category: 'Idle',
     intent: "Proposal. Clawd's silhouette in ECHO's tokens: deep teal body, teal visor with dark eyes, a pinging antenna, one glitch split per cycle.",
     palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#6fe9ff'],
     frames: [

@@ -43,7 +43,7 @@ static bool active = false;
 // Usage-rate animation groups: 4 groups × up to 4 animations each.
 // Filled at init by matching literal names from splash_anims[].
 #define GROUP_COUNT 4
-#define GROUP_MAX   5
+#define GROUP_MAX   7
 static int8_t  group_lists[GROUP_COUNT][GROUP_MAX];
 static uint8_t group_size[GROUP_COUNT] = {0};
 static uint8_t group_rotation[GROUP_COUNT] = {0};
@@ -54,8 +54,9 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // Browser ones are sorted by mood, not by their buddy meaning — "limit"
     // lands in heavy because that is when it reads as true here.
     //
-    // Group 0 — idle / sleepy
-    { "expression sleep", "idle breathe", "idle blink", "expression wink", "done" },
+    // Group 0 — idle / sleepy. The ECHO edition's own creatures (tools/add_echo_anims.py)
+    // live here too, so they come up in normal rotation and not only on request.
+    { "expression sleep", "idle breathe", "idle blink", "expression wink", "done", "coffee", "echo idle" },
     // Group 1 — normal pace
     { "idle look around", "work think", "work coding", "think", "allow" },
     // Group 2 — active

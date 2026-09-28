@@ -1,5 +1,6 @@
 #include "board.h"
 #include "io_expander.h"
+#include "../../splash.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include <string.h>
@@ -73,6 +74,12 @@ extern "C" bool board_serial_command(const char* cmd) {
         Serial.printf("I2C clock %d kHz\n", khz);
         io_expander_i2c_scan_log();
         Serial.println(touch_gt911_probe_now() ? "GT911 answered" : "GT911 silent");
+        return true;
+    }
+    if (strncmp(cmd, "anim ", 5) == 0) {
+        // Play a splash animation by its table name, as the host's "a" field would.
+        splash_set_anim(cmd + 5);
+        Serial.printf("anim -> %s\n", cmd + 5);
         return true;
     }
     if (strncmp(cmd, "bl ", 3) == 0) {

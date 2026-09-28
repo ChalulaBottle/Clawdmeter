@@ -1,7 +1,7 @@
 {
  "filename": "echo_idle.html",
- "name": "ECHO creature idle",
- "category": "ECHO",
+ "name": "echo idle",
+ "category": "Idle",
  "description": "Proposal. Clawd's silhouette in ECHO's tokens: deep teal body, teal visor with dark eyes, a pinging antenna, one glitch split per cycle.",
  "palette": [
   "transparent",
