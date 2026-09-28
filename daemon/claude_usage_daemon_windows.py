@@ -45,6 +45,11 @@ RECONNECT_BACKOFF_CAP = 8  # D-05: fast-reconnect cap (seconds); keeps stacked r
 # Optional clock display. 
 # Config lives under the same Clawdmeter dir as daemon.log.
 CONFIG_FILE = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Clawdmeter" / "config"
+# Host state for the display, written by clawdmeter_state.py (or any tool):
+# {"agents": int, "anim": str, "mode": str}. Checked every tick; "agents" rides
+# along as "n", a non-empty "anim" as "a". "mode" stays host-side.
+STATE_FILE = CONFIG_FILE.parent / "state.json"
+ANIM_MAX = 23              # firmware keeps the animation name in char[24]
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -181,6 +186,58 @@ def add_clock_fields(payload: dict) -> None:
     tf = 24 if clock == "24" else 12 if clock == "12" else detect_hour_format()
     payload["t"] = int(time.time()) + time.localtime().tm_gmtoff
     payload["tf"] = tf
+
+
+def state_stamp() -> tuple | None:
+    """Change stamp of the state file, or None when it is absent.
+
+    mtime alone can repeat for two writes inside one clock tick; size and the
+    file id (a fresh one on every atomic replace) catch those.
+    """
+    try:
+        st = STATE_FILE.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
+def read_state_fields() -> dict | None:
+    """Payload fields from the state file: "n" (agents working) whenever the file
+    is present, "a" (splash animation) only when non-empty.
+
+    Absent file -> {} (nothing to merge). Unreadable or malformed -> None after a
+    log line, and the caller keeps the last good state — a bad write must never
+    take the poll loop down.
+    """
+    try:
+        raw = STATE_FILE.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        log(f"State file unreadable, ignoring: {e}")
+        return None
+    try:
+        # From bytes so a BOM or UTF-16 (PowerShell Out-File) still parses.
+        data = json.loads(raw)
+    except ValueError as e:  # JSONDecodeError and UnicodeDecodeError alike
+        log(f"State file malformed, ignoring: {e}")
+        return None
+    if not isinstance(data, dict):
+        log("State file malformed (not a JSON object), ignoring")
+        return None
+    agents = data.get("agents")
+    anim = data.get("anim")
+    agents = 0 if agents is None else agents
+    anim = "" if anim is None else anim
+    if (isinstance(agents, bool) or not isinstance(agents, int) or agents < 0
+            or not isinstance(anim, str) or len(anim) > ANIM_MAX):
+        log(f"State file malformed (agents: whole number >= 0, anim: name up to"
+            f" {ANIM_MAX} chars), ignoring")
+        return None
+    fields = {"n": min(agents, 99)}  # the device shows two digits
+    if anim:
+        fields["a"] = anim
+    return fields
 
 
 async def poll_api(token: str) -> dict | None:
@@ -589,8 +646,21 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
     last_poll = 0.0  # D-03: poll immediately on first connect
     used_successfully = False
     consecutive_failures = 0  # D-03: zombie-link break counter
+    last_state = None  # state file stamp as of the previous tick
+    state_fields: dict = {}  # last good "n"/"a" fields, merged into every payload
     try:
         while client.is_connected and not stop_event.is_set():
+            # Host state changed (agents / animation): push now, like a device
+            # refresh request, instead of waiting out the 60s poll. Costs one
+            # poll_api call per change, at most one per TICK.
+            stamp = state_stamp()
+            if stamp != last_state:
+                last_state = stamp
+                fields = read_state_fields()
+                if fields is not None:  # None = malformed; keep the last good state
+                    state_fields = fields
+                    log(f"State file changed: {state_fields or 'absent'}")
+                    session.refresh_requested.set()
             now = time.time()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:
@@ -609,6 +679,7 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
                             tray_state.set_error("token expired — run claude login")
                         payload = None
                     if payload is not None:
+                        payload.update(state_fields)
                         if await session.write_payload(payload):
                             last_poll = time.time()
                             used_successfully = True

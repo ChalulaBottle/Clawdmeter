@@ -126,6 +126,7 @@ static bool parse_json(const char* json, UsageData* out) {
     out->period_days = doc["pd"] | 30;
     strlcpy(out->reset_date, doc["rd"] | "", sizeof(out->reset_date));
     strlcpy(out->anim, doc["a"] | "", sizeof(out->anim));
+    out->agents = doc["n"] | 0;      // absent (old daemon / no state file) → 0, nothing shown
     out->clock_epoch = doc["t"] | 0L;
     out->clock_fmt = doc["tf"] | 24;
     out->ok = doc["ok"] | false;

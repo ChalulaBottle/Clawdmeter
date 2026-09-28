@@ -21,6 +21,13 @@
 // during which we report Idle.
 #define MIN_WINDOW_MS       240000UL
 
+// Host state pushes (agent count, animation) land between the ~60s polls.
+// Storing those would crowd older samples out of the ring and squeeze its span
+// under MIN_WINDOW_MS, which reads as Idle right while agents are working. A
+// sample this close to the previous one is still checked for a session reset
+// but not stored; six samples >= 50s apart always span the 4-minute window.
+#define MIN_SPACING_MS      50000UL
+
 #define RING_SIZE 6
 
 struct Sample { uint32_t ms; float pct; };
@@ -48,6 +55,8 @@ bool usage_rate_sample(float session_pct) {
         if (session_pct + 5.0f < ring[latest].pct) {
             usage_rate_reset();
             was_reset = true;
+        } else if (now - ring[latest].ms < MIN_SPACING_MS) {
+            return false;   // off-cycle push, see MIN_SPACING_MS
         }
     }
 

@@ -47,6 +47,8 @@ struct Layout {
     const lv_font_t* pace_font;      // enterprise "Under/On/Over pace" line
     const lv_font_t* anim_font;      // animated status line
     int16_t anim_y;                  // status line offset from bottom
+    const lv_font_t* agents_font;    // "N AGENTS" tag; nullptr = no room on this layout
+    int16_t agents_y;                // tag top edge inside the session panel
     bool    small_icons;             // 40px logo + 24px battery (vs 80/48) on small screens
     int16_t title_nudge;             // title x-shift balancing the corner logo
     int16_t logo_y;                  // logo top edge
@@ -176,6 +178,21 @@ static void compute_layout(const BoardCaps& c) {
     }
 
     L.content_w = L.scr_w - 2 * L.margin;
+
+    // "N AGENTS" tag: right end of the session panel's reset row, sitting on the
+    // reset line's baseline. The row has to hold the widest session reset text
+    // (digits are proportional, 4 and 0 are the widest) beside a two-digit count;
+    // only the 480-wide panels manage that, narrower ones go without the tag.
+    L.agents_font = &font_mono_18;
+    L.agents_y = L.usage_reset_y
+               + (L.reset_font->line_height - L.reset_font->base_line)
+               - (L.agents_font->line_height - L.agents_font->base_line);
+    lv_point_t reset_sz, tag_sz;
+    lv_text_get_size(&reset_sz, "Resets in 4h 40m", L.reset_font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_text_get_size(&tag_sz, "99 AGENTS", L.agents_font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    if (reset_sz.x + L.panel_pad_x + tag_sz.x > L.content_w - 2 * L.panel_pad_x) {
+        L.agents_font = nullptr;
+    }
 }
 
 // Anthropic brand palette — design tokens live in theme.h
@@ -215,12 +232,16 @@ static lv_obj_t* panel_weekly = nullptr;
 static lv_obj_t* lbl_session_pct_sym = nullptr;  // "%" in smaller font
 static lv_obj_t* lbl_spending_desc = nullptr;     // "of your monthly budget"
 static lv_obj_t* lbl_spending_status = nullptr;   // "Under pace" / "On pace" / "Over pace"
+static lv_obj_t* lbl_agents = nullptr;   // "N AGENTS" tag on the session reset row
 static lv_obj_t* lbl_anim;      // status line: connection state + whimsical idle
 
 // ---- Battery indicator (shared, on top) ----
 static lv_obj_t* battery_img;
 static lv_obj_t* logo_img;
 static lv_image_dsc_t battery_dscs[5];  // empty, low, medium, full, charging
+
+// ---- Agent count on the splash (top-left badge, bare number) ----
+static lv_obj_t* splash_badge = nullptr;
 
 // ---- Live-data freshness → which usage sub-view to show ----
 // usage panels when data is flowing, an idle "Zzz" screen when the host is
@@ -521,6 +542,16 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_set_pos(lbl_spending_status, 0, L.usage_reset_y + 20);
     lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
 
+    // Agents tag — hidden until the host reports agents at work (ui_update).
+    if (L.agents_font) {
+        lbl_agents = lv_label_create(panel_session);
+        lv_label_set_text(lbl_agents, "");
+        lv_obj_set_style_text_font(lbl_agents, L.agents_font, 0);
+        lv_obj_set_style_text_color(lbl_agents, COL_ACCENT, 0);
+        lv_obj_align(lbl_agents, LV_ALIGN_TOP_RIGHT, 0, L.agents_y);
+        lv_obj_add_flag(lbl_agents, LV_OBJ_FLAG_HIDDEN);
+    }
+
     panel_weekly = make_usage_panel(usage_group,
                      L.content_y + L.usage_panel_h + L.usage_panel_gap, "Weekly",
                      &lbl_weekly_pct, &lbl_weekly_label,
@@ -558,6 +589,21 @@ void ui_init(void) {
     if (splash_get_root()) {
         lv_obj_add_event_cb(splash_get_root(), global_click_cb, LV_EVENT_CLICKED, NULL);
     }
+
+#ifdef BOARD_HAS_PSRAM
+    // Agent-count badge in the splash's top-left corner. PSRAM boards draw the
+    // creature through an LVGL canvas, so a label on top of it composes for
+    // free (labels aren't clickable, the splash click still lands). PSRAM-less
+    // boards paint the creature straight onto the panel and would wipe the
+    // badge, so they go without.
+    if (splash_get_root()) {
+        splash_badge = make_pill(splash_get_root(), "");
+        lv_obj_set_style_text_font(splash_badge, &font_mono_18, 0);
+        lv_obj_set_style_text_color(splash_badge, COL_ACCENT, 0);
+        lv_obj_set_pos(splash_badge, L.margin, L.margin);
+        lv_obj_add_flag(splash_badge, LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
 
     logo_img = lv_image_create(scr);
     lv_image_set_src(logo_img, &logo_dsc);
@@ -658,6 +704,27 @@ void ui_update(const UsageData* data) {
         format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));
         lv_label_set_text(lbl_weekly_reset, buf);
     }
+
+    // Agents the host reports working: "N AGENTS" tag + splash badge, both only
+    // while n > 0. Capped at two digits so the tag keeps clear of the reset text.
+    int agents = data->agents < 0 ? 0 : data->agents > 99 ? 99 : data->agents;
+    if (lbl_agents) {
+        // Enterprise fills the reset row with the longer spending line — no room.
+        if (agents > 0 && !data->enterprise) {
+            lv_label_set_text_fmt(lbl_agents, "%d AGENT%s", agents, agents == 1 ? "" : "S");
+            lv_obj_clear_flag(lbl_agents, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(lbl_agents, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (splash_badge) {
+        if (agents > 0) {
+            lv_label_set_text_fmt(splash_badge, "%d", agents);
+            lv_obj_clear_flag(splash_badge, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(splash_badge, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }
 
 // Pick the usage-view sub-screen: pairing hint (BLE down), the idle "Zzz" screen
@@ -684,6 +751,14 @@ static void update_view_state(void) {
 }
 
 void ui_tick_anim(void) {
+    // The usage tag goes stale with its panels (idle / pairing views); the
+    // splash badge has no such view behind it, so drop it once the host goes
+    // quiet — a count from a machine that slept mid-run isn't agents working.
+    if (splash_badge && !lv_obj_has_flag(splash_badge, LV_OBJ_FLAG_HIDDEN) &&
+        (!s_ble_connected || lv_tick_get() - last_data_ms >= DATA_FRESH_MS)) {
+        lv_obj_add_flag(splash_badge, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (current_screen != SCREEN_USAGE) return;
     update_view_state();
     if (view_state == 1) splash_mini_tick();   // animate the sleeping creature on the idle screen
