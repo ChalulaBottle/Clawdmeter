@@ -66,6 +66,22 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
+## Attachables page + touch leads from the research (2026-09-28 ~11:30)
+
+`docs/attach.html` (live at /attach.html, generator `tools/gen_attach.js`, verified data
+`tools/attach_data.json` from workflow wf_c28c46b0-f49: 4 research lanes, 3 adversarial verifiers,
+1 synthesis; 11 paths, 76 items, 18 caveats, 110 sources). Two leads for the dead touch, to try the
+moment USB data is back, in this order:
+1. **EXIO2 (TP_INT) is left driven LOW as an output by both V4 init paths.** Driven low it selects
+   0x5D and then fights the GT911's own INT output. Try: `iox w 02 FB` (DIR bit 2 → input) after a
+   `tprst`, then `gt`. Our gtseq tried both INT levels but always as a driven output.
+2. **Check the box label / flex:** the plain "ESP32-S3-LCD-4" SKU ships with no GT911 fitted. If the
+   flex to the glass has no touch tail, there is nothing to probe.
+Also from the research: GPIO16 is the PWRKEY *sense* input (active low, 10K pull-up), not a power
+latch line (the latch is CH32 EXIO5 SYS_EN); either way, never drive it. It could carry the button
+role later so BOOT stops clashing with CAN RX. And caveat 0: keep H3 at 3V3 before anything goes on
+the I2C header.
+
 ## Auto-rotate (2026-09-28 ~10:10, built, NOT yet flashed: the board is on a power-only cable)
 
 Operator: "if you were to turn the device can we make the screen auto adjust". The board has no IMU,
