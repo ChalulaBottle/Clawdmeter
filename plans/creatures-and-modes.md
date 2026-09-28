@@ -7,13 +7,21 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
 
 ## RESUME STATE
 
-- **Status:** ON DEVICE (2026-09-28 ~00:20): `coffee` and `echo idle` are compiled into the firmware
-  (`tools/add_echo_anims.py`, SPLASH_ANIM_COUNT 20), sit in rotation group 0 (idle) and play by name
-  (`anim echo idle` over serial, or the host's `a` field). Device captures:
-  `docs/media/lcd4/echo-idle-device.png`, `coffee-device.png`.
-- **Exact next action:** increment 3a (BOOT short press = splash<->stats toggle via
-  `BoardCaps.pwr_toggles_stats`), then increment 1 on the bench (ECHO skin over the nine embedded
-  stock movements in `docs/bench/stock_anims.js` + the chest spinner), then modes (increment 2).
+- **Status:** 34 ECHO EDITION CREATURES ON DEVICE (2026-09-28 ~02:10), SPLASH_ANIM_COUNT 52, flash
+  25.3%. Families: coffee ×4 (coffee, coffee morning, echo coffee, echo double coffee), echo idle/float,
+  eight skinned stock movements, thinking set (think spin, think deep, work, write, read), modes (opus
+  enter/work, ultracode enter/work, agents split/join, two agents, ultramode, token burner, credits out),
+  model tiers (haiku, sonnet, opus, fable), ctf hoodie. ECHO names sit first in all three rotation
+  groups (splash.cpp GROUP_NAMES, GROUP_MAX 10); modes and tiers are host-named only. BOOT short =
+  stats toggle (BoardCaps.pwr_toggles_stats). Device captures in `docs/media/lcd4/*-device.png`, tier
+  sheets in `docs/media/sheets/`. Discord pack (120 + 320 px, transparent) in `docs/media/discord/` and
+  `Temp Media ECHO/discord/clawdmeter-creatures/`.
+- **Workflow lanes (wf_1929d87d-05a):** three creature lanes landed (`docs/bench/anims_thinking.js`,
+  `anims_modes.js`, `anims_models.js`, committed); firmware/daemon lane edited `data.h`, `main.cpp`,
+  `ui.cpp` (agents count `n`), compiles, NOT yet committed pending its report (tests, daemon state file).
+- **Exact next action:** read the firmware lane's report, commit its changes with the daemon state
+  file + `clawdmeter_state.py`, then wire the activity table (below) into the daemon; ask the operator
+  before touching Claude Code hooks. Then flip the landing board captions to device captures.
 - **Pipeline (any new creature):** edit `docs/bench/anims.js` → `node tools/bench_to_json.js` →
   `.venv\Scripts\python.exe tools/add_echo_anims.py` → `pio run … -t upload` → `anim <name>` →
   `screenshot_win.py`. GIFs: `tools/anim_gif.py`. Reference (stock) cells carry `reference: true`
