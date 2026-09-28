@@ -16,7 +16,7 @@
   const L = root.BENCH_LIB;
   const {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK} = L;
 
-  const BODY = 1, VISOR = 3, PING = 4, FEET = 5, FLASH = 7, BRIGHT = 8, VMID = 9;
+  const BODY = 1, EYE = 2, VISOR = 3, PING = 4, FEET = 5, FLASH = 7, BRIGHT = 8, VMID = 9;
   const ECHO7 = ECHO_PALETTE.slice(0, 7);                // the indices echoBase uses; guards the 10 colour cap
   const OPUS_PALETTE = [...ECHO7, '#eafffb', '#1fa88c', '#90f0dd'];
   const AGENTS_PALETTE = ECHO7.slice();
@@ -77,10 +77,15 @@
     return best;
   }
   // 2 by 2 block downsample, 20 by 20 to 10 by 10.
+  // Eyes win a tie: the family's eyes are one cell wide, so each 2 by 2 block holding an eye holds
+  // two eye cells and two visor cells, and a plain majority picks the visor. The minis came out
+  // blind that way (operator, 2026-09-28: "when the agent splits they are missing their eyes").
   function downsample2(g) {
     const H = G / 2, m = Array.from({length: H}, () => new Array(H).fill(0));
-    for (let r = 0; r < H; r++) for (let c = 0; c < H; c++)
-      m[r][c] = mostCommon([g[2 * r][2 * c], g[2 * r][2 * c + 1], g[2 * r + 1][2 * c], g[2 * r + 1][2 * c + 1]]);
+    for (let r = 0; r < H; r++) for (let c = 0; c < H; c++) {
+      const block = [g[2 * r][2 * c], g[2 * r][2 * c + 1], g[2 * r + 1][2 * c], g[2 * r + 1][2 * c + 1]];
+      m[r][c] = block.filter(v => v === EYE).length >= 2 ? EYE : mostCommon(block);
+    }
     return m;
   }
   // The one frame between full size and the mini, 11 by 11: drop one row or column from each repeated

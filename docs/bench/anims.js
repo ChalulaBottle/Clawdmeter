@@ -164,6 +164,8 @@
 
   // 3c. Two agents: the ECHO creature splits into two 10x10 minis side by side and rejoins.
   // 2x2 majority downsample of the ECHO base; minis placed at (5, 0) and (5, 10).
+  // 2x2 majority, except that eyes win a tie: the family's eyes are one cell wide, so a plain
+  // majority always loses them to the visor and the minis came out blind (operator, 2026-09-28).
   function downsample(g) {
     const m = [];
     for (let r = 0; r < G; r += 2) {
@@ -173,6 +175,7 @@
         if (!v.length) { row.push(0); continue; }
         const cnt = {}; let best = v[0];
         for (const x of v) { cnt[x] = (cnt[x] || 0) + 1; if (cnt[x] > cnt[best]) best = x; }
+        if ((cnt[2] || 0) >= 2) best = 2;
         row.push(best);
       }
       m.push(row);

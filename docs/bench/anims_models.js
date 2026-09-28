@@ -134,10 +134,11 @@
   const fableBase = (() => {
     const b = tipped(echoBase, TIP, AMBER);
     for (const [r, c] of EAR) set(b, r, c, AMBER);
-    // Operator 2026-09-28: "make fable's eyes sideways". The family's eyes stand 1 wide by 2 tall;
-    // Fable's lie 2 wide by 1 tall on the lower visor row, so the upper row is a clean glint track.
+    // Operator 2026-09-28: "make fable's eyes sideways ... they split into 4 eyes". The family's eyes
+    // stand 1 wide by 2 tall; Fable has four single eyes in a row on the lower visor row, two a side
+    // with a visor cell between each pair, so the upper row stays a clean glint track.
     for (const [r, c] of [[6, 7], [7, 7], [6, 13], [7, 13]]) set(b, r, c, VISOR);
-    for (const c of [7, 8, 12, 13]) set(b, 7, c, EYE);
+    for (const c of [6, 8, 12, 14]) set(b, 7, c, EYE);
     return b;
   })();
   const glintAt = c => { const b = clone(fableBase); if (b[GLINT_ROW][c] === VISOR) b[GLINT_ROW][c] = PING; return b; };
