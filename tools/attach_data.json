@@ -1,0 +1,1510 @@
+{
+ "page": {
+  "headline": "What can attach to this device",
+  "lede": "The Waveshare ESP32-S3-Touch-LCD-4, revision V4, has no free ESP32 GPIO: the RGB panel, the buses and the octal PSRAM take every pin. New hardware arrives through the 10 way H4 terminal (VIN, RS485, CAN and a level shifted I2C header), the TF slot, USB-C, the battery connectors or the 2.4 GHz radio. Most sensors plug into the I2C header; UART parts, audio, IR and sub GHz radios live on a satellite or the LAN host, which keeps to the project rule that the board renders and reports and the host decides. Difficulty means: plug in (wire it and use a stock library), driver (firmware or build work on the hub), satellite (it runs on another board or the host and the hub shows the result), not on this board (a stock V4 cannot carry it; the note says what would change that). Board facts were checked against the V4.0 schematic and Waveshare's V4 code, and several wiki claims turned out to describe V1 to V3. Before wiring anything or inserting a card, read the first six caveats.",
+  "paths": [
+   {
+    "name": "ESP32-S3 GPIO",
+    "pins": "None free. GPIO 0 to 21 and 38 to 48 are all wired, 22 to 25 do not exist, and 26 to 37 serve the flash and the octal PSRAM.",
+    "already_on_it": "Panel on 1, 2, 3, 5, 8 to 14, 17, 18, 21, 38 to 42 and 45 to 48. I2C on 7 and 15. TF on 1, 2 and 4. CAN on 0, which is also BOOT, and 6. PWRKEY sense on 16. USB on 19 and 20. RS485 on 43 and 44.",
+    "spare": "Nothing. Every addition goes through a bus, the TF slot, USB or the radio.",
+    "confidence": "high: schematic IO table and module datasheet"
+   },
+   {
+    "name": "H4 pins 7 to 10: I2C header",
+    "pins": "SDA GPIO15 and SCL GPIO7 through an NDC7002N level shifter. Pin 7 is I2C_VCC, an unfused tap of the 3V3 or 5V rail chosen by H3. 4.7K pull ups on both sides, 400 kHz.",
+    "already_on_it": "CH32V003 expander at 0x24 (backlight, LCD and touch resets, SYS_EN power latch, battery ADC), PCF85063 RTC at 0x51, and GT911 touch at 0x5D or 0x14 on the Touch SKU only. The empty U10 footprint would add a QMI8658 at 0x6B if it were ever fitted.",
+    "spare": "Every other address, including 0x3C and 0x20, which are empty on V4. Keep add on expanders off 0x20 while the port's TCA9554 fallback can write there, keep H3 at 3V3, and note that SDA and SCL have no ESD protection.",
+    "confidence": "high for wiring; H3 form and factory setting unverified"
+   },
+   {
+    "name": "H4 pins 3 and 4: RS485",
+    "pins": "UART TX GPIO44 and RX GPIO43 into an SP3485 at 3.3 V with automatic direction switching from the TX line. The schematic IO table labels GPIO43 as RS485_TX, but the nets and both demo trees show GPIO43 receives. 120R on SW1 switch 2, 10K fail safe bias, series fuses of unspecified type, TVS diodes and a GDT to earth; not isolated.",
+    "already_on_it": "These are the UART0 pins, so the ROM banner and any early console output on GPIO43 fight the SP3485 output. Test pads P4 and P5 sit on the same two nets.",
+    "spare": "One half duplex pair for Modbus RTU devices at one baud rate and parity. No DE pin needs driving.",
+    "confidence": "high for pins; turnaround timing unmeasured"
+   },
+   {
+    "name": "H4 pins 5 and 6: CAN",
+    "pins": "TWAI TX GPIO6 and RX GPIO0 through a TJA1051 that is always in normal mode. 120R on SW1 switch 1, SM24CANB TVS, ground not isolated.",
+    "already_on_it": "GPIO0 is also the BOOT button and a boot strap. Dominant bits read as BOOT presses, BOOT presses corrupt reception, and a bus that is dominant at reset boots the ROM downloader.",
+    "spare": "Classic CAN 2.0 up to 1 Mbps, no CAN FD. Listen only has to be set in the TWAI controller. A quiet lab bus is fine; a busy one such as a car needs a gate on the RX net during reset.",
+    "confidence": "high"
+   },
+   {
+    "name": "GPIO16: PWRKEY sense",
+    "pins": "GPIO16, active low, with a 10K pull up to 3V3. PWRKEY also starts the discrete power latch through its own diode.",
+    "already_on_it": "Nothing in the port reads it yet; BOOT carries the button role.",
+    "spare": "A readable button with no power effect once SYS_EN holds the latch. Moving short and long presses here frees BOOT from its clash with CAN RX, and a very long hold can still clear SYS_EN to power off.",
+    "confidence": "high from the schematic; confirm by holding PWRKEY on USB power and reading GPIO16 low"
+   },
+   {
+    "name": "H4 pins 1 and 2: DC input",
+    "pins": "VIN 7 to 36 V per the silkscreen (5 to 36 V in the schematic text) through a reverse polarity diode into an XL1509 buck at about 5.23 V, then an ideal diode onto USB0_5V.",
+    "already_on_it": "USB0_5V is also the USB-C VBUS pin and the charger input.",
+    "spare": "12 or 24 V supplies, PoE splitters and a supply shared with Modbus relays. It is the only way to put 5 V on VBUS for USB host mode.",
+    "confidence": "medium: minimum VIN unmeasured"
+   },
+   {
+    "name": "J1 battery and BAT1 RTC cell",
+    "pins": "J1 is PH2.0 with pin 1 GND and pin 2 B+. BAT1 sits straight on the PCF85063 supply.",
+    "already_on_it": "An ETA6098 charger at up to 2 A (R13 82K) with STAT on EXIO0, a boost for the 5V rail on battery, and battery voltage through the CH32 ADC.",
+    "spare": "One single cell lithium pack and one rechargeable RTC cell. There is no fuel gauge.",
+    "confidence": "high for wiring; charge current from the datasheet table"
+   },
+   {
+    "name": "TF slot",
+    "pins": "1 bit SDMMC with CLK GPIO2, CMD GPIO1 and D0 GPIO4. DAT3 on CH32 EXIO4, DAT1 and DAT2 unconnected, card detect tied to GND.",
+    "already_on_it": "GPIO1 and GPIO2 double as the ST7701 init lines, so the card mounts after panel init with GPIO42 held high.",
+    "spare": "One microSD card in 1 bit mode. Four bit mode is impossible.",
+    "confidence": "high"
+   },
+   {
+    "name": "USB-C",
+    "pins": "Native USB on GPIO19 and GPIO20. Sink only with 5.1K on CC1 and CC2, and no USB to UART bridge despite the symbol name.",
+    "already_on_it": "The USB Serial JTAG console and flashing.",
+    "spare": "One PHY, so TinyUSB device classes or host mode replace the console. HID and MSC are in the core; NCM and host class drivers are not. VBUS reaches a device only when the board runs from VIN.",
+    "confidence": "medium: host and NCM paths untested"
+   },
+   {
+    "name": "2.4 GHz radio",
+    "pins": "On chip Wi-Fi and BLE through the WROOM-1 PCB antenna. V4 has no u.FL option.",
+    "already_on_it": "The bonded NimBLE peripheral link to the Windows tray daemon.",
+    "spare": "Wi-Fi STA (unused so far), the BLE observer role (compiled out of the lcd_4 build) and ESP-NOW. Wi-Fi and BLE share the radio by time division.",
+    "confidence": "high"
+   },
+   {
+    "name": "Pads and footprints",
+    "pins": "P4 on GPIO43 and P5 on GPIO44 (UART0 pads), TP1 to TP4 for CH32 SWD (DIO, RST, GND, 3V3), and the U10 QMI8658 footprint on the bottom side.",
+    "already_on_it": "P4 and P5 share the SP3485 nets, and the CH32 runs Waveshare's register firmware.",
+    "spare": "A logic analyser tap on RS485, CH32 reflashing with a WCH-LinkE, and a poll only IMU at 0x6B after LGA reflow. None is a practical expansion port.",
+    "confidence": "high"
+   }
+  ],
+  "groups": [
+   {
+    "name": "Environment",
+    "intro": "Air, temperature and analog sensing. Everything here lands on H4 pins 7 to 10 unless it says RS485 or satellite, and that bus also carries touch, the RTC and the CH32 power latch.",
+    "items": [
+     {
+      "name": "Sensirion SHT4x temperature and humidity (SHT40, SHT41, SHT45)",
+      "interface": "I2C at 0x44 (0x45 or 0x46 on the BD1B and CD1B variants)",
+      "enables": "Room temperature, humidity and dew point, and compensation for an SGP40.",
+      "difficulty": "plug in",
+      "note": "No clash; mount it away from the backlight and the charger or it reads warm.",
+      "driver": "SensirionI2cSht4x or Adafruit_SHT4X",
+      "price": "under 5 to 20 USD"
+     },
+     {
+      "name": "Bosch BME280 temperature, humidity and pressure",
+      "interface": "I2C at 0x76 or 0x77",
+      "enables": "A pressure trend for weather hints and a second temperature and humidity point.",
+      "difficulty": "plug in",
+      "note": "Many cheap BME280 boards carry a BMP280 with no humidity; check for chip ID 0x60.",
+      "driver": "Adafruit_BME280",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "Bosch BME688 gas sensor with BSEC2",
+      "interface": "I2C at 0x76 or 0x77",
+      "enables": "An indoor air quality index with VOC and eCO2 estimates, plus temperature, humidity and pressure.",
+      "difficulty": "driver",
+      "note": "BSEC2 is a closed binary with strict call timing and a state blob to save, and every save is a flash write that tears the panel until XIP from PSRAM is on.",
+      "driver": "Bosch BSEC2 library (precompiled for esp32s3) with the BME68x library",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Sensirion SCD40 or SCD41 CO2",
+      "interface": "I2C at 0x62",
+      "enables": "True CO2 in ppm for ventilation prompts, plus temperature and humidity.",
+      "difficulty": "plug in",
+      "note": "It pulls current pulses on every measurement, so feed it solidly near the sensor, and keep a NeoDriver off its 0x62 option.",
+      "driver": "SensirionI2cScd4x",
+      "price": "20 to 60 USD"
+     },
+     {
+      "name": "Sensirion SGP40 VOC index",
+      "interface": "I2C at 0x59",
+      "enables": "A VOC trend for cooking, solvents and stale air.",
+      "difficulty": "plug in",
+      "note": "It needs temperature and humidity compensation from an SHT4x and takes hours to settle after power up.",
+      "driver": "Adafruit_SGP40",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Plantower PMSA003I particulate sensor (Adafruit 4632)",
+      "interface": "I2C at 0x12, fixed; 3 to 5 V supply",
+      "enables": "PM1.0, PM2.5 and PM10 readings for smoke, dust and filter alerts.",
+      "difficulty": "plug in",
+      "note": "It is slow to answer after a cold boot, so the probe has to retry before giving up.",
+      "driver": "Adafruit PM25AQI library",
+      "price": "20 to 60 USD"
+     },
+     {
+      "name": "Sensirion SEN66 all in one air sensor",
+      "interface": "I2C at 0x6B, 3.3 V",
+      "enables": "Particulates, VOC, NOx, CO2, temperature and humidity from one part.",
+      "difficulty": "plug in",
+      "note": "Peaks reach 350 mA, so give it its own 3.3 V feed; 0x6B collides only if the U10 IMU footprint is ever fitted.",
+      "driver": "Sensirion SEN66 Arduino library"
+     },
+     {
+      "name": "Sensirion SEN54 or SEN55 environmental node",
+      "interface": "I2C at 0x69, 100 kHz maximum, 5 V supply",
+      "enables": "Particulates, VOC, NOx on the SEN55, temperature and humidity.",
+      "difficulty": "plug in",
+      "note": "It caps the shared bus at 100 kHz, which slows touch and CH32 traffic, and needs its own 5 V feed with H3 left at 3V3; the SEN66 avoids both.",
+      "driver": "Sensirion SEN5x library"
+     },
+     {
+      "name": "Sensirion SCD30 CO2",
+      "interface": "I2C at 0x61, 100 kHz maximum with clock stretching",
+      "enables": "NDIR CO2 readings.",
+      "difficulty": "satellite",
+      "note": "It stretches the clock for up to 150 ms and prefers 50 kHz, which would stall touch and the CH32 on this bus, so use an SCD4x here or put it on a satellite.",
+      "driver": "Sensirion SCD30 library on the satellite"
+     },
+     {
+      "name": "DS2484 bridge with DS18B20 probes (Adafruit 5976)",
+      "interface": "I2C at 0x18, fixed; drives a 1-Wire bus",
+      "enables": "Many waterproof temperature probes on one cable for rack intake and exhaust, freezers and pipes.",
+      "difficulty": "plug in",
+      "note": "Run the probe cable as a daisy chain, not a star, on long runs.",
+      "driver": "Adafruit_DS248x",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "TI ADS1115 four channel ADC",
+      "interface": "I2C at 0x48 to 0x4B",
+      "enables": "Analog sensors without an ADC pin: soil moisture, thermistors and 0 to 10 V transmitters through a divider.",
+      "difficulty": "plug in",
+      "note": "Its range overlaps the SC16IS752 range (0x48 to 0x57), and inputs must stay inside its own supply rail.",
+      "driver": "Adafruit_ADS1X15",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "RS485 Modbus temperature and humidity transmitter (XY-MD02)",
+      "interface": "RS485 Modbus RTU on H4 pins 3 and 4, usually 9600 baud at address 1",
+      "enables": "Temperature and humidity from a remote room or outbuilding over hundreds of metres of twisted pair.",
+      "difficulty": "plug in",
+      "note": "Readdress each unit before chaining them, and bench test the hub's automatic direction switching at 9600 baud.",
+      "driver": "eModbus or ModbusMaster on Serial1, RX 43 and TX 44",
+      "price": "5 to 20 USD"
+     }
+    ]
+   },
+   {
+    "name": "Light and presence",
+    "intro": "Light, distance, motion and presence for screen wake, automatic brightness and occupancy. The radar presence parts are UART only, so they sit on satellites.",
+    "items": [
+     {
+      "name": "ROHM BH1750 ambient light (GY-302)",
+      "interface": "I2C at 0x23, or 0x5C with ADDR high",
+      "enables": "Automatic backlight through the CH32 PWM register, night dimming and light triggers for the host.",
+      "difficulty": "plug in",
+      "note": "No clash; 0x5C sits next to the GT911 at 0x5D but does not collide.",
+      "driver": "BH1750 by claws",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "Vishay VEML7700 ambient light",
+      "interface": "I2C at 0x10, fixed",
+      "enables": "Wide range lux for automatic brightness and daylight logic.",
+      "difficulty": "plug in",
+      "note": "The fixed address allows one per bus unless it sits behind a TCA9548A.",
+      "driver": "Adafruit_VEML7700",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "ST VL53L1X time of flight distance, up to about 4 m",
+      "interface": "I2C at 0x29, readdressable at run time only",
+      "enables": "Desk presence to wake the screen, approach gestures and doorway counting.",
+      "difficulty": "plug in",
+      "note": "A second sensor needs an XSHUT line at every boot and no GPIO is free, so drive XSHUT from a PCF8574 pin or give each sensor its own mux channel.",
+      "driver": "VL53L1X by Pololu",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "PIR motion sensor (AM312 or HC-SR501) through a PCF8574",
+      "interface": "Digital output into a PCF8574 input, polled over I2C",
+      "enables": "A cheap motion trigger for screen wake and room occupancy.",
+      "difficulty": "driver",
+      "note": "The expander's INT has no GPIO to land on, so poll at 10 to 20 Hz; the HC-SR501 needs a 4.5 to 20 V supply and the AM312 runs from 3.3 V.",
+      "driver": "PCF8574 by RobTillaart",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "HLK-LD2410 or LD2410C mmWave presence",
+      "interface": "UART at 256000 baud plus an OUT presence pin, 5 V supply above 200 mA",
+      "enables": "Presence of people sitting still, for screen wake and Home Assistant occupancy.",
+      "difficulty": "satellite",
+      "note": "It is UART only, so it cannot sit on the I2C header as the hub plan assumed; run it on an ESPHome satellite, or behind an SC16IS752 after dropping it to 115200 baud.",
+      "driver": "ESPHome ld2410 on the satellite",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "HLK-LD2450 mmWave multi target tracking",
+      "interface": "UART at 256000 baud",
+      "enables": "Up to three targets with x and y positions, so the host can track desk, sofa and door zones.",
+      "difficulty": "satellite",
+      "note": "A streaming position feed needs a hardware UART, and ESPHome needs module firmware V2.02.23090617 or later.",
+      "driver": "ESPHome ld2450",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "QMI8658 IMU on a header breakout",
+      "interface": "I2C at 0x6A with SA0 high or floating",
+      "enables": "Automatic rotation, which the port's imu.cpp already reads from a header breakout, and tap or pickup detection later.",
+      "difficulty": "plug in",
+      "note": "INT has no GPIO, so it is poll only; fitting the empty U10 footprint instead needs bottom side LGA reflow and lands at 0x6B.",
+      "driver": "SensorLib SensorQMI8658"
+     },
+     {
+      "name": "Turnkey ESPHome room sensors (Everything Presence Lite, Apollo MSR-2)",
+      "interface": "Wi-Fi to Home Assistant",
+      "enables": "Per room mmWave occupancy and environment readings with nothing wired to the hub.",
+      "difficulty": "satellite",
+      "note": "The host aggregates them and the hub shows an occupancy page; nothing lands on the board.",
+      "driver": "ESPHome vendor configs",
+      "price": "20 to 60 USD"
+     }
+    ]
+   },
+   {
+    "name": "Power and energy",
+    "intro": "Supply, battery and energy metering. RS485 is the strongest energy path, and mains wiring for any meter is qualified work.",
+    "items": [
+     {
+      "name": "12 or 24 V supply, or a PoE splitter, on VIN",
+      "interface": "H4 pins 1 and 2, 7 to 36 V",
+      "enables": "Wall, rack or PoE power, battery charging without USB, and 5 V on VBUS for USB host mode.",
+      "difficulty": "plug in",
+      "note": "VIN drives about 5.2 V onto the USB-C VBUS pin, so unplug the PC's USB cable first or its port gets back fed.",
+      "price": "existing gear"
+     },
+     {
+      "name": "Single cell lithium ion or LiPo pack on J1",
+      "interface": "PH2.0, pin 1 GND and pin 2 B+",
+      "enables": "Portable or UPS operation, with battery voltage on screen.",
+      "difficulty": "plug in",
+      "note": "The ETA6098 charges at up to 2 A, so use a pack rated for that current, and match its leads to the plus mark because PH2.0 packs vary.",
+      "driver": "CH32 register 0x06 for the battery ADC",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "MAX17048 fuel gauge (Adafruit breakout)",
+      "interface": "I2C at 0x36, wired between the cell and J1",
+      "enables": "Battery percentage instead of voltage only.",
+      "difficulty": "plug in",
+      "note": "It shares 0x36 with the seesaw encoder default, so jumper the encoder to 0x37 or above, and check PH2.0 polarity against J1 first.",
+      "driver": "Adafruit MAX1704X library",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "TI INA219 or INA226 DC power monitor",
+      "interface": "I2C at 0x40 to 0x4F",
+      "enables": "A DC power page for the NUC, router, PoE injector, 12 V rails and solar DC.",
+      "difficulty": "plug in",
+      "note": "0x40 collides with a PCA9685 default and 0x4C with an EMC2101; the INA219 handles a 26 V bus and the INA226 36 V.",
+      "driver": "Adafruit_INA219, or INA226 by RobTillaart",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "Peacefair PZEM-016 AC energy meter",
+      "interface": "RS485 Modbus RTU at 9600 baud 8N1",
+      "enables": "Per circuit AC voltage, current, power and kWh at hobby prices, multidropped with other Modbus gear.",
+      "difficulty": "plug in",
+      "note": "Its fixed 9600 baud sets the whole pair to 9600, where the hub's automatic direction switching needs a bench test first.",
+      "driver": "eModbus or ModbusMaster on Serial1, RX 43 and TX 44, using the PZEM-004T v3 register map",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Peacefair PZEM-004T v3 AC energy module",
+      "interface": "Optically isolated TTL UART, Modbus RTU at 9600 baud",
+      "enables": "Per circuit AC voltage, current, power, kWh and power factor.",
+      "difficulty": "driver",
+      "note": "V4 has no TTL UART, so add a TTL to RS485 converter at the meter or buy the PZEM-016 instead.",
+      "driver": "PZEM004Tv30 by mandulaj",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Eastron SDM120, SDM230 or SDM630 DIN rail meter",
+      "interface": "RS485 Modbus RTU",
+      "enables": "Revenue grade circuit or three phase energy: volts, amps, watts, kWh, power factor and frequency.",
+      "difficulty": "plug in",
+      "note": "Match baud and parity with everything else on the pair; panel installation is electrician work.",
+      "driver": "SDM_Energy_Meter by reaper7, or eModbus",
+      "price": "20 to 60 USD, SDM630 above 60 USD"
+     },
+     {
+      "name": "Solar charge controllers and inverters over Modbus RTU (Epever, Growatt, Deye, Sunsynk)",
+      "interface": "RS485 Modbus RTU through the vendor RJ45, RJ11 or terminals",
+      "enables": "PV power, battery state and grid import and export on the energy page, with load shedding decided by the host.",
+      "difficulty": "driver",
+      "note": "Vendor RJ45 pinouts differ and some carry supply voltage, and many inverters accept only one Modbus master, which the vendor dongle may already be.",
+      "driver": "eModbus with the vendor register map",
+      "price": "existing gear"
+     },
+     {
+      "name": "Home battery BMS on CAN (Pylontech protocol)",
+      "interface": "CAN at 500 kbps, TWAI listen only",
+      "enables": "State of charge, health, pack voltage and current, temperatures and charge limits without the vendor cloud.",
+      "difficulty": "driver",
+      "note": "Every dominant bit lands on GPIO0 as a BOOT press and a reset during a frame can boot the ROM downloader, so move the button to PWRKEY and leave SW1 off on the already terminated link.",
+      "driver": "ESP-IDF TWAI in listen only mode; frames 0x351, 0x355, 0x356, 0x359 and 0x35C, or 0x35A and 0x35F on newer firmware",
+      "price": "existing gear"
+     },
+     {
+      "name": "Vehicle data over the OBD-II port",
+      "interface": "CAN at 500 kbps through an OBD-II to open wire cable: pin 6 CAN H, 14 CAN L, 16 battery, 4 and 5 ground",
+      "enables": "A garage page with battery voltage, speed, RPM, coolant temperature and trouble codes; pin 16 can power the hub through VIN.",
+      "difficulty": "not on this board",
+      "note": "Cranking browns out VIN and resets the hub while the bus is busy, and a dominant bit at the strap sample boots the ROM downloader, so the CAN RX net needs a gate during reset first.",
+      "driver": "ESP-IDF TWAI, listen only first",
+      "price": "5 to 20 USD for the cable"
+     },
+     {
+      "name": "Utility meter pulses (S0 kWh outputs, water and gas reed contacts)",
+      "interface": "Pulse input on a satellite GPIO with a hardware counter",
+      "enables": "Whole house electricity, water and gas totals.",
+      "difficulty": "satellite",
+      "note": "Counting needs a pulse counter capable GPIO, and polling a PCF8574 over I2C can miss short pulses; a Modbus meter on RS485 is the wired alternative.",
+      "driver": "ESPHome pulse_counter",
+      "price": "under 5 USD for the satellite"
+     }
+    ]
+   },
+   {
+    "name": "Security and access",
+    "intro": "Badges, contacts, fingerprints and camera stills. The hub reports what it reads; the host makes every access decision and holds every key.",
+    "items": [
+     {
+      "name": "M5Stack Unit RFID2 (WS1850S, 13.56 MHz)",
+      "interface": "I2C at 0x28, fixed; Grove plug",
+      "enables": "NFC badge or tag taps for arming, scene cards or a guest Wi-Fi card; the host gets the UID and decides.",
+      "difficulty": "plug in",
+      "note": "M5 units are specified for 5 V, so confirm it runs from 3.3 V or feed its VCC separately with H3 left at 3V3; range is under 2 cm.",
+      "driver": "M5Stack RFID2 examples (MFRC522 over I2C)",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "NXP PN532 NFC module",
+      "interface": "I2C at 0x24, fixed (also SPI or HSU serial)",
+      "enables": "NFC read, write and card emulation.",
+      "difficulty": "not on this board",
+      "note": "Its fixed 0x24 is the CH32V003 address, a mux cannot hide the CH32, and an LTC4316 cannot pass its clock stretching; use the RFID2 or a satellite in HSU mode.",
+      "driver": "Adafruit PN532 library",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Door and window reed contacts, leak probes and wall buttons on a PCF8574",
+      "interface": "I2C at 0x21 to 0x23 or 0x25 to 0x27 (PCF8574A at 0x38 to 0x3F)",
+      "enables": "Eight dry contact inputs per chip.",
+      "difficulty": "plug in",
+      "note": "Never strap 0x24, keep off 0x20 while the port's TCA9554 fallback writes there, and poll, since INT has no GPIO.",
+      "driver": "PCF8574 by RobTillaart",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "Optical fingerprint sensor (Grow R503, R307 or AS608)",
+      "interface": "UART at 57600 baud plus a touch wake line",
+      "enables": "Fingerprint arming or unlocking; the sensor returns a template ID and the host decides.",
+      "difficulty": "driver",
+      "note": "No UART on V4, so it needs an SC16IS752 bridge or a satellite, and its wake line needs an expander input.",
+      "driver": "Adafruit Fingerprint Sensor Library through the bridge",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Doorbell and camera stills from Frigate",
+      "interface": "The host fetches the latest frame and pushes a small image over the host link",
+      "enables": "A doorbell or camera still on the hub when motion fires.",
+      "difficulty": "satellite",
+      "note": "The S3 has no JPEG hardware and a 480x480 decode costs roughly 0.2 to 0.3 s of CPU, so the host should send small JPEGs or RGB565 tiles at a low rate.",
+      "driver": "esp_jpeg on the hub, the Frigate API on the host",
+      "price": "free"
+     }
+    ]
+   },
+   {
+    "name": "Actuators",
+    "intro": "Outputs the hub drives on host command, and physical controls that stand in for dead touch. On board, the hub has only the backlight and an on or off buzzer on EXIO6.",
+    "items": [
+     {
+      "name": "MCP23017 expander driving a relay board",
+      "interface": "I2C at 0x21 to 0x23 or 0x25 to 0x27",
+      "enables": "Low voltage loads such as a fan, a PSU enable or a lamp, switched on host command.",
+      "difficulty": "plug in",
+      "note": "It resets to inputs and opto relay boards are active low, so define a safe power on state, power the coils separately and keep it off 0x20 and 0x24.",
+      "driver": "Adafruit_MCP23X17",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "NXP PCA9685 16 channel PWM driver",
+      "interface": "I2C at 0x40 by default, plus All Call at 0x70",
+      "enables": "Servos for blinds or camera pan, and 12 V LED dimming through MOSFETs.",
+      "difficulty": "plug in",
+      "note": "It tops out at 1526 Hz, so it cannot drive 25 kHz PC fans, and its defaults collide with INA219 and INA226 at 0x40 and a TCA9548A at 0x70.",
+      "driver": "Adafruit PWM Servo Driver library",
+      "price": "under 5 to 20 USD"
+     },
+     {
+      "name": "Microchip EMC2101 fan controller (Adafruit 4808)",
+      "interface": "I2C at 0x4C",
+      "enables": "PWM fan control with tach readback and temperature sensing for a rack or cabinet.",
+      "difficulty": "plug in",
+      "note": "0x4C sits inside the INA219, INA226 and SC16IS752 strap ranges, so plan those straps around it.",
+      "driver": "Adafruit_EMC2101",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Adafruit NeoDriver, I2C to NeoPixel (5766)",
+      "interface": "I2C at 0x60 (0x60 to 0x67), seesaw firmware",
+      "enables": "A status or ambient LED strip or ring without a GPIO, with a 5 V data line.",
+      "difficulty": "plug in",
+      "note": "Every refresh is traffic on the bus that carries touch and the power latch, so keep animations slow and put large strips on a WLED satellite.",
+      "driver": "Adafruit_seesaw NeoPixel",
+      "price": "7.50 USD"
+     },
+     {
+      "name": "Waveshare Modbus RTU Relay (B), 8 channels",
+      "interface": "RS485 Modbus RTU, address 1 to 255, 7 to 36 V supply",
+      "enables": "Isolated switching of eight loads at 10 A 250 VAC for home lab power control on host command.",
+      "difficulty": "plug in",
+      "note": "It can share the hub's VIN supply, but the hub's own transceiver is not isolated and the pair is half duplex, so schedule polls.",
+      "driver": "eModbus, or Espressif's Modbus component already in the core",
+      "price": "29.99 USD"
+     },
+     {
+      "name": "IR blaster and receiver (ESPHome on an ESP32-C3, or a Broadlink RM4 mini)",
+      "interface": "Satellite over Wi-Fi",
+      "enables": "TV, air conditioner, projector and fan control from hub pages.",
+      "difficulty": "satellite",
+      "note": "IR transmit and receive need RMT capable GPIOs, and the hub has none free.",
+      "driver": "IRremoteESP8266 or ESPHome remote_transmitter",
+      "price": "under 5 USD DIY, 20 to 60 USD for an RM4 mini"
+     },
+     {
+      "name": "WLED LED controller satellite",
+      "interface": "Wi-Fi, WLED JSON API and the Home Assistant WLED integration",
+      "enables": "Room scale ambient and alert lighting driven by host scenes.",
+      "difficulty": "satellite",
+      "note": "Large strips need their own ESP32 and supply; the NeoDriver buffers only 512 pixels and loads the shared bus.",
+      "driver": "WLED firmware",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Adafruit seesaw rotary encoder with NeoPixel (4991)",
+      "interface": "I2C at 0x36 (0x36 to 0x3D by jumper)",
+      "enables": "Turn for pages or brightness and press to confirm while touch is dead.",
+      "difficulty": "plug in",
+      "note": "Its default 0x36 collides with a MAX17048 fuel gauge, and INT has no GPIO, so poll at 50 to 100 Hz.",
+      "driver": "Adafruit_seesaw encoder examples",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "Adafruit NeoKey 1x4 QT keypad",
+      "interface": "I2C at 0x30",
+      "enables": "Four lit keys for scenes, arming or approving prompts.",
+      "difficulty": "plug in",
+      "note": "INT has no GPIO to land on, so poll it at 50 to 100 Hz.",
+      "driver": "Adafruit_seesaw (Adafruit_NeoKey_1x4)",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "USB HID hotkeys to the PC",
+      "interface": "USB-C in device mode through TinyUSB",
+      "enables": "Hotkeys or media keys sent to the PC from hub buttons or the screen.",
+      "difficulty": "driver",
+      "note": "One USB PHY, so the console moves from USB Serial JTAG to TinyUSB CDC and flashing may need BOOT plus RESET.",
+      "driver": "Arduino USB HID classes with USB mode set to OTG",
+      "price": "free"
+     }
+    ]
+   },
+   {
+    "name": "Audio and voice",
+    "intro": "The board has no codec, no I2S pins and only an on or off buzzer, so sound in and out lives on satellites and the hub shows state.",
+    "items": [
+     {
+      "name": "Voice satellite: Seeed ReSpeaker Lite kit, ESP32-S3-BOX-3 or Home Assistant Voice Preview Edition",
+      "interface": "Wi-Fi to Home Assistant Assist through ESPHome voice_assistant",
+      "enables": "Voice control, with listening state, transcript and replies on the hub as a host page.",
+      "difficulty": "satellite",
+      "note": "Wake word, speech recognition and speech output run on the satellite and the host; no audio lands on the hub.",
+      "driver": "ESPHome voice_assistant and micro_wake_word",
+      "price": "29.90 to 36.90 USD for the ReSpeaker Lite kit"
+     },
+     {
+      "name": "Seeed XIAO ESP32S3 Sense",
+      "interface": "Wi-Fi or ESP-NOW satellite with a PDM mic, camera and microSD",
+      "enables": "A tiny voice or camera satellite that reports to the host.",
+      "difficulty": "satellite",
+      "note": "Camera streams belong on the host; the hub shows stills or status only.",
+      "driver": "ESPHome esp32_camera and voice_assistant",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "I2S and PDM parts (INMP441 or ICS-43434 mic, MAX98357A amp)",
+      "interface": "I2S needs three GPIOs, PDM two",
+      "enables": "Microphones, spoken alerts and sound level monitoring.",
+      "difficulty": "not on this board",
+      "note": "Every ESP pin is taken by the panel, the buses and the PSRAM, so build these onto a satellite.",
+      "driver": "ESP-IDF I2S driver on the satellite",
+      "price": "under 5 USD"
+     }
+    ]
+   },
+   {
+    "name": "Radio and RF",
+    "intro": "The S3 radio is 2.4 GHz Wi-Fi and BLE on a PCB antenna, with no 802.15.4 or sub GHz radio. Those arrive through host adapters or satellites. Scanning is covered in the radio section.",
+    "items": [
+     {
+      "name": "BLE advertisement sensors (Xiaomi LYWSD03MMC on pvvx firmware, Shelly BLU, BTHome v2)",
+      "interface": "BLE passive scan beside the bonded peripheral link",
+      "enables": "Battery sensors in every room with no wiring; the hub forwards raw advertisements and the host decodes them.",
+      "difficulty": "driver",
+      "note": "The observer role is compiled out of the lcd_4 build and costs about 26 kB to enable, and encrypted BTHome keys stay on the host.",
+      "driver": "NimBLE-Arduino scan callbacks",
+      "price": "under 5 USD (LYWSD03MMC) to 20 USD (Shelly BLU)"
+     },
+     {
+      "name": "Zigbee and Thread through a Home Assistant Connect ZBT-2 on the host",
+      "interface": "USB on the host with ZHA, Zigbee2MQTT or an OpenThread border router",
+      "enables": "Zigbee contact, motion and leak sensors, bulbs and plugs, and Thread and Matter devices as host pages and tap actions.",
+      "difficulty": "satellite",
+      "note": "The S3 has no 802.15.4 radio and no UART for a coprocessor, and the ZBT-2 runs Zigbee or Thread, not both at once.",
+      "driver": "ZHA or Zigbee2MQTT on the host",
+      "price": "49 USD"
+     },
+     {
+      "name": "Z-Wave through a Home Assistant Connect ZWA-2 on the host",
+      "interface": "USB-C on the host",
+      "enables": "Z-Wave 800 series devices, including Long Range, as host pages.",
+      "difficulty": "satellite",
+      "note": "Host side only; the hub renders whatever page the host builds.",
+      "driver": "Home Assistant Z-Wave integration",
+      "price": "69 USD"
+     },
+     {
+      "name": "LoRa satellite (Heltec WiFi LoRa 32 V3 or LilyGO T-Beam) on Meshtastic or RadioLib",
+      "interface": "SX1262 on the satellite, results to the host over Wi-Fi and MQTT",
+      "enables": "Long range sensors for the mailbox, garden, garage or gate, and Meshtastic messages on a hub page.",
+      "difficulty": "satellite",
+      "note": "The SX1262 needs SPI plus BUSY, DIO1 and RESET lines the hub does not have; follow US915 band rules.",
+      "driver": "RadioLib or the Meshtastic MQTT integration",
+      "price": "about 20 USD for a Heltec V3"
+     },
+     {
+      "name": "433, 868 and 915 MHz receive with an RTL-SDR Blog V4 and rtl_433 on the host",
+      "interface": "USB SDR on the host, decoded to MQTT",
+      "enables": "Weather stations, 433 MHz door, PIR and leak sensors and utility meters at no per sensor cost.",
+      "difficulty": "satellite",
+      "note": "OOK decoding needs an interrupt capable GPIO, so a CC1101 receiver belongs on a satellite and never on the hub.",
+      "driver": "rtl_433 on the host",
+      "price": "20 to 60 USD"
+     },
+     {
+      "name": "Matter over Wi-Fi on the hub itself",
+      "interface": "Arduino core Matter library",
+      "enables": "Hub entities exposed straight to Matter controllers.",
+      "difficulty": "not on this board",
+      "note": "Matter owns the BLE host and cannot share a sketch with the bonded NimBLE link, and it would put fabric credentials on the device; expose hub entities through Home Assistant instead.",
+      "driver": "Arduino ESP32 Matter library",
+      "price": "free"
+     }
+    ]
+   },
+   {
+    "name": "Storage and time",
+    "intro": "The TF slot, the RTC and time sources. Anything that writes flash or bursts DMA into PSRAM competes with the panel scanout, so batch it.",
+    "items": [
+     {
+      "name": "High endurance microSD card in the TF slot",
+      "interface": "1 bit SDMMC: CLK GPIO2, CMD GPIO1, D0 GPIO4, DAT3 on CH32 EXIO4",
+      "enables": "A store and forward sensor log while the host is unreachable, LVGL assets and cached host pages.",
+      "difficulty": "plug in",
+      "note": "Mount after panel init with GPIO42 high, since GPIO1 and 2 are the panel init lines; there is no card detect, and large reads compete with the scanout.",
+      "driver": "SD_MMC.setPins(2, 1, 4), then SD_MMC.begin in 1 bit mode",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "USB mass storage of the TF card",
+      "interface": "USB-C in device mode through TinyUSB MSC",
+      "enables": "The card shows up as a drive on the PC for logs and assets.",
+      "difficulty": "driver",
+      "note": "The console leaves USB Serial JTAG, and the firmware must not write the card while the PC has it mounted.",
+      "driver": "Arduino USB MSC class",
+      "price": "free"
+     },
+     {
+      "name": "Rechargeable RTC backup cell on BAT1",
+      "interface": "2 pin connector straight on the PCF85063 supply, float charged from 3V3 through D2",
+      "enables": "The RTC at 0x51 keeps time across power loss.",
+      "difficulty": "plug in",
+      "note": "Nothing limits the charge current, so fit only a rechargeable ML class cell; the connector pitch is unverified.",
+      "driver": "PCF85063 at 0x51, already on the bus",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "u-blox GNSS over I2C (SparkFun SAM-M10Q or NEO-M9N)",
+      "interface": "I2C at 0x42 (DDC)",
+      "enables": "Location for sunrise and sunset logic, and time that does not depend on the network.",
+      "difficulty": "plug in",
+      "note": "TTL GNSS modules cannot use GPIO43 and 44, which belong to the RS485 transceiver; PPS needs a GPIO the board lacks, and the host already has NTP.",
+      "driver": "SparkFun u-blox GNSS v3",
+      "price": "20 to 60 USD"
+     }
+    ]
+   },
+   {
+    "name": "Satellites and hosts",
+    "intro": "Where the hub's reach extends past its own header: the host link, bus extenders and adapters, satellite MCUs and host services. The hub stays the shared face, and logic and credentials stay on the host.",
+    "items": [
+     {
+      "name": "Host link over Wi-Fi: JSON pages over WebSocket",
+      "interface": "Wi-Fi STA to the LAN host",
+      "enables": "Host rendered pages for usage, Fox, Kismet, home and lab, plus buzzer, backlight and OTA commands on the same socket.",
+      "difficulty": "driver",
+      "note": "Stock pioarduino libraries ship XIP from PSRAM off and allow Wi-Fi and lwIP buffers in PSRAM, so connects, credential saves and OTA can tear the panel until a hybrid build fixes both.",
+      "driver": "arduinoWebSockets by Links2004 and ArduinoJson",
+      "price": "free"
+     },
+     {
+      "name": "USB NCM wired link to the host",
+      "interface": "USB-C in device mode as a network interface",
+      "enables": "A wired IP link for the WebSocket pages with no radio traffic.",
+      "difficulty": "driver",
+      "note": "Hard: the Arduino core ships only weak NCM stubs, so the descriptor and lwIP glue must be written, or a hybrid build must add esp_tinyusb.",
+      "driver": "esp_tinyusb tusb_ncm example in a hybrid build",
+      "price": "free"
+     },
+     {
+      "name": "Wired Ethernet (W5500 over SPI)",
+      "interface": "SPI plus CS, IRQ and RST",
+      "enables": "A wired LAN link.",
+      "difficulty": "not on this board",
+      "note": "It needs six GPIOs and none are free; PoE can only reach the hub as 12 V power into VIN through a splitter.",
+      "driver": "Arduino ESP32 Ethernet library",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "USB host for keyboards, barcode scanners or USB serial adapters",
+      "interface": "USB-C in host mode through an OTG adapter",
+      "enables": "Keyboard or scanner input, or a real UART through a CH340, CP2102 or FT232.",
+      "difficulty": "driver",
+      "note": "Hard: VBUS is live only on VIN power, the console leaves USB, and the class drivers need a hybrid build; the SC16IS752 is simpler for UART parts.",
+      "driver": "ESP-IDF USB Host Library with usb_host_cdc_acm and usb_host_hid",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "NXP SC16IS752 I2C to dual UART bridge",
+      "interface": "I2C at 0x48 to 0x57, two TTL UARTs out",
+      "enables": "Real UARTs for command and response parts such as a fingerprint reader, a TTL GNSS or an LD2410 at 115200 baud.",
+      "difficulty": "driver",
+      "note": "Never strap A1 to SCL with A0 to VSS, which lands on the RTC at 0x51, and poll the 64 byte FIFOs because IRQ has no GPIO.",
+      "driver": "SC16IS752 library by TD-er",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "TTL to RS485 converter with automatic direction (MAX485 or MAX13487 type)",
+      "interface": "TTL UART at the device, RS485 A and B into H4 pins 3 and 4",
+      "enables": "One UART only device on the hub's RS485 port, or Modbus devices sharing it.",
+      "difficulty": "plug in",
+      "note": "The pair is half duplex, so a streaming device such as an LD2410 owns it and no Modbus polling can run alongside.",
+      "driver": "HardwareSerial on RX 43 and TX 44",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "TCA9548A I2C multiplexer",
+      "interface": "I2C at 0x70 to 0x77",
+      "enables": "Several sensors that share an address, and isolation of long cable branches.",
+      "difficulty": "plug in",
+      "note": "On board devices answer on every channel, so it cannot fix a clash with them, and 0x70 collides with PCA9685 All Call, so use 0x71 or higher.",
+      "driver": "none; write the channel mask byte",
+      "price": "under 5 USD"
+     },
+     {
+      "name": "LTC4316 I2C address translator (Adafruit 5914)",
+      "interface": "I2C pass through that flips address bit A6, and A5 and A4 by switch",
+      "enables": "A second device whose address collides, such as a 0x51 part moved to 0x11.",
+      "difficulty": "plug in",
+      "note": "It cannot pass clock stretching, so not for a PN532, and the translated address must itself be free.",
+      "driver": "none; transparent",
+      "price": "5 to 20 USD"
+     },
+     {
+      "name": "SparkFun QwiicBus EndPoint pair (PCA9615 differential I2C)",
+      "interface": "I2C over Cat5 or Cat6, up to about 30 m",
+      "enables": "Sensors in another room or at the rack while the hub stays on the desk.",
+      "difficulty": "plug in",
+      "note": "Long runs need a slower clock on the same bus that carries touch and the CH32, and the pair gives no address isolation.",
+      "driver": "none; transparent",
+      "price": "5 to 20 USD each, two needed"
+     },
+     {
+      "name": "STEMMA QT to header pigtail (Adafruit 4209)",
+      "interface": "4 pin JST SH into H4 pins 7 to 10",
+      "enables": "Qwiic and STEMMA QT breakouts on the terminal, daisy chained from there.",
+      "difficulty": "plug in",
+      "note": "Every breakout adds pull ups in parallel with the board's 4.7K; past four or five boards, cut some.",
+      "driver": "none",
+      "price": "0.95 USD"
+     },
+     {
+      "name": "ESP-NOW satellites (ESP32-C3 SuperMini, XIAO ESP32C3, C6 or S3)",
+      "interface": "ESP-NOW frames on the hub's Wi-Fi radio",
+      "enables": "Router independent links for GPIO hungry parts: LD2410, PIR, reed contacts, IR, 433 MHz receivers and battery buttons.",
+      "difficulty": "satellite",
+      "note": "While the hub holds Wi-Fi, ESP-NOW is locked to the AP's channel, and the host provisions the encryption keys.",
+      "driver": "ESP-IDF esp_now or the Arduino ESP_NOW library",
+      "price": "under 5 USD per node"
+     },
+     {
+      "name": "Wired RS485 sensor nodes (ESP32-C3 plus an automatic direction RS485 module)",
+      "interface": "RS485 Modbus RTU with the hub as client",
+      "enables": "GPIO hungry sensors in other rooms on one twisted pair, with no radio near the PSRAM sensitive hub.",
+      "difficulty": "satellite",
+      "note": "Each node needs firmware plus an address and register plan; polled half duplex bandwidth is ample for sensor data.",
+      "driver": "eModbus server on the node, client on the hub",
+      "price": "under 5 USD per node"
+     },
+     {
+      "name": "Wired CAN sensor nodes (ESP32-C3 plus SN65HVD230)",
+      "interface": "CAN 2.0 through TWAI, hub TX GPIO6 and RX GPIO0",
+      "enables": "A multi master wired sensor backbone with hardware arbitration.",
+      "difficulty": "satellite",
+      "note": "Every dominant bit reads as a BOOT press on GPIO0, so move the UI button to PWRKEY on GPIO16 before building this.",
+      "driver": "ESP-IDF TWAI on both ends",
+      "price": "under 5 USD per node"
+     },
+     {
+      "name": "CANable 2.0 or candleLight adapter on the host",
+      "interface": "USB on the host, CAN on the same pair",
+      "enables": "Bench tests of the hub's CAN, plus sniffing and replay with SavvyCAN.",
+      "difficulty": "satellite",
+      "note": "Terminate both ends of the bench bus; SW1 switch 1 is the hub's terminator.",
+      "driver": "Linux gs_usb with candleLight firmware, or slcan",
+      "price": "5 to 20 USD for clones, 20 to 60 USD for a CANable 2.0"
+     },
+     {
+      "name": "Home Assistant with Mosquitto MQTT on the host",
+      "interface": "Host software on the LAN",
+      "enables": "The control plane: entities mapped to page fields, tap actions to services, automations and alert rules.",
+      "difficulty": "satellite",
+      "note": "The hub keeps only a per device token, and TLS handshakes need tens of kB of RAM that compete with the display's internal buffers.",
+      "driver": "Home Assistant MQTT integration",
+      "price": "free"
+     },
+     {
+      "name": "Kismet on the host with its capture hardware",
+      "interface": "Host software with a REST API and an eventbus websocket",
+      "enables": "A Kismet status page on the hub with new devices, alerts and channel activity.",
+      "difficulty": "satellite",
+      "note": "Capture stays on the host; the hub at most sends scan reports that a host script posts to Kismet's scan report API.",
+      "driver": "Kismet REST API on the host",
+      "price": "free, plus a monitor mode adapter if not owned"
+     },
+     {
+      "name": "Home lab pages: NUT for UPS state, Uptime Kuma and Proxmox",
+      "interface": "Host adapters that render pages",
+      "enables": "UPS runtime, service health and node and guest state on the hub.",
+      "difficulty": "satellite",
+      "note": "All logic and credentials live on the host, and nothing new lands on the board.",
+      "driver": "NUT, Uptime Kuma and the Proxmox VE API on the host",
+      "price": "free"
+     }
+    ]
+   }
+  ],
+  "radio": {
+   "ble_scan": "Yes, with limits. The S3 controller runs the observer and peripheral roles at once, so the hub can scan while the tray daemon stays bonded, but Wi-Fi and BLE share one radio by time division and every scan window takes airtime from that link. Two things stand in the way today. The lcd_4 build compiles the observer and central roles out, and turning the observer on costs about 26 kB of flash. NimBLE-Arduino issue 1187, where a scan that kept results broke reconnection of a bonded peer, was filed on a classic ESP32 with core 2.0.17, has no maintainer fix and is unconfirmed on the S3, so run it as a regression test here: scan in short passive windows with setMaxResults(0), forward each result as it arrives, then reconnect the tray daemon and confirm the bond survives. The older crash with about 400 stored results was heap exhaustion on a starved classic ESP32 and is far less likely here, though discarding results stays good practice.",
+   "wifi_scan": "Yes. WiFi.scanNetworks in async mode returns SSID, BSSID, channel, RSSI and auth mode for each access point. Espressif's ESP32-S3 coexistence table rates a station scan beside BLE scanning, advertising or a live BLE connection as supported and stable, and the old NimBLE report of scans failing next to BLE was closed after a clean test on core 3.3.7. Scan in short bursts, and call WiFi.persistent(false) with WIFI_STORAGE_RAM so no scan or connect writes NVS, because a flash write stalls the PSRAM scanout. The hub sends the list to the host, which aggregates it.",
+   "sniffer_kismet": "A passive monitor mode is possible if it keeps management frames only. A single channel sniff can run while the station stays associated on the AP's channel; channel hopping cannot, because leaving that channel drops the host link and esp_wifi_set_channel must not be called while the station scans or connects. Sniffing while reporting over the bonded BLE link instead is a combination Espressif rates as supported but unstable, so measure it first. Continuous hopping capture stays on the host with Kismet's own hardware. Kismet has no ESP32 capture source, so the working path is scan reports: the hub sends observed access points and BLE devices as JSON to the LAN host, and a host script posts them to Kismet's Wi-Fi scan report endpoint or its BLE equivalent, the way LyndLabs Kismet-ESP32 does from a serial feed. Raw pcapng capture would need the host to synthesize radiotap headers and is unproven.",
+   "espnow": "It works for satellites. While the hub holds a Wi-Fi association, ESP-NOW runs on the AP's channel and every peer must use that channel. It shares airtime with Wi-Fi and BLE, and Espressif rates ESP-NOW receive as stable only in station mode. Keep frames small, encrypt with keys the host provisions, and have the hub report what the satellites send.",
+   "tearing": "Radio traffic does not tear the panel directly. Tearing comes from flash writes, which disable the PSRAM cache the RGB scanout reads through, and from PSRAM bandwidth contention; Wi-Fi connects, NVS saves, BLE bond writes and OTA are the usual triggers. The installed pioarduino 55.03.38 libraries ship XIP from PSRAM off and allow Wi-Fi and lwIP buffers in PSRAM (CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y), so the documented fix is a build change: a pioarduino hybrid build whose custom_sdkconfig sets CONFIG_SPIRAM_XIP_FROM_PSRAM=y and CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n, with the 64 byte data cache line Waveshare's own build notes list. Bounce buffers work today through bounce_buffer_size_px, the last Arduino_ESP32RGBPanel constructor argument; the port's working tree already passes a 10 line buffer, and whether it cures the observed drift has not been checked yet. CONFIG_LCD_RGB_RESTART_IN_VSYNC is already on; it recovers after a drift and does not prevent one. Until the hybrid build lands, dim the backlight around OTA and credential saves, and measure tearing on the bench in the dominant state, an idle page with periodic updates.",
+   "excluded": [
+    "Deauthentication and disassociation attacks and any Wi-Fi jamming. Section 333 of the Communications Act forbids them (FCC advisory DA 15-113), and esp_wifi_80211_tx refuses those frame types anyway.",
+    "Beacon floods, probe floods and fake or evil twin access points.",
+    "BLE advertising spam.",
+    "Capturing or keeping Wi-Fi data frame payloads, handshakes included. Joffe v. Google held that intercepting unencrypted Wi-Fi payloads falls under the Wiretap Act, so any sniffer keeps management frames only.",
+    "The offensive halves of Marauder and Bruce. Only their passive scan code is worth porting; the hub reports and never attacks.",
+    "Continuous channel hopping capture on the hub. It breaks the host link and loads the radio against the scanout, so capture hardware stays on the host."
+   ]
+  },
+  "modules": {
+   "why_merging_is_hard": "Yes, merging whole projects is hard, and mostly not worth doing. Marauder, Bruce, ESPHome and Tasmota each build one image that owns the display driver, the UI framework, the pin map, the partition table, the radio and the single main loop. Two of them cannot both own the RGB panel, the radio or loop(), and their pin maps assume boards with free GPIOs. Porting one means rewriting its display and input layers for this 480x480 RGB panel, which is most of the work, and teaching its blocking code to yield so the PSRAM scanout does not tear. The launcher approach of separate binaries with one running at a time avoids the merge but gives up the always on hub.",
+   "what_works": "Move features, not firmwares. The multi tool projects that work share one shape: a small module interface, a build switch per module and a reporting hook. Tasmota routes every driver through one dispatch function with FUNC_INIT, FUNC_EVERY_SECOND and FUNC_JSON_APPEND and compiles drivers in with USE_ defines. ESPHome components implement setup, loop and update, and its code generator compiles only what the config selects. Meshtastic modules subclass MeshModule and register themselves, and Bruce pairs a menu class with an implementation folder per feature. Here each module is one LVGL page plus init, tick and a JSON sink. It declares what it claims (the radio, I2C addresses, RS485, TWAI, the SD card, PSRAM heavy work and a tick budget), a registry refuses clashes at boot, and a menu page lists what was built in. Modules measure and report, and the host decides. Marauder's passive Wi-Fi and BLE scans port cleanly because each is a few hundred lines over esp_wifi and the BLE scan API; its attack code stays out.",
+   "api_sketch": "struct ModuleCaps {\n  uint8_t i2c_addrs[4];\n  bool radio;\n  bool rs485;\n  bool twai;\n  bool sd;\n  bool psram_heavy;\n  uint32_t tick_budget_us;\n};\n\nstruct Module {\n  const char* name;\n  ModuleCaps caps;\n  bool (*init)();\n  void (*tick)(uint32_t now_ms);\n  lv_obj_t* (*build_page)(lv_obj_t* parent);\n  void (*to_json)(JsonObject out);\n};\n\nconst Module* const kModules[] = {\n#if MOD_WIFI_SCAN\n  &mod_wifi_scan,\n#endif\n#if MOD_ENV_I2C\n  &mod_env_i2c,\n#endif\n};",
+   "build_selection": "Pick modules at build time. Each module is its own .cpp that compiles to nothing unless its flag is set, such as MOD_WIFI_SCAN=1 in the build_flags of a platformio.ini env, and the registry array is built from the same flags. One env per deployment keeps flash and RAM predictable and avoids a partition change: the BLE observer role alone costs about 26 kB of flash, and the hybrid build that turns on XIP from PSRAM is set per env as well. A registry check at boot refuses two modules that claim the same I2C address, or the radio at once. If modules later move to their own repos, lib_deps can pull them the way ESPHome's external_components does.",
+   "first_modules": [
+    {
+     "name": "Spine: module struct, registry and menu page",
+     "hours": "12 to 20",
+     "note": "Build it first; it defines the resource claims, the tick budget and the psram_heavy flag every other module obeys."
+    },
+    {
+     "name": "Host sink and JSON envelope",
+     "hours": "8 to 12",
+     "note": "Module name, timestamp, payload and device token, with an offline queue; reuse the usage feed's token path if it already has one rather than inventing a second envelope."
+    },
+    {
+     "name": "Passive Wi-Fi and BLE scan page",
+     "hours": "8 to 16",
+     "note": "The first real module, exercising the radio claim, burst gating and the sink; it needs the observer role enabled and the bond regression test passed."
+    },
+    {
+     "name": "I2C sensor page, SHT4x first",
+     "hours": "4 to 8",
+     "note": "The template for every header device; it declares its address so the registry can refuse a clash."
+    },
+    {
+     "name": "Buzzer alert",
+     "hours": "1 to 2",
+     "note": "EXIO6, on or off only; the host decides and the board signals."
+    },
+    {
+     "name": "RTC timestamps and scheduler",
+     "hours": "3 to 5",
+     "note": "Uses the PCF85063 already at 0x51 and staggers ticks so modules never all run on one frame."
+    },
+    {
+     "name": "SD store and forward logger",
+     "hours": "6 to 10",
+     "note": "SD_MMC in 1 bit mode after panel init, batched writes and DMA buffers in internal RAM."
+    },
+    {
+     "name": "RS485 Modbus RTU page",
+     "hours": "12 to 20",
+     "note": "No DE pin to drive; bench test the automatic direction switching at the target baud, and Espressif's Modbus component already ships in the core."
+    },
+    {
+     "name": "CAN listen page",
+     "hours": "12 to 20",
+     "note": "Move the UI button to PWRKEY on GPIO16 first and start in listen only mode."
+    },
+    {
+     "name": "GNSS page over I2C",
+     "hours": "8 to 16",
+     "note": "A u-blox receiver at 0x42 on the header, not a UART; low value while the host has NTP."
+    }
+   ]
+  },
+  "sources": [
+   {
+    "title": "Waveshare ESP32-S3-Touch-LCD-4 wiki",
+    "url": "https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4"
+   },
+   {
+    "title": "ESP32-S3-Touch-LCD-4 V4.0 schematic",
+    "url": "https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf"
+   },
+   {
+    "title": "Waveshare V4 repository, schematics folder",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/tree/main/hardware/schematics"
+   },
+   {
+    "title": "Waveshare V4 hardware reference",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/hardware/HARDWARE_REFERENCE.md"
+   },
+   {
+    "title": "Waveshare V4 README and bring up notes",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/README.md"
+   },
+   {
+    "title": "Waveshare V4 IO expander notes",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/ioexpander/README.md"
+   },
+   {
+    "title": "Waveshare V4 RS485 Arduino example",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/13_RS485/13_RS485.ino"
+   },
+   {
+    "title": "Waveshare V4 LVGL and SD Arduino example",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/10_LVGL_SD/10_LVGL_SD.ino"
+   },
+   {
+    "title": "Waveshare V4 SD test for ESP-IDF",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/02_SD_Test/main/sd_card_example_main.c"
+   },
+   {
+    "title": "Waveshare V4 TWAI receive pins",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/04_TWAIreceive/components/can/can.h"
+   },
+   {
+    "title": "Waveshare V4 TWAI transmit pins for Arduino",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/11_TWAItransmit/twai.h"
+   },
+   {
+    "title": "Waveshare WS_CH32_IO library",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/libraries/WS_CH32_IO/src/WS_CH32_IO.cpp"
+   },
+   {
+    "title": "Waveshare V4 battery voltage example",
+    "url": "https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/14_LVGL_BatteryVoltage/14_LVGL_BatteryVoltage.ino"
+   },
+   {
+    "title": "Waveshare CH32V003 IO expander component",
+    "url": "https://components.espressif.com/components/waveshare/custom_io_expander_ch32v003"
+   },
+   {
+    "title": "Waveshare ESP32-S3-Touch-LCD-4 product page",
+    "url": "https://www.waveshare.com/esp32-s3-touch-lcd-4.htm"
+   },
+   {
+    "title": "Waveshare V2 demo code archive",
+    "url": "https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4_democode_V2.zip"
+   },
+   {
+    "title": "ETA6098 charger datasheet",
+    "url": "https://www.eta-semi.com/wp-content/uploads/2022/03/ETA6098_V1.1.pdf"
+   },
+   {
+    "title": "QMI8658A datasheet",
+    "url": "https://files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf"
+   },
+   {
+    "title": "SensorLib QMI8658 addresses",
+    "url": "https://github.com/lewisxhe/SensorLib/blob/master/src/SensorQMI8658.hpp"
+   },
+   {
+    "title": "NDC7002N datasheet",
+    "url": "https://www.onsemi.com/pdf/datasheet/ndc7002n-d.pdf"
+   },
+   {
+    "title": "TJA1051 datasheet",
+    "url": "https://files.waveshare.com/wiki/common/TJA1051.pdf"
+   },
+   {
+    "title": "GT911 datasheet",
+    "url": "https://files.waveshare.com/wiki/common/GT911_EN_Datasheet.pdf"
+   },
+   {
+    "title": "ESP32-S3 datasheet",
+    "url": "https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf"
+   },
+   {
+    "title": "ESP32-S3-WROOM-1 datasheet",
+    "url": "https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf"
+   },
+   {
+    "title": "SC16IS752 datasheet",
+    "url": "https://www.nxp.com/docs/en/data-sheet/SC16IS752_SC16IS762.pdf"
+   },
+   {
+    "title": "PCA9685 datasheet",
+    "url": "https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf"
+   },
+   {
+    "title": "Intel 4 wire PWM fan specification",
+    "url": "https://www.konilabs.net/docs/standards/fan/intel_4wire_pwm_fans_specs_rev1_2.pdf"
+   },
+   {
+    "title": "Sensirion SEN5x datasheet",
+    "url": "https://sensirion.com/media/documents/6791EFA0/62A1F68F/Sensirion_Datasheet_Environmental_Node_SEN5x.pdf"
+   },
+   {
+    "title": "Sensirion SCD30 interface description",
+    "url": "https://sensirion.com/media/documents/D7CEEF4A/6165372F/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf"
+   },
+   {
+    "title": "ESP32-S3 RF coexistence",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/coexist.html"
+   },
+   {
+    "title": "ESP32-S3 Wi-Fi API",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_wifi.html"
+   },
+   {
+    "title": "ESP32-S3 Wi-Fi modes and sniffer",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/wifi-modes.html"
+   },
+   {
+    "title": "ESP-NOW API",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_now.html"
+   },
+   {
+    "title": "ESP32-S3 BLE multiple connections guide",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/ble/ble-multiconnection-guide.html"
+   },
+   {
+    "title": "RGB LCD driver guide",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/lcd/rgb_lcd.html"
+   },
+   {
+    "title": "ESP FAQ on RGB LCD drift",
+    "url": "https://docs.espressif.com/projects/esp-faq/en/latest/software-framework/peripherals/lcd.html"
+   },
+   {
+    "title": "Arduino ESP32 core discussion 12339 on XIP from PSRAM",
+    "url": "https://github.com/espressif/arduino-esp32/discussions/12339"
+   },
+   {
+    "title": "Arduino lib builder defconfig for esp32s3",
+    "url": "https://github.com/espressif/esp32-arduino-lib-builder/blob/master/configs/defconfig.esp32s3"
+   },
+   {
+    "title": "pioarduino sdkconfig for hybrid builds",
+    "url": "https://github.com/pioarduino/sdkconfig"
+   },
+   {
+    "title": "Arduino_GFX RGB panel constructor",
+    "url": "https://raw.githubusercontent.com/moononournation/Arduino_GFX/master/src/databus/Arduino_ESP32RGBPanel.h"
+   },
+   {
+    "title": "TWAI driver",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/twai.html"
+   },
+   {
+    "title": "GPIO and strapping pins",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/gpio.html"
+   },
+   {
+    "title": "ESP32-S3 boot mode selection",
+    "url": "https://docs.espressif.com/projects/esptool/en/latest/esp32s3/advanced-topics/boot-mode-selection.html"
+   },
+   {
+    "title": "ESP32-S3 USB host",
+    "url": "https://docs.espressif.com/projects/esp-usb/en/latest/esp32s3/usb_host.html"
+   },
+   {
+    "title": "usb_host_cdc_acm component",
+    "url": "https://components.espressif.com/components/espressif/usb_host_cdc_acm"
+   },
+   {
+    "title": "Arduino ESP32 core component manifest",
+    "url": "https://raw.githubusercontent.com/espressif/arduino-esp32/master/idf_component.yml"
+   },
+   {
+    "title": "Arduino ESP32 core TinyUSB glue",
+    "url": "https://raw.githubusercontent.com/espressif/arduino-esp32/master/cores/esp32/esp32-hal-tinyusb.c"
+   },
+   {
+    "title": "ESP-IDF TinyUSB NCM example",
+    "url": "https://github.com/espressif/esp-idf/tree/master/examples/peripherals/usb/device/tusb_ncm"
+   },
+   {
+    "title": "Arduino ESP32 core W5500 Ethernet example",
+    "url": "https://raw.githubusercontent.com/espressif/arduino-esp32/master/libraries/Ethernet/examples/ETH_W5500_Arduino_SPI/ETH_W5500_Arduino_SPI.ino"
+   },
+   {
+    "title": "Arduino ESP32 Matter",
+    "url": "https://docs.espressif.com/projects/arduino-esp32/en/latest/matter/matter.html"
+   },
+   {
+    "title": "NVS encryption",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/storage/nvs_encryption.html"
+   },
+   {
+    "title": "Standard IO and console",
+    "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/stdio.html"
+   },
+   {
+    "title": "esp_jpeg component",
+    "url": "https://components.espressif.com/components/espressif/esp_jpeg"
+   },
+   {
+    "title": "NimBLE-Arduino issue 1187",
+    "url": "https://github.com/h2zero/NimBLE-Arduino/issues/1187"
+   },
+   {
+    "title": "NimBLE-Arduino issue 690",
+    "url": "https://github.com/h2zero/NimBLE-Arduino/issues/690"
+   },
+   {
+    "title": "NimBLE-Arduino discussion 593",
+    "url": "https://github.com/h2zero/NimBLE-Arduino/discussions/593"
+   },
+   {
+    "title": "NimBLE-Arduino nimconfig.h",
+    "url": "https://raw.githubusercontent.com/h2zero/NimBLE-Arduino/master/src/nimconfig.h"
+   },
+   {
+    "title": "LyndLabs Kismet-ESP32",
+    "url": "https://github.com/LyndLabs/Kismet-ESP32"
+   },
+   {
+    "title": "Kismet Wi-Fi scanning mode API",
+    "url": "https://www.kismetwireless.net/docs/api/wifi_scanningmode/"
+   },
+   {
+    "title": "Kismet remote capture",
+    "url": "https://www.kismetwireless.net/docs/readme/remotecap/remotecap/"
+   },
+   {
+    "title": "FCC Enforcement Advisory DA 15-113",
+    "url": "https://docs.fcc.gov/public/attachments/DA-15-113A1.pdf"
+   },
+   {
+    "title": "Joffe v. Google, Ninth Circuit 2013",
+    "url": "https://law.justia.com/cases/federal/appellate-courts/ca9/11-17483/11-17483-2013-09-10.html"
+   },
+   {
+    "title": "ESP32 Marauder",
+    "url": "https://github.com/justcallmekoko/ESP32Marauder"
+   },
+   {
+    "title": "Bruce developer guide",
+    "url": "https://github.com/pr3y/Bruce/wiki/Develop-with-Bruce"
+   },
+   {
+    "title": "ESPHome component architecture",
+    "url": "https://developers.esphome.io/architecture/components/"
+   },
+   {
+    "title": "ESPHome external components",
+    "url": "https://esphome.io/components/external_components/"
+   },
+   {
+    "title": "Tasmota driver API",
+    "url": "https://github.com/arendst/Tasmota/blob/development/API.md"
+   },
+   {
+    "title": "Meshtastic module API",
+    "url": "https://meshtastic.org/docs/development/device/module-api/"
+   },
+   {
+    "title": "Clawdmeter port expander probe",
+    "url": "https://github.com/ChalulaBottle/Clawdmeter/blob/port/waveshare-lcd-4/firmware/src/boards/waveshare_lcd_4/io_expander.cpp"
+   },
+   {
+    "title": "Clawdmeter port build config",
+    "url": "https://github.com/ChalulaBottle/Clawdmeter/blob/port/waveshare-lcd-4/firmware/platformio.ini"
+   },
+   {
+    "title": "Sensirion SHT4x Arduino library",
+    "url": "https://github.com/Sensirion/arduino-i2c-sht4x"
+   },
+   {
+    "title": "Sensirion SCD4x Arduino library",
+    "url": "https://github.com/Sensirion/arduino-i2c-scd4x"
+   },
+   {
+    "title": "Sensirion SEN66 Arduino library",
+    "url": "https://github.com/Sensirion/arduino-i2c-sen66"
+   },
+   {
+    "title": "Bosch BSEC2 library",
+    "url": "https://github.com/boschsensortec/Bosch-BSEC2-Library"
+   },
+   {
+    "title": "Adafruit PMSA003I",
+    "url": "https://www.adafruit.com/product/4632"
+   },
+   {
+    "title": "ESPHome issue on PMSA003I cold boot",
+    "url": "https://github.com/esphome/issues/issues/6031"
+   },
+   {
+    "title": "RobTillaart PCF8574 library",
+    "url": "https://github.com/RobTillaart/PCF8574"
+   },
+   {
+    "title": "HLK-LD2410 product page",
+    "url": "https://hlktech.net/index.php?id=988"
+   },
+   {
+    "title": "ESPHome LD2410",
+    "url": "https://esphome.io/components/sensor/ld2410.html"
+   },
+   {
+    "title": "ESPHome LD2450",
+    "url": "https://esphome.io/components/sensor/ld2450.html"
+   },
+   {
+    "title": "Adafruit MAX17048 guide",
+    "url": "https://learn.adafruit.com/adafruit-max17048-lipoly-liion-fuel-gauge-and-battery-monitor/pinouts"
+   },
+   {
+    "title": "PZEM-016 with ESPHome",
+    "url": "https://esp32.co.uk/pzem-016-esp32-esphome-rs485-ac-energy-monitoring/"
+   },
+   {
+    "title": "eModbus",
+    "url": "https://github.com/eModbus/eModbus"
+   },
+   {
+    "title": "Pylontech CAN frames",
+    "url": "https://github.com/ArminJo/JK-BMSToPylontechCAN"
+   },
+   {
+    "title": "ESPHome pulse counter",
+    "url": "https://esphome.io/components/sensor/pulse_counter.html"
+   },
+   {
+    "title": "M5Stack Unit RFID2",
+    "url": "https://docs.m5stack.com/en/unit/rfid2"
+   },
+   {
+    "title": "Adafruit PN532 library",
+    "url": "https://github.com/adafruit/Adafruit-PN532"
+   },
+   {
+    "title": "Frigate latest frame API",
+    "url": "https://docs.frigate.video/integrations/api/latest-frame-camera-name-latest-extension-get/"
+   },
+   {
+    "title": "Adafruit EMC2101",
+    "url": "https://www.adafruit.com/product/4808"
+   },
+   {
+    "title": "Adafruit NeoDriver",
+    "url": "https://www.adafruit.com/product/5766"
+   },
+   {
+    "title": "Adafruit seesaw rotary encoder",
+    "url": "https://www.adafruit.com/product/4991"
+   },
+   {
+    "title": "Waveshare Modbus RTU Relay (B)",
+    "url": "https://www.waveshare.com/modbus-rtu-relay-b.htm"
+   },
+   {
+    "title": "IRremoteESP8266",
+    "url": "https://github.com/crankyoldgit/IRremoteESP8266"
+   },
+   {
+    "title": "WLED",
+    "url": "https://kno.wled.ge/"
+   },
+   {
+    "title": "Seeed XIAO ReSpeaker",
+    "url": "https://wiki.seeedstudio.com/xiao_respeaker/"
+   },
+   {
+    "title": "BTHome",
+    "url": "https://bthome.io/"
+   },
+   {
+    "title": "Home Assistant Connect ZBT-2",
+    "url": "https://www.home-assistant.io/connect/zbt-2/"
+   },
+   {
+    "title": "Home Assistant Connect ZWA-2",
+    "url": "https://www.home-assistant.io/connect/zwa-2/"
+   },
+   {
+    "title": "RadioLib",
+    "url": "https://github.com/jgromes/RadioLib"
+   },
+   {
+    "title": "rtl_433",
+    "url": "https://github.com/merbanan/rtl_433"
+   },
+   {
+    "title": "SparkFun u-blox GNSS v3 library",
+    "url": "https://github.com/sparkfun/SparkFun_u-blox_GNSS_v3"
+   },
+   {
+    "title": "SC16IS752 library",
+    "url": "https://github.com/TD-er/SC16IS752"
+   },
+   {
+    "title": "Adafruit TCA9548A",
+    "url": "https://www.adafruit.com/product/2717"
+   },
+   {
+    "title": "Adafruit LTC4316 translator",
+    "url": "https://www.adafruit.com/product/5914"
+   },
+   {
+    "title": "SparkFun QwiicBus EndPoint",
+    "url": "https://www.sparkfun.com/sparkfun-qwiicbus-endpoint.html"
+   },
+   {
+    "title": "Adafruit STEMMA QT pigtail",
+    "url": "https://www.adafruit.com/product/4209"
+   },
+   {
+    "title": "Home Assistant MQTT",
+    "url": "https://www.home-assistant.io/integrations/mqtt/"
+   },
+   {
+    "title": "Network UPS Tools",
+    "url": "https://networkupstools.org/"
+   },
+   {
+    "title": "Uptime Kuma",
+    "url": "https://github.com/louislam/uptime-kuma"
+   },
+   {
+    "title": "Proxmox VE API",
+    "url": "https://pve.proxmox.com/wiki/Proxmox_VE_API"
+   }
+  ],
+  "caveats": [
+   "Check H3 before wiring anything to the I2C header. At 5V the level shifter's body diodes lift the ESP side of the bus to roughly 3.6 to 3.9 V (derived from the schematic, not measured), above the ESP32-S3 input limit and seen by the CH32, the RTC and touch. Measure SDA at R61 and keep H3 at 3V3.",
+   "Unplug the PC's USB cable before powering the board from VIN. The buck drives about 5.2 V onto VBUS with nothing blocking it from the connector (derived from the schematic), so it back feeds the PC port.",
+   "The charger runs at up to 2 A. Fit a single cell pack rated for that charge current, and check its PH2.0 lead order against the plus mark on the silkscreen, because pack wiring varies.",
+   "GPIO16 is the PWRKEY sense input, active low, and the power latch is SYS_EN on CH32 EXIO5; PWRKEY reaches no power IC on V4. Keep GPIO16 an input and keep bit 5 of the CH32 output register at 1. Waveshare's own init writes 0x00 to that register for 200 ms, which may drop battery power, so test it on battery with PWRKEY released before copying it.",
+   "CAN RX shares GPIO0 with BOOT and the boot strap. Move the UI button to PWRKEY before joining a live bus, start in listen only mode, and do not power the hub up on a bus that can sit dominant. The TJA1051 needs 4.5 to 5.5 V and its 5V rail is USB0_5V minus a Schottky drop, so CAN on a weak USB port is marginal.",
+   "Both V4 init paths leave EXIO0, EXIO2 and EXIO4 as outputs driven low. EXIO4 is SD DAT3, and DAT3 low at CMD0 selects SPI mode, so if the SDMMC mount fails, set EXIO4 high or make it an input first. EXIO2 is touch INT; driven low it selects GT911 address 0x5D and then fights the GT911's own INT output, so clear DIR bit 2 after reset.",
+   "SW1 terminations ship off per the wiki. Turn one on only when the hub is a physical end of that bus.",
+   "If the GT911 never answers, check the box label first: the ESP32-S3-LCD-4 variant has no GT911 fitted.",
+   "The port's expander probe falls back to a V1 to V3 TCA9554 at 0x20 when the CH32 at 0x24 does not answer, and a quick reset can make the CH32 miss its first transactions. Until that fallback sits behind a build flag or a CH32 register check, keep add on expanders off 0x20, or relays on it can switch at boot.",
+   "Anything holding SDA low locks out the CH32, and with it the backlight, the LCD and touch resets and the power latch. Keep Waveshare's bus recovery, which clocks out a stuck SDA, before CH32 init.",
+   "The I2C header has no ESD protection, unlike VIN, RS485, CAN and VBUS. Add a low capacitance ESD array at H4 before running I2C cable out of the enclosure, or carry long runs on RS485 or a differential extender.",
+   "The ROM banner and any console output before RS485 init drive GPIO43 against the SP3485 output. Claim GPIO43 as UART1 RX early in setup, or move the console to USB Serial JTAG in a hybrid build.",
+   "RS485 turnaround comes from an RC on the Q6 gate and Q6 has no part number, so the driver releases somewhere between about 56 and 186 microseconds after the last 0 bit. With 120R on, the idle bias is only about 10 to 20 mV. Bench test Modbus at the target baud before relying on it, 9600 baud especially.",
+   "On a bus that mixes classic CAN and CAN FD, the S3 treats FD frames as errors and sends error frames unless it is in listen only mode.",
+   "Minimum VIN is 7 V per the silkscreen and 5 V per the schematic text. Measure the 5V rail at 7 V and 9 V input before running near the low end.",
+   "The Waveshare wiki mixes V1 to V3 facts into its page: SW6106, TCA9554, I2C on GPIO8 and 9, TP_INT on GPIO16 and SPI mode SD. The durable port plan inherits two of them, touch INT on GPIO16 and an SW6106 at 0x3C, and a comment in the lcd_4 board.h still calls GPIO16 the power latch. On V4 touch INT is EXIO2, GPIO16 is the PWRKEY sense and the charger is an ETA6098 with no I2C.",
+   "The device token is not protected by default: the stock libraries enable neither NVS encryption nor flash encryption. HMAC based NVS encryption needs a hybrid build and an irreversible eFuse key burn, so log it in SYSTEM_CHANGE_LOG.md before burning. Token rotations are NVS writes and will disturb the panel until XIP from PSRAM is on.",
+   "Derived figures (H3 at 5V, VIN back feed, RS485 timing, JPEG decode time) come from schematic analysis and datasheets, not bench measurements. Prices are typical retail estimates; only the NeoDriver, the ReSpeaker Lite kits, the ZBT-2, the ZWA-2, the Modbus Relay (B), the Adafruit 4209 cable and the board itself were checked. Hour estimates assume an experienced embedded developer."
+  ]
+ },
+ "refutations": [
+  {
+   "claim": "NimBLE-Arduino #1187 'directly threatens the project's bonded tray-daemon link' (confidence high); it corrupts host/controller state and breaks bonded reconnect, so usable scan + bonded host link is currently fragile.",
+   "why": "The issue's own text (read in full) shows it was reported on a plain ESP32 Dev Module (ESP-IDF 4.4.7, NimBLE 2.5.1), NOT an ESP32-S3. The maintainer h2zero's first response was 'Can you try this code with an esp32S3 or C3/C6 instead?' (reporter had none) - implying he suspects it may be specific to the classic-ESP32 controller, the exact family this board is not. 'Corrupts host/controller state' is the reporter's closing question ('Could scan-result handling ... leave host/controller state...?'), not a confirmed root cause; as of 2026-09-22 the maintainer only said 'I have an idea about the issue and will report back shortly.' The repro is a single sequential 250 ms startup scan performed BEFORE the server/advertising, not scanning while a bonded link is live.",
+   "correction": "Real and open, but unconfirmed on ESP32-S3 and unconfirmed in mechanism. Downgrade to: bench-test the results-discarding scan (setMaxResults(0)+setScanCallbacks(nullptr,false)) on the actual S3 unit; keep that pattern as a cheap precaution, but do not treat scan+bonded-link as an established high-confidence hazard. URL: https://github.com/h2zero/NimBLE-Arduino/issues/1187"
+  },
+  {
+   "claim": "Wi-Fi scan + active BLE coexistence 'is known to fail or destabilize' - WiFi.scanNetworks can return WIFI_SCAN_FAILED with a BLE service running (cites NimBLE #690).",
+   "why": "Issue #690 is CLOSED as completed (2026-03-20); h2zero's closing comment: 'Tested this today on Arduino core 3.3.7 and it works as intended.' It was on a classic ESP32 (esp-wrover-kit) with an old stack (arduino-esp32 3.0.0 / NimBLE 1.4.2). More authoritatively, Espressif's ESP32-S3 coexistence matrix marks Wi-Fi 'STA Scan' against BLE Scan/Advertising/Connected as 'Y' = 'supported and the performance is stable.'",
+   "correction": "On current cores and on the S3, Wi-Fi scan + BLE is a documented STABLE coexistence scenario. Time-division still halves throughput under contention, but the 'destabilizes the BLE link' framing is not supported. Verify with a burst-scan bench test rather than designing around it as a known failure. URLs: https://github.com/h2zero/NimBLE-Arduino/issues/690 ; https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/coexist.html"
+  },
+  {
+   "claim": "esp_wifi_set_channel is refused while the STA is connected to an AP or scanning, so raw Wi-Fi sniffing and a Wi-Fi client/host link cannot run at the same time; reporting must go out over BLE (confidence high).",
+   "why": "Two overstatements. (a) esp_wifi_set_channel's documented restriction is 'In STA mode, don't call when scanning or connecting to external AP' - scanning/connecting, not the stably-connected state. (b) The Wi-Fi sniffer doc explicitly states 'the sniffer mode is active when the station is connected to the AP' - promiscuous capture and an associated STA link DO coexist. What actually conflicts is channel HOPPING while associated (moving off the AP's channel drops the link), not sniffing itself.",
+   "correction": "A single-channel passive sniff can run while the STA stays associated (camped on the AP's channel); only multi-channel/wardriving-style hopping is incompatible with holding the Wi-Fi link. The BLE-report escape is one option but is not forced for single-channel sniffing - and it lands on a rated-unstable coexist cell (see missing). URLs: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_wifi.html ; https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/wifi-modes.html"
+  },
+  {
+   "claim": "Tearing fix includes WiFi.persistent(false) + esp_wifi_set_storage(WIFI_STORAGE_RAM) AND 'keeping Wi-Fi/lwIP buffers in internal RAM (not PSRAM)' (cites arduino-esp32 discussion #12339).",
+   "why": "Discussion #12339 contains none of this - it discusses only CONFIG_SPIRAM_XIP_FROM_PSRAM as the confirmed fix; no mention of WiFi.persistent(false), WIFI_STORAGE_RAM, or lwIP buffer placement. Worse, 'buffers in internal RAM' is the OPPOSITE of the Arduino/pioarduino default: esp32-arduino-lib-builder's defconfig.esp32s3 sets CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y, i.e. Wi-Fi/lwIP buffers are placed in PSRAM by default and cannot be moved to internal RAM without a custom lib build.",
+   "correction": "Split it. The WIFI_STORAGE_RAM half is independently valid (esp_wifi_set_storage defaults to WIFI_STORAGE_FLASH; RAM + WiFi.persistent(false) suppresses the NVS writes the FAQ names as a drift trigger) - but cite the API doc, not #12339. The lwIP-buffers-in-internal-RAM half has no Espressif source and is contradicted by the stock Arduino build; drop it or flag it as requiring a custom lib build. URLs: https://github.com/espressif/arduino-esp32/discussions/12339 ; https://github.com/espressif/esp32-arduino-lib-builder/blob/master/configs/defconfig.esp32s3 ; https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_wifi.html"
+  },
+  {
+   "claim": "Buses lane, U10 item and occupied-address list: the unpopulated QMI8658 footprint U10 has SA0 tied to GND, so a fitted part would sit at 0x6A, and 0x6A is the address to reserve.",
+   "why": "QST's QMI8658A datasheet says 'If SA0 = 0, I2C / I3C address = 0x6B; If SA0 = 1, I2C / I3C address = 0x6A', and SA0 floating or high also gives 0x6A (https://files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf). The V4.0 schematic IMU block ties U10 pin 1 SDO/SA0 to GND (https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). The catalog lane's 0x6B is correct.",
+   "correction": "A fitted U10 would answer at 0x6B. A QMI8658 breakout on the header with SA0 floating or pulled up answers at 0x6A. The port's imu.cpp probes both, which is fine. Reserve 0x6B for U10, and note that a Sensirion SEN66 (default 0x6B) collides with U10 or with any breakout that has SA0 low."
+  },
+  {
+   "claim": "Compile lane (I2C sensor page conflicts, and 'battery via PH2.0 to SW6106') and catalog lane (PCF8574A and seesaw items): SW6106 sits at 0x3C, so 0x3C must stay reserved.",
+   "why": "On the V4.0 schematic, U4 is an ETA6098 (https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). The ETA6098 is a standalone 2.5 A switching charger with a STAT pin and no I2C (https://www.eta-semi.com/wp-content/uploads/2022/03/ETA6098_V1.1.pdf). The operator's V4 bus scan returns only 0x24 and 0x51 (Temp Clawdmeter/plans/waveshare-lcd-4-port.md).",
+   "correction": "0x3C is free on V4. An SSD1306 status OLED, a PCF8574A strapped to 0x3C, or a seesaw board jumpered to 0x3C are all fine. Drop SW6106 from the V4 address map and from the port plan's battery note, since Vbat comes from the CH32 ADC."
+  },
+  {
+   "claim": "Buses lane (LD2410 fact) and catalog lane (PCF8574 and MCP23017 items): with no TCA9554 on V4, 0x20 is free and is the recommended add-on expander address; only 0x24 needs avoiding.",
+   "why": "The pushed port firmware probes the CH32 at 0x24 first. If that probe fails, it treats whatever answers at 0x20 as a V1 to V3 TCA9554 and writes register 0x03 = 0xD0 and then register 0x01 output bytes to it (https://github.com/ChalulaBottle/Clawdmeter/blob/port/waveshare-lcd-4/firmware/src/boards/waveshare_lcd_4/io_expander.cpp). Waveshare warns that after a quick reset the CH32 can fail its first transactions unless the bus is recovered first (https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/ioexpander/README.md). A PCF8574 at 0x20 would latch those bytes straight onto its pins. An MCP23017 would take them as IPOLB and IODIRB writes, which turns most of port B into low outputs. Either way, an active-low relay board on an expander at 0x20 can switch on at boot.",
+   "correction": "Strap add-on expanders to 0x21 to 0x23 or 0x25 to 0x27. In V4 builds, either put the TCA9554 fallback behind a build flag or require a CH32 register signature before falling back."
+  },
+  {
+   "claim": "Catalog PCA9685 item, enables field: 'servos, 12 V LED dimming through MOSFETs, PWM fans'.",
+   "why": "The PCA9685 PWM frequency is programmable from a typical 24 Hz to 1526 Hz (https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf). Four-wire PC and server fans expect 25 kHz, with an operational range of 21 to 28 kHz (Intel 4-Wire PWM Controlled Fans specification, https://www.konilabs.net/docs/standards/fan/intel_4wire_pwm_fans_specs_rev1_2.pdf). The PCA9685 also has no tach input, and the board has no free GPIO to read one.",
+   "correction": "For rack or cabinet fans, use an EMC2101 breakout (Adafruit 4808, default address 0x4C). It has programmable PWM from a 360 kHz base clock, a tach input and temperature sensing (https://www.adafruit.com/product/4808 , https://raw.githubusercontent.com/adafruit/Adafruit_EMC2101/master/Adafruit_EMC2101.h , https://esphome.io/components/emc2101/). 0x4C falls inside the INA219 and INA226 strap range (0x40 to 0x4F) and the SC16IS752 range (0x48 to 0x57). Keep the PCA9685 for servos and LED dimming."
+  },
+  {
+   "claim": "Catalog SC16IS752 item, conflicts field: 'Overlaps ADS1115 0x48 to 0x4B', with no on-board clash listed.",
+   "why": "The SC16IS752 strap table covers 0x48 to 0x57. A1 = SCL with A0 = VSS gives 8-bit 0xA2, which is 7-bit 0x51, the on-board PCF85063 RTC (https://www.nxp.com/docs/en/data-sheet/SC16IS752_SC16IS762.pdf).",
+   "correction": "Add 'never A1 = SCL with A0 = VSS (0x51, on-board RTC)' to the item's conflicts. The buses lane already flagged 0x51 for the LD2410 bridge. The same range also holds an EMC2101 at 0x4C."
+  },
+  {
+   "claim": "Catalog USB device classes item, difficulty field: NCM Ethernet over USB is 'driver only' (it cites the ESP-IDF tusb_ncm example).",
+   "why": "Arduino core 3.3.8 builds TinyUSB with CONFIG_TINYUSB_NCM_ENABLED, but it ships only weak stubs (tud_network_recv_cb returns false, tud_network_xmit_cb returns 0). There is no NCM descriptor and no lwIP netif glue (https://raw.githubusercontent.com/espressif/arduino-esp32/master/cores/esp32/esp32-hal-tinyusb.c). The core's USB library has HID, MIDI, Vendor and AudioCard classes but no network class. esp_tinyusb, which the cited IDF example depends on, is not in the core's component manifest (https://raw.githubusercontent.com/espressif/arduino-esp32/master/idf_component.yml).",
+   "correction": "Rate NCM 'hard'. Either write the descriptor and the netif glue against the TinyUSB callbacks, or move to a pioarduino hybrid build that adds esp_tinyusb (https://github.com/pioarduino/sdkconfig). HID keys and MSC really are 'driver only', because the core has those classes."
+  },
+  {
+   "claim": "Catalog USB host item, difficulty field: USB host with a CH340, CP2102 or FT232 adapter is 'driver only' through usb_host_cdc_acm and its VCP drivers.",
+   "why": "The core includes the base USB Host library: the installed esp32s3 libraries define CONFIG_USB_HOST_* and ship usb/usb_host.h. It includes no host class drivers. usb_host_cdc_acm and the VCP drivers are ESP Component Registry components (https://components.espressif.com/components/espressif/usb_host_cdc_acm) that are missing from the core's manifest (https://raw.githubusercontent.com/espressif/arduino-esp32/master/idf_component.yml). Using them needs a pioarduino hybrid build or vendored sources. On top of that come the board limits the catalog already lists: VBUS is live only when the board is fed from H4 VIN, an OTG adapter is required, and the console moves off USB.",
+   "correction": "Rate it 'hard'. For UART-only parts, prefer the SC16IS752 bridge or a TTL-to-RS485 converter. Keep USB host for HID keyboards or barcode scanners on a VIN-powered install."
+  },
+  {
+   "claim": "Catalog Wi-Fi host link item (difficulty 'driver only'; mitigations listed as RGB bounce buffers, CONFIG_SPIRAM_FETCH_INSTRUCTIONS plus CONFIG_SPIRAM_RODATA, and Wi-Fi and LWIP buffers in internal RAM), and the radio lane's claim that keeping Wi-Fi and lwIP buffers internal avoids PSRAM pressure.",
+   "why": "Sketch code cannot reach these mitigations on this toolchain. The installed pioarduino 55.03.38-1 file ~/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/qio_opi/include/sdkconfig.h sets CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP (so Wi-Fi and lwIP buffers may be placed in PSRAM) and CONFIG_LCD_RGB_RESTART_IN_VSYNC, and it does not enable XIP from PSRAM. Espressif's lib-builder config agrees: CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y, CONFIG_LCD_RGB_RESTART_IN_VSYNC=y, CONFIG_LCD_RGB_ISR_IRAM_SAFE not set (https://raw.githubusercontent.com/espressif/esp32-arduino-lib-builder/master/configs/defconfig.esp32s3). Espressif's RGB LCD guide says 'The LCD CANNOT function if the external memory cache is disabled, such as during OTA or NVS writes', and it recommends CONFIG_SPIRAM_XIP_FROM_PSRAM (https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/lcd/rgb_lcd.html). The ESP FAQ names flash writes 'via Wi-Fi, OTA, Bluetooth LE' as a drift cause and marks RESTART_IN_VSYNC '(Not Recommended)' (https://docs.espressif.com/projects/esp-faq/en/latest/software-framework/peripherals/lcd.html).",
+   "correction": "The socket itself is driver-only. The tearing fixes are a build change: a pioarduino hybrid build whose custom_sdkconfig sets CONFIG_SPIRAM_XIP_FROM_PSRAM=y (the current name for the FETCH_INSTRUCTIONS plus RODATA pair) and CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=n, and reviews CONFIG_LCD_RGB_ISR_IRAM_SAFE and RESTART_IN_VSYNC per the IDF RGB LCD guide (https://github.com/pioarduino/sdkconfig). Until then, expect OTA pushes, Wi-Fi credential saves and BLE bond writes to disturb the panel. Dim the backlight around them and call WiFi.persistent(false). The bounce buffer itself works today: it is bounce_buffer_size_px, the last Arduino_ESP32RGBPanel constructor argument (https://raw.githubusercontent.com/moononournation/Arduino_GFX/master/src/databus/Arduino_ESP32RGBPanel.h)."
+  },
+  {
+   "claim": "Radio lane: NimBLE-Arduino issue #1187 (open) corrupts bonded re-authentication whenever scan results are stored or onResult fires, directly threatens the bonded tray-daemon link, and only a scan that discards results is proven safe.",
+   "why": "#1187 is a single report with no maintainer reply, no reproduction and no linked fix. It was filed on a classic ESP32 Dev Module running Arduino core 2.0.17 (ESP-IDF 4.4.7) with NimBLE-Arduino 2.5.1, and the scan runs before the server starts advertising (https://github.com/h2zero/NimBLE-Arduino/issues/1187). This hub is an ESP32-S3 on core 3.3.8 (IDF 5.5). Its lcd_4 env also compiles scanning out entirely, with CONFIG_BT_NIMBLE_ROLE_OBSERVER=0 and CONFIG_BT_NIMBLE_ROLE_CENTRAL=0 (https://github.com/ChalulaBottle/Clawdmeter/blob/port/waveshare-lcd-4/firmware/platformio.ini).",
+   "correction": "Treat #1187 as a regression test to run on this board, not as a known defect of this stack. The concrete blocker for the BLE sensor and scanner items is the build flag: per NimBLE-Arduino's nimconfig.h, enabling the observer role costs about 26 kB of flash (https://raw.githubusercontent.com/h2zero/NimBLE-Arduino/master/src/nimconfig.h)."
+  },
+  {
+   "claim": "Buses lane H3 item, enables field: the 5V position enables '5 V I2C modules without their own level shifter'.",
+   "why": "M1 (NDC7002N) has both gates on I2C_VCC. Its sources S1 and S2 are on the header nets D_SDA and D_SCL, pulled up to I2C_VCC by R60 and R64. Its drains are on the ESP-side SDA and SCL, pulled up to 3V3 by R61 and R62 (KEY block, https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). With I2C_VCC at 5 V, the N-FET body diodes, which conduct from source to drain, are forward biased from the 5 V header pull-ups into the 3.3 V bus. With 4.7K on each side and about a 0.5 V diode drop, the ESP-side idle level works out near 3.9 V (derived, not measured). That is above the ESP32-S3 VIH maximum of VDD + 0.3 V (https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf), and the CH32, RTC and GT911 see the same level.",
+   "correction": "Keep H3 at 3V3. Parts that need a 5 V supply (SEN5x, HC-SR501, 5 V M5 units) should get a separate 5 V feed while their I2C runs at 3.3 V levels; the SEN5x accepts that (VIH min 2.31 V). If the factory H3 position is unknown, measure SDA at R61 before connecting anything."
+  },
+  {
+   "claim": "Compile lane microSD logger item: runs on 'shared SPI SCK GPIO2, MOSI GPIO1, MISO GPIO4, CS via CH32 EXIO4' with the SD or SdFat library over SPI.",
+   "why": "The Arduino SD library over SPI expects the chip select on a GPIO. On V4, DAT3 and CS sit on CH32 EXIO4 behind I2C. Waveshare's V4 demo mounts the card as 1-bit SDMMC with SD_MMC.setPins(2, 1, 4) followed by SD_MMC.begin(\"/sdcard\", true) (https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/10_LVGL_SD/10_LVGL_SD.ino).",
+   "correction": "Use SD_MMC in 1-bit mode on CLK 2, CMD 1 and D0 4, mounted after panel init with LCD_CS (GPIO42) held high. Batch the writes and keep DMA buffers in internal RAM."
+  },
+  {
+   "claim": "Compile lane GNSS item: NMEA over UART on 'the RS485/UART header (GPIO43/44)', where RS485 'contends with GNSS for the one exposed UART header'.",
+   "why": "V4 has no TTL UART header. GPIO43 (net TX0) is driven by the SP3485 RO output, and GPIO44 (net RX0) feeds DI and the auto-direction buffer. The pair leaves the board only as RS485 A and B on H4 and as test pads P4 and P5 on the same nets (485 block and IO table, https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). Waveshare's V4 RS485 demo uses TX 44 and RX 43 (https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/13_RS485/13_RS485.ino). A TTL GNSS wired to P4 would fight RO.",
+   "correction": "Put GNSS on the I2C header as a u-blox DDC receiver at 0x42, which is already the catalog's item (https://github.com/sparkfun/SparkFun_u-blox_GNSS_v3). Alternatives are a receiver behind an SC16IS752 or a point-to-point RS485 device. RS485 and GNSS are not competing for a header."
+  },
+  {
+   "claim": "Catalog OBD-II and home-battery BMS items (difficulty 'driver only') and the buses lane CAN item (difficulty 'plug-in').",
+   "why": "CAN RX lands on GPIO0, and the IO0 pull-up R63 and C39 are not fitted (KEY and CAN blocks, https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). The TJA1051T/3 RXD pin is actively driven to VIO or ground (https://www.nxp.com/docs/en/data-sheet/TJA1051.pdf ; https://community.nxp.com/t5/Other-NXP-Products/NXP-CAN-Transceiver-TJA1051-RXD-pin-s-VOH-and-VOL-are-not-clear/m-p/1534677). Espressif: 'The ESP32-S3 will enter the serial bootloader when GPIO0 is held low on reset' (https://docs.espressif.com/projects/esptool/en/latest/esp32s3/advanced-topics/boot-mode-selection.html). On a loaded bus, such as a car at 500 kbit/s, a dominant bit at the strap sample boots the hub into the ROM downloader, and no firmware change can fix a strap sample.",
+   "correction": "Rate CAN on a live, busy bus as 'hardware-mod' (gate or buffer the RXD net during reset), or accept occasional download-mode boots. A quiet lab bus stays plug-in. The catalog's conflicts text already names download mode; this corrects only the difficulty field."
+  },
+  {
+   "claim": "Task premise: the shared I2C bus carries an SW6106 charger at 0x3C. Compile lane repeats it: 'battery via PH2.0 to SW6106' and 'reserved addresses ... SW6106 0x3C'.",
+   "why": "The V4.0 schematic charger is U4 ETA6098: VIN on USB0_5V, STAT (pin 9) on net 'change' through R12 0R to CH32 EXIO0, ISET R13 82K, SW and BATS to B+. The ETA6098 pin table is IN, PMID, PGND, NC, SW, BATS, AGND, ISET, STAT, with no SDA or SCL. SW6106 at 0x3C appears only in V1 to V3 material (wiki resource list and FAQ 'write 0x0A to the 0x38 register of the 0x3C device', V2 demo SW6106_Light_load). The operator's own V4 scan returns only 0x24 and 0x51. Sources: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://www.eta-semi.com/wp-content/uploads/2022/03/ETA6098_V1.1.pdf ; https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4 ; https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4_democode_V2.zip",
+   "correction": "V4 uses an ETA6098 standalone charger with no I2C. Charge status is EXIO0 (STAT is open drain: low while charging, high impedance when done). V4 bus addresses are 0x24 (CH32V003), 0x51 (PCF85063) and 0x5D or 0x14 (GT911, Touch SKU only); 0x3C and 0x20 are free. The plan file Temp Clawdmeter/plans/waveshare-lcd-4-port.md line 116 carries the same V1 to V3 error."
+  },
+  {
+   "claim": "Task premise: 'ESP GPIO16 = SYS_OUT power latch (never drive)'.",
+   "why": "Schematic key block: SYS_OUT (IO16 in the IO table) has R22 10K pull-up to VCC3V3 and is pulled low by Key1 through D12 (RB521S-30). Key1 also pulls the gate of Q4 (AO3401, Boost_5V to VBAT_5V) low through D13, and the latch is T1 (BSS138LT1G) driven from SYS_EN through R46 1K. The wiki FAQ says: 'Key1 can now pull SYS_OUT low. The system detects single presses, multiple presses, and long presses of SYS_OUT ... the system can set SYS_EN low to disconnect the battery power.' Sources: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4 (FAQ 'How to power the development board continuously using a lithium battery?')",
+   "correction": "GPIO16 is the PWRKEY sense input, active low, with an external 10K pull-up. The power latch is CH32 EXIO5 SYS_EN. Keep GPIO16 an input: driving it low cannot change power (D12 blocks) but masks presses, and driving it high while PWRKEY is held sources current through D12 and the key into GND."
+  },
+  {
+   "claim": "Task premise: 'PWRKEY goes to the power chip'.",
+   "why": "On V4, Key1 (PWRKEY) reaches no IC. It drives the gate of discrete P-FET Q4 through D13 (R44 10K gate pull-up to Boost_5V) and drives SYS_OUT or GPIO16 through D12. A key input on a power IC was the V1 to V3 SW6106 design (wiki FAQ: 'battery function (SW6106 scheme) and power-on function (Mos)'). Sources: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4",
+   "correction": "PWRKEY starts the discrete latch (Q4 through D13) and is sensed on GPIO16 (through D12). Firmware keeps power on with SYS_EN (EXIO5) through T1."
+  },
+  {
+   "claim": "Buses lane: U10 QMI8658 has 'SA0 to GND (address 0x6A)'; the occupied-address list says '0x6A only if U10 is ever populated'; the U10 item says 'Adds 0x6A to the bus'.",
+   "why": "The schematic ties U10 pin 1 SDO/SA0 to GND. QMI8658A datasheet Table 3: 'If SA0 = 0, I2C / I3C address = 0x6B; If SA0 = 1, I2C / I3C address = 0x6A' (section 16.3.1 says the same). SensorLib defines QMI8658_L_SLAVE_ADDRESS 0x6B and QMI8658_H_SLAVE_ADDRESS 0x6A. The catalog lane's 0x6B is right. Sources: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf ; https://github.com/lewisxhe/SensorLib/blob/master/src/SensorQMI8658.hpp",
+   "correction": "A fitted U10 answers at 0x6B. Occupied addresses: 0x24, 0x51, 0x5D or 0x14, plus 0x6B only if U10 is populated."
+  },
+  {
+   "claim": "Catalog lane: 'BAT1 header ... feeds the PCF85063 through a B5819WS diode'.",
+   "why": "In the schematic RTC block, BAT1 pin 1 connects directly to the PCF85063 VDD node (pin 10) and pin 2 to GND. D2 B5819WS runs from VCC3V3 (anode) to that node (cathode). Source: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf",
+   "correction": "The diode is in the 3V3 feed, not in the cell path. The cell connects straight to RTC VDD and is float-charged from VCC3V3 through D2 with no series resistor, which fits the wiki and product page note that only rechargeable RTC cells are supported. The buses lane's description is the correct one."
+  },
+  {
+   "claim": "Catalog lane: the RS485 protection includes 'PTC fuses F1 and F2'.",
+   "why": "The V4.0 schematic draws F1 and F2 as generic fuse symbols in series with A and B. The text layer carries only the designators, with no value or part number, and neither the wiki nor the V4 repo calls them resettable. Source: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf (485 block)",
+   "correction": "Describe them as series fuses F1 and F2, type not specified on the V4.0 schematic."
+  },
+  {
+   "claim": "Compile lane: '43/44 are default UART0; contends with GNSS for the one exposed UART header' and 'GNSS / satellite feed page: NMEA over UART on the RS485/UART header (GPIO43/44)'.",
+   "why": "V4 has no UART header. Module pin 37 TXD0 (GPIO43) is net TX0, which is the SP3485 RO output (R70 4.7K pull-up) and is driven whenever the transceiver is receiving. Pin 36 RXD0 (GPIO44) is net RX0 into SP3485 DI and the SN74LVC1G125 auto-direction buffer. The only other access is the test pads P4 (ESP_TXD through R56 0R) and P5 (ESP_RXD through R66 0R), which sit on the same nets. The product page comparison table marks UART as '-'. Sources: https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf (pin 36 RXD0 is GPIO44, pin 37 TXD0 is GPIO43) ; https://www.waveshare.com/esp32-s3-touch-lcd-4.htm",
+   "correction": "A TTL GNSS cannot share GPIO43 or GPIO44 unless U7 is removed. Use a u-blox GNSS over I2C (DDC address 0x42) on H4 pins 7 to 10, an SC16IS752 bridge, a TTL-to-RS485 converter on H4 pins 3 and 4, USB host, or a satellite."
+  },
+  {
+   "claim": "Buses lane open question: 'the V4 IDF example leaves EXIO4 untouched', unlike the Arduino helper, which writes DIR 0xFF and OUT 0x2A and drives EXIO4 (DAT3) low.",
+   "why": "The IDF examples use waveshare/custom_io_expander_ch32v003 2.0.0. Its constructor calls reset(), which writes DIR (reg 0x02) = 0xFF and OUT (reg 0x03) = 0x00. The component sets flags.dir_out_bit_zero = 0, so a 1 in DIR means output (esp_io_expander.h). 02_SD_Test then only sets EXIO1, 3, 5 and 6 as outputs and EXIO7 as input, so EXIO4 stays an output driven low, the same as in the Arduino WS_CH32_IO path. Sources: https://components.espressif.com/components/waveshare/custom_io_expander_ch32v003 (v2.0.0 custom_io_expander_ch32v003.c, reset()) ; https://github.com/espressif/esp-bsp/blob/master/components/io_expander/esp_io_expander/include/esp_io_expander.h ; https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/02_SD_Test/main/sd_card_example_main.c ; https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/libraries/WS_CH32_IO/src/WS_CH32_IO.cpp",
+   "correction": "Both V4 example paths leave EXIO0 (charger STAT), EXIO2 (GT911 INT) and EXIO4 (SD DAT3) as outputs driven low, so the question of DAT3 being low at CMD0 applies to IDF and Arduino alike. The operator's own probe, where DIR 0xFB made bit 2 readable, agrees that 1 means output."
+  }
+ ],
+ "gaps": [
+  "The lane's own headline recommendation - sniff Wi-Fi promiscuously and report over the bonded BLE link - lands on the coexist matrix's 'Sniffer RX' row, rated C1 = 'supported but the performance is unstable' against BLE Scan/Advertising/Connected. So 'report over BLE instead' is NOT a clean escape; that exact combination is Espressif-rated unstable and must be bench-measured on this unit. https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/coexist.html",
+  "The lane's open question 'does pioarduino ship XIP-from-PSRAM enabled?' is answerable and the answer is adverse: esp32-arduino-lib-builder's S3 defconfigs do NOT set CONFIG_SPIRAM_XIP_FROM_PSRAM / FETCH_INSTRUCTIONS / RODATA anywhere (checked defconfig.esp32s3, defconfig.common, opi, opi_ram, 80m, 120m, 200m, 16m). So the stock precompiled Arduino/pioarduino S3 libs ship the documented tearing fix OFF; enabling it needs a custom lib build (or a pioarduino sdkconfig override if supported). CONFIG_LCD_RGB_RESTART_IN_VSYNC=y IS set by default, but that only auto-recovers after a drift, it does not prevent the stall. Definitive check: read sdkconfig in the installed framework package. https://github.com/espressif/esp32-arduino-lib-builder/blob/master/configs/defconfig.esp32s3",
+  "#593 (the ~400-device crash the lane cites) is a heap-exhaustion failure in a memory-starved classic-ESP32 app (~50KB heap, running Firebase+Blynk); the maintainer speculated 'a heap issue ... or possibly watchdog' and the user fixed it by raising heap and disabling active scan. It is orthogonal to #1187's bonded-reauth bug - conflating the two to argue 'scanning must be scheduled' mixes unrelated causes. On the S3 (8 MB PSRAM, ample heap) the result-accumulation crash is far less likely, though setMaxResults(0) remains good practice. https://github.com/h2zero/NimBLE-Arduino/discussions/593",
+  "No official ESP32 remote-capture (PCAP-NG) datasource exists for Kismet, and LyndLabs delivers over SERIAL to a host script that calls the API - the ESP32 does not POST to Kismet directly. Either the Wi-Fi or BLE path needs a host-side component, which is consistent with the project's LAN-host architecture but should be scoped as host work, not board work. https://github.com/LyndLabs/Kismet-ESP32",
+  "Not resolvable from radio docs and left genuinely open: the V4 antenna type (PCB trace vs IPEX/u.FL) - this comes from the schematic/mechanical drawing, not any Espressif API source, and it materially affects both scanners' RSSI/range behind the 4-inch LCD in an enclosure. Flag for the schematic lane, not the radio lane.",
+  "PWRKEY on GPIO16 as the main UI button. It is a readable active-low input with no power-path effect once SYS_EN holds Q4 (key and latch block and IO table, https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). Moving the short and long presses from BOOT to GPIO16 removes the phantom-press conflict with CAN RX on GPIO0 that every lane flagged, which debounce cannot fully cure. It also gives the hub an input while touch is dead.",
+  "ESD protection on the I2C header. The V4.0 schematic puts TVS parts on VIN (SMAJ40CA), RS485 (SMF12CA, SMF6.5CA and a GDT), CAN (SM24CANB) and USB VBUS (LTVS16H5.0ET5G), but none on D_SDA or D_SCL (https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf). A positive transient on H4 pins 9 and 10 passes through M1's body diodes into the bus that carries the CH32 power latch, the RTC and touch. Add a low-capacitance ESD array at H4 before running I2C out of the enclosure, or carry long runs on RS485 or a differential I2C extender.",
+  "Particulate and all-in-one air-quality sensors are missing from the catalog. Adafruit PMSA003I: I2C 0x12 fixed, runs from 3 to 5 V (https://www.adafruit.com/product/4632), slow to initialise on an ESP32 cold boot (https://github.com/esphome/issues/issues/6031). Sensirion SEN66: default 0x6B, 3.3 V, up to 350 mA peak, external supply recommended (https://github.com/Sensirion/arduino-i2c-sen66); it collides with U10 or an SA0-low QMI8658. Sensirion SEN54 and SEN55: 0x69, 5 V VDD, I2C limited to 100 kbit/s standard mode (https://sensirion.com/media/documents/6791EFA0/62A1F68F/Sensirion_Datasheet_Environmental_Node_SEN5x.pdf); they need a separate 5 V feed with H3 kept at 3V3, and they drag the shared bus down to 100 kHz.",
+  "Battery percentage. V4 measures battery voltage only. A MAX17048 fuel gauge (Adafruit breakout at 0x36, with pass-through JST PH battery ports; https://learn.adafruit.com/adafruit-max17048-lipoly-liion-fuel-gauge-and-battery-monitor/pinouts), wired between the cell and J1, adds state of charge. It collides with the seesaw encoder's default 0x36, so jumper the encoder to 0x37 or above, and check PH2.0 polarity against J1's silkscreen first.",
+  "Bus-speed floor. Any part limited to 100 kHz, or one that stretches the clock, slows the 400 kHz bus that carries touch and the CH32's backlight and SYS_EN writes. Touch INT is read through the CH32, so each touch poll already costs several transactions. The SEN5x tops out at 100 kbit/s. The SCD30 tops out at 100 kHz (50 kHz recommended) and stretches the clock for tens of ms, up to 150 ms once a day (https://sensirion.com/media/documents/D7CEEF4A/6165372F/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf). Put such parts on a satellite, or (inferred) on the second I2C controller routed to GPIO1 and GPIO2 through the TF slot, at the cost of the card.",
+  "Wired Ethernet and PoE. arduino-esp32 supports SPI Ethernet on the S3, but its W5500 example needs CS, IRQ, RST, SCK, MISO and MOSI (https://raw.githubusercontent.com/espressif/arduino-esp32/master/libraries/Ethernet/examples/ETH_W5500_Arduino_SPI/ETH_W5500_Arduino_SPI.ino), and V4 has no free GPIO. PoE can only supply power, through a splitter's 12 V into H4 VIN. A wired data link would have to be USB NCM to the host, which is hard (see refuted).",
+  "Matter over Wi-Fi ships in core 3.3.8 but conflicts with this build. Espressif's docs say Matter owns the BLE host and must not share a sketch with another BLE library, which rules it out next to the bonded NimBLE-Arduino link. It also needs a 3 MB app partition and places its data model in PSRAM beside the scanout (https://docs.espressif.com/projects/arduino-esp32/en/latest/matter/matter.html). Fabric credentials on the device also cut against 'host decides'. Expose hub entities through the host (Home Assistant) instead.",
+  "Host-side home-lab pages the catalog leaves out: UPS state through NUT (https://networkupstools.org/), service health through Uptime Kuma (https://github.com/louislam/uptime-kuma), Proxmox node and guest state (https://pve.proxmox.com/wiki/Proxmox_VE_API), and Z-Wave through a Home Assistant Connect ZWA-2 on the host (800 series with Long Range, USB-C, 69 USD; https://www.home-assistant.io/connect/zwa-2/). All are host adapters that render pages, so nothing new lands on the board.",
+  "Camera snapshots from Frigate or a doorbell. The S3 has no JPEG hardware, and esp_jpeg takes about 46 to 68 ms to decode a 320x180 frame on the S3 at 240 MHz (https://components.espressif.com/components/espressif/esp_jpeg). A full 480x480 still therefore costs roughly 0.2 to 0.3 s of CPU (derived), plus PSRAM writes beside the scanout. Have the host fetch latest.jpg at the panel height (https://docs.frigate.video/integrations/api/latest-frame-camera-name-latest-extension-get/) and send small JPEGs or RGB565 tiles at a low rate.",
+  "Utility-meter pulse counting (S0 kWh outputs, water or gas reed contacts) needs a GPIO the pulse counter (PCNT) can use, and polling a PCF8574 can miss short pulses. Use a pulse_counter on an ESPHome satellite (https://esphome.io/components/sensor/pulse_counter.html), or a Modbus meter on RS485.",
+  "Protecting the device token. The stock libraries enable neither NVS encryption nor flash encryption. The S3 supports HMAC-based NVS encryption without flash encryption (https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/storage/nvs_encryption.html). It needs a hybrid build and an irreversible eFuse key burn, which should be logged per the operator's change-log rule. Token rotations are NVS writes, so until XIP from PSRAM is on they also disturb the panel.",
+  "IDF console on GPIO43, extending the buses lane's open question. The stock sdkconfig keeps the ESP-IDF console on UART0 (CONFIG_ESP_CONSOLE_UART_DEFAULT, UART_NUM 0, with USB-Serial-JTAG also enabled; https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/stdio.html). So besides the ROM banner, any IDF log line printed before RS485 init drives GPIO43 against the SP3485 RO output. Claim GPIO43 as UART1 RX early in setup, or move the console to USB-Serial-JTAG in a hybrid build.",
+  "Test item: Waveshare's own V4 init pulses SYS_EN (EXIO5) low. The component's reset() writes OUT 0x00 when the driver is created. The IDF ioexpander flow drives SYS_EN, LCD_RST, TP_RST and BEE_EN low for 200 ms, and WS_CH32_IO::begin writes OUT 0x00, waits 200 ms, then writes 0x2A. The battery example 14_LVGL_BatteryVoltage uses that same begin(). On battery, the schematic holds Q4 on only through T1 from SYS_EN, so this pulse conflicts with the premise's 'never clear SYS_EN'. Whether it really drops power (the CH32 firmware may protect bit 5, or hold-up capacitance may ride through) is unverified. Test on battery with PWRKEY released before copying either sequence, and keep bit 5 at 1 in the port regardless. https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/esp-idf/ioexpander/README.md ; https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/libraries/WS_CH32_IO/src/WS_CH32_IO.cpp ; https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4/blob/main/examples/arduino/14_LVGL_BatteryVoltage/14_LVGL_BatteryVoltage.ino ; https://components.espressif.com/components/waveshare/custom_io_expander_ch32v003",
+  "The rail called '5V' is not 5.0 V. It feeds H3 pin 3, the TJA1051 VCC and the backlight boost. On USB it is USB0_5V minus the D1 MBR230LSFT1G Schottky drop; on battery it is Boost_5V through Q4 and Q2. The TJA1051 needs VCC of 4.5 to 5.5 V and cuts off at 3.5 to 4.5 V, so CAN on a weak USB port is marginal, and I2C_VCC set to 5V sits below 5 V. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://files.waveshare.com/wiki/common/TJA1051.pdf",
+  "The charge current can be read off the parts: R13 is 82 kOhm, and the ETA6098 table gives RISET 82 kOhm = 2 A fast charge (150 kOhm = 1.2 A). A small LiPo pack will be charged at up to 2 A. The buses lane left this as 'value not derived'. https://www.eta-semi.com/wp-content/uploads/2022/03/ETA6098_V1.1.pdf ; https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf",
+  "The GT911 address is set by EXIO2 (TP_INT) at TP_RST release. The datasheet timing figures (pages 10 and 11) show INT high at the reset rising edge selecting 0x28/0x29 (0x14), INT low selecting 0xBA/0xBB (0x5D), and INT released to a floating input after more than 50 ms. Both V4 example paths leave EXIO2 as an output driven low, so expect 0x5D, with INT then held low against the GT911's own output. Firmware should clear DIR bit 2 after reset. https://files.waveshare.com/wiki/common/GT911_EN_Datasheet.pdf ; https://components.espressif.com/components/waveshare/custom_io_expander_ch32v003",
+  "The schematic IO table is drawn with wires and net labels, so it is electrically live; RS485_TX and RS485_RX exist only there. Anyone reading 'GPIO43 RS485_TX' should know GPIO43 is net TX0, which the SP3485 RO drives into the ESP. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf",
+  "Answer to the radio lane's antenna question: U9 is ESP32-S3-WROOM-1-N16R8, the PCB-antenna variant (WROOM-1U is the u.FL one). The V4.0 schematic has no antenna-select resistor or u.FL connector, and the product page says 'With Onboard Antenna'. The wiki line 'Switches to use external antenna via resoldering the resistor' is listed under the Micro SD slot entry and matches nothing on V4. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf ; https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf ; https://www.waveshare.com/esp32-s3-touch-lcd-4.htm",
+  "RS485 turnaround: the RC is confirmed (R75 200K, C56 1nF, tau 200 us, D14 for fast discharge), but Q6 has no part number on the schematic. The release time is tau x ln(3.3 / (3.3 - Vth)), about 72 us at a 1 V threshold and about 186 us at 2 V, which is wider than the lane's 130 to 200 us. At 115200 baud, a threshold of 1 V or more puts the release in the stop bit at the earliest; a 0.8 V part would release at about 56 us, inside a byte of 1 bits. Bench-measure it. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf",
+  "On a mixed classic and FD CAN bus, the ESP32-S3 TWAI 'will interpret [FD] frames as errors', so the hub will send error frames unless it is in listen-only. The TJA1051T/3 has no EN or standby pin, so silence can only come from the controller. https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/twai.html ; https://files.waveshare.com/wiki/common/TJA1051.pdf",
+  "The durable plan Temp Clawdmeter/plans/waveshare-lcd-4-port.md still says 'Touch: GT911, INT GPIO16' (line 98) and 'Battery: SW6106 charger @0x3C' (line 116). These are V1 to V3 facts that the task premise inherited. On V4, TP_INT is EXIO2 and the charger is ETA6098. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4%20V4.0.pdf"
+ ]
+}
