@@ -192,20 +192,25 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
   <main>
     <p class="kick">Creatures in the works</p>
     <h2>New animations for the splash</h2>
-    <p class="muted" style="max-width:70ch">The splash plays 20 by 20 pixel-art creatures. The device ships with 18; these are the first ones drawn for the ECHO edition, benched side by side on one clock so they can be judged in motion and exported straight into the firmware's format.</p>
-    <div class="grid3" style="margin-top:22px">
-      <figure class="media" style="margin:0">
-        <img src="media/anims/idle_blink.png" width="240" height="240" alt="Stock Clawd, idle blink, frame 0">
-        <figcaption>Stock Clawd · idle blink. The reference; every new creature has to read as this animal.</figcaption>
-      </figure>
-      <figure class="media" style="margin:0">
-        <img src="media/anims/idle_coffee.png" width="240" height="240" alt="Clawd holding a mug of coffee with steam, frame 0">
-        <figcaption>Clawd · coffee. Mug in the right hand, steam at rest, a sip every six seconds.</figcaption>
-      </figure>
-      <figure class="media" style="margin:0">
-        <img src="media/anims/echo_idle.png" width="240" height="240" alt="The ECHO creature: deep teal body, teal visor, antenna, frame 0">
-        <figcaption>ECHO creature · idle. Clawd's silhouette in ECHO's tokens, a pinging antenna, one glitch split per cycle.</figcaption>
-      </figure>
+    <p class="muted" style="max-width:70ch">The splash plays 20 by 20 pixel-art creatures. The device ships with 18; these are the ones drawn for the ECHO edition, benched side by side on one clock, exported straight into the firmware's format, and listed here with where each one stands. The GIFs loop at the real holds.</p>
+    <!-- Progress board. State words: ON DEVICE = compiled into the firmware and seen on the panel;
+         IN ROTATION = also listed in the splash's usage-rate groups; BENCH = exists on the bench only. -->
+    <div class="tiles" style="margin-top:22px" id="creatures">
+      <figure class="media" style="margin:0"><img src="media/anims/idle_coffee.gif" width="240" height="240" alt="Clawd holding a mug of coffee"><figcaption><b>coffee</b><span class="state live">On device</span><br>Clawd with a mug. Steam at rest, a sip every six seconds.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_idle.gif" width="240" height="240" alt="The ECHO creature idle"><figcaption><b>echo idle</b><span class="state live">On device</span><br>The ECHO creature. Antenna ping, one glitch split per cycle.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_breathe.gif" width="240" height="240" alt="ECHO creature breathing"><figcaption><b>echo breathe</b><span class="state pending">Bench</span><br>Stock breathe with the ECHO skin, chest spinner.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_look_around.gif" width="240" height="240" alt="ECHO creature looking around"><figcaption><b>echo look around</b><span class="state pending">Bench</span><br>Stock look-around, skinned.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_wink.gif" width="240" height="240" alt="ECHO creature winking"><figcaption><b>echo wink</b><span class="state pending">Bench</span><br>Stock wink, skinned.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_surprise.gif" width="240" height="240" alt="ECHO creature surprised"><figcaption><b>echo surprise</b><span class="state pending">Bench</span><br>Stock surprise, skinned.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_sleep.gif" width="240" height="240" alt="ECHO creature asleep"><figcaption><b>echo sleep</b><span class="state pending">Bench</span><br>Stock sleep, skinned; visor stays lit while the eyes are shut.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_bounce.gif" width="240" height="240" alt="ECHO creature bouncing"><figcaption><b>echo bounce</b><span class="state pending">Bench</span><br>Stock bounce, skinned; the antenna rides the jump.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_sway.gif" width="240" height="240" alt="ECHO creature swaying"><figcaption><b>echo sway</b><span class="state pending">Bench</span><br>Stock sway, skinned.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/anims/echo_think.gif" width="240" height="240" alt="ECHO creature thinking"><figcaption><b>echo think</b><span class="state pending">Bench</span><br>Stock work-think, skinned.</figcaption></figure>
+    </div>
+    <div class="help" style="margin-top:18px">
+      <ul>
+        <li>In the works tonight: a thinking set with spinning and colour-cycling eyes, the Opus and ultracode mode enters with the split into agents, and creature variants per model tier. They appear here as they land on the bench, and the state flips to On device after each flash.</li>
+      </ul>
     </div>
     <div class="erow" style="margin-top:18px">
       <a class="btn cdk cdk-flash" href="bench/animations.html">Open the animation bench</a>

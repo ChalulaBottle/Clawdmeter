@@ -12,5 +12,61 @@
     "category": "Idle",
     "frame_count": 8,
     "palette_size": 7
+  },
+  {
+    "filename": "echo_breathe.html",
+    "name": "echo breathe",
+    "category": "Idle",
+    "frame_count": 16,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_look_around.html",
+    "name": "echo look around",
+    "category": "Idle",
+    "frame_count": 17,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_wink.html",
+    "name": "echo wink",
+    "category": "Idle",
+    "frame_count": 12,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_surprise.html",
+    "name": "echo surprise",
+    "category": "Idle",
+    "frame_count": 12,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_sleep.html",
+    "name": "echo sleep",
+    "category": "Idle",
+    "frame_count": 24,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_bounce.html",
+    "name": "echo bounce",
+    "category": "Active",
+    "frame_count": 16,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_sway.html",
+    "name": "echo sway",
+    "category": "Active",
+    "frame_count": 12,
+    "palette_size": 7
+  },
+  {
+    "filename": "echo_think.html",
+    "name": "echo think",
+    "category": "Idle",
+    "frame_count": 24,
+    "palette_size": 7
   }
 ]

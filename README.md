@@ -15,9 +15,21 @@
 > [docs/bench/animations.html](https://chalulabottle.github.io/Clawdmeter/bench/animations.html),
 > exported with `node tools/bench_to_json.js` into `tools/echo_anims/`):
 >
-> | Stock Clawd · idle blink | Clawd · coffee | ECHO creature · idle |
+> | Stock Clawd · idle blink | Clawd · coffee (on device) | ECHO creature · idle (on device) |
 > |---|---|---|
 > | ![stock](docs/media/anims/idle_blink.gif) | ![coffee](docs/media/anims/idle_coffee.gif) | ![echo](docs/media/anims/echo_idle.gif) |
+>
+> ECHO skin over the stock movements (bench, heading for the firmware):
+>
+> | breathe | look around | wink | surprise |
+> |---|---|---|---|
+> | ![](docs/media/anims/echo_breathe.gif) | ![](docs/media/anims/echo_look_around.gif) | ![](docs/media/anims/echo_wink.gif) | ![](docs/media/anims/echo_surprise.gif) |
+>
+> | sleep | bounce | sway | think |
+> |---|---|---|---|
+> | ![](docs/media/anims/echo_sleep.gif) | ![](docs/media/anims/echo_bounce.gif) | ![](docs/media/anims/echo_sway.gif) | ![](docs/media/anims/echo_think.gif) |
+>
+> Full progress board with states: [chalulabottle.github.io/Clawdmeter#creatures](https://chalulabottle.github.io/Clawdmeter/#creatures).
 >
 > The Clawdmeter itself — the device, the firmware, the board ports, the LVGL
 > work, the BLE service, the animation engine — is
