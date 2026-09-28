@@ -922,53 +922,40 @@
     ],
   };
 
-  // 3x. Using OpenClaw: the operator's multi-agent bot framework, played as a literal claw. The right hand
-  // lowers a claw, clamps a glowing block off the ground, lifts it and pulls it into the chest.
-  // Claw: amber joint (7) two cells wide, a ping-cyan jaw (4) either side, on an arm straight down col 17 from
-  // the hand at (10, 17). It drops from the hand, not out at rows 7..9, because col 16 is the only free column
-  // between the right foot and the block (cols 17..18), so the jaws have to sit at 16 and 19.
-  // The block is used up, so a new one sparks in at the end of the cycle; that keeps the loop clean.
-  function openclawFrame({hub = -1, dc = 0, jaws = 'shut', block = null, rim = 8, flash = false, ping = false} = {}) {
-    const b = echoPing(ping);
-    if (flash) for (let r = 6; r <= 7; r++) for (let c = 6; c <= 14; c++) if (b[r][c] === 3) b[r][c] = 8;   // absorbed: visor flashes
-    if (block) {                                                                          // rim 8, core 4 bottom right: never merges with a jaw
-      const [r, c] = block;
-      set(b, r, c, rim); set(b, r, c + 1, rim); set(b, r + 1, c, rim); set(b, r + 1, c + 1, 4);
-    }
-    if (hub >= 0) {
-      const c0 = 17 + dc;
-      for (let r = 11; r < hub; r++) set(b, r, c0, 1);                                    // the arm, down from the hand
-      set(b, hub, c0, 7); set(b, hub, c0 + 1, 7);                                         // the joint
-      if (jaws === 'shut') { set(b, hub + 1, c0, 4); set(b, hub + 1, c0 + 1, 4); }        // together under the joint
-      if (jaws === 'open') { set(b, hub, c0 - 1, 4); set(b, hub, c0 + 2, 4); }            // spread level with it
-      if (jaws === 'grip') { set(b, hub + 1, c0 - 1, 4); set(b, hub + 1, c0 + 2, 4); }    // down beside the block's top row
-    }
+  // 3x. Using OpenClaw: a small red crab (the operator's multi-agent framework, played as the animal) scuttles
+  // in along the ground, climbs the creature's left side, crosses the top of its head, waves its claws up
+  // there, comes down the right side and leaves. The creature's eyes follow it. Crab: 5 wide, 3 tall: two
+  // raised claws, a body with two ember eyes, three legs; legs and claws alternate to read as scuttling.
+  const CRAB_A = [[0, 0, 7], [0, 4, 7], [1, 1, 8], [1, 2, 7], [1, 3, 8], [2, 0, 7], [2, 2, 7], [2, 4, 7]];
+  const CRAB_B = [[0, 1, 7], [0, 3, 7], [1, 1, 8], [1, 2, 7], [1, 3, 8], [2, 1, 7], [2, 3, 7]];
+  function crabAt(g, r0, c0, phase) {
+    const b = clone(g);
+    for (const [r, c, v] of (phase ? CRAB_B : CRAB_A)) set(b, r0 + r, c0 + c, v);   // painted over whatever is there
     return b;
   }
+  // The eyes slide one cell toward the crab (left, centre or right) without leaving the visor.
+  function eyesToward(g, dir) {
+    const b = clone(g);
+    for (const c of [7, 13]) for (const r of [6, 7]) set(b, r, c, 3);
+    for (const c of [7 + dir, 13 + dir]) for (const r of [6, 7]) set(b, r, c, 2);
+    return b;
+  }
+  // Path of the crab's top-left corner. Ground rows 17..19 (under the feet), left side cols 0..4 over the
+  // arm, top rows 1..3 above the head (the antenna at col 15 gets walked over), right side, off the edge.
+  const CRAB_PATH = [
+    [17, 18, 0], [17, 16, -0], [17, 14, 0], [17, 12, 0], [17, 10, 0], [17, 8, -1], [17, 6, -1], [17, 4, -1], [17, 2, -1],
+    [14, 0, -1], [11, 0, -1], [8, 0, -1], [5, 0, -1], [2, 1, -1],
+    [1, 4, -1], [1, 7, 0], [1, 10, 0], [1, 10, 0], [1, 10, 0], [1, 13, 1],
+    [2, 15, 1], [5, 16, 1], [8, 16, 1], [11, 16, 1], [14, 16, 1], [17, 16, 1], [17, 18, 0],
+  ];
   const echoOpenclaw = {
     name: 'ECHO · openclaw', key: 'echo_openclaw', fwname: 'echo openclaw', category: 'Active',
-    intent: 'Proposal. The hand lowers a claw that opens, clamps a glowing block off the ground, lifts it and pulls it into the chest (the visor flashes as it is absorbed), then the claw retracts and the antenna pings twice; judge whether the claw reads as a claw at 20 cells.',
-    palette: [...echo.palette, '#e0b25a', '#eafffb'],
+    intent: 'Proposal. A small red crab scuttles in, climbs the left side, crosses the top of the head waving its claws, comes down the right side and leaves while the eyes follow it; judge whether it reads as a crab at 20 cells and whether the eye tracking sells it.',
+    palette: [...echo.palette, '#e5443a', '#ffd166'],   // 7 crab red, 8 crab eyes
     frames: [
-      {hold: 1300, grid: openclawFrame({block: [15, 17]})},                                   // a glowing block on the ground
-      {hold: 150,  grid: openclawFrame({hub: 11, block: [15, 17]})},                          // claw out of the hand, shut
-      {hold: 110,  grid: openclawFrame({hub: 12, block: [15, 17]})},
-      {hold: 170,  grid: openclawFrame({hub: 13, jaws: 'open', block: [15, 17]})},            // opens on the way down
-      {hold: 220,  grid: openclawFrame({hub: 14, jaws: 'open', block: [15, 17]})},            // over the block
-      {hold: 360,  grid: openclawFrame({hub: 14, jaws: 'grip', block: [15, 17]})},            // clamps
-      {hold: 130,  grid: openclawFrame({hub: 13, jaws: 'grip', block: [14, 17]})},            // lifts
-      {hold: 130,  grid: openclawFrame({hub: 12, jaws: 'grip', block: [13, 17]})},
-      {hold: 220,  grid: openclawFrame({hub: 11, jaws: 'grip', block: [12, 17]})},
-      {hold: 170,  grid: openclawFrame({hub: 11, dc: -1, jaws: 'grip', block: [12, 16]})},    // pulls it against the chest
-      {hold: 200,  grid: openclawFrame({hub: 11, dc: -1, block: [10, 12]})},                  // in: it glows inside, jaws shut
-      {hold: 120,  grid: openclawFrame({hub: 11, dc: -1, flash: true})},                      // absorbed: one visor flash
-      {hold: 130,  grid: openclawFrame({hub: 11, dc: -1, jaws: 'none'})},                     // claw retracts: joint only
-      {hold: 160,  grid: openclawFrame()},
-      {hold: 140,  grid: openclawFrame({ping: true})}, {hold: 200, grid: openclawFrame()},    // two pings
-      {hold: 140,  grid: openclawFrame({ping: true})},
-      {hold: 1500, grid: openclawFrame()},                                                    // rest
-      {hold: 150,  grid: set(openclawFrame(), 16, 18, 8)},                                    // a new block sparks in
-      {hold: 170,  grid: openclawFrame({block: [15, 17], rim: 4})},
+      {hold: 900, grid: echoPing(false)},
+      ...CRAB_PATH.map(([r, c, dir], i) => ({hold: (r === 1 && c === 10) ? 260 : 170, grid: crabAt(eyesToward(echoPing(i % 6 === 0), dir), r, c, i % 2)})),
+      {hold: 140, grid: echoPing(true)}, {hold: 1100, grid: echoPing(false)},
     ],
   };
 
@@ -978,7 +965,7 @@
   const echoHeadphones = {
     name: 'ECHO · headphones', key: 'echo_headphones', fwname: 'echo headphones', category: 'Idle',
     intent: 'Proposal. Headphones on and the visor goes soft to listen (eyes one row, visor warm), a glitch lands the drop, the body dips a row on four beats with the antenna pinging on each while a note rises out of the right cup, then the eyes open between tracks; judge whether band and cups read as headphones at 20 cells.',
-    palette: [...echo.palette, '#0b3f36', '#eafffb'],   // 7 cup (dark teal), 8 band (flash, also softEyes' warm visor); the note is visor teal (3)
+    palette: [...echo.palette, '#2f5fd6', '#eafffb'],   // 7 cup (blue, as in the reference: reads apart from the teal body), 8 band (flash, also softEyes' warm visor); the note is visor teal (3)
     frames: [],
   };
   {
