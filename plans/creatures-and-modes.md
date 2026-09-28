@@ -16,12 +16,16 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   stats toggle (BoardCaps.pwr_toggles_stats). Device captures in `docs/media/lcd4/*-device.png`, tier
   sheets in `docs/media/sheets/`. Discord pack (120 + 320 px, transparent) in `docs/media/discord/` and
   `Temp Media ECHO/discord/clawdmeter-creatures/`.
-- **Workflow lanes (wf_1929d87d-05a):** three creature lanes landed (`docs/bench/anims_thinking.js`,
-  `anims_modes.js`, `anims_models.js`, committed); firmware/daemon lane edited `data.h`, `main.cpp`,
-  `ui.cpp` (agents count `n`), compiles, NOT yet committed pending its report (tests, daemon state file).
-- **Exact next action:** read the firmware lane's report, commit its changes with the daemon state
-  file + `clawdmeter_state.py`, then wire the activity table (below) into the daemon; ask the operator
-  before touching Claude Code hooks. Then flip the landing board captions to device captures.
+- **Workflow wf_1929d87d-05a DONE (4 lanes, 0 errors):** creature families committed; firmware/daemon
+  lane committed too: payload `n` → `UsageData.agents` → "N AGENTS" tag on the usage screen (480-wide
+  boards only) + splash badge top-left (PSRAM boards), hidden when BLE drops or data is >90 s old;
+  daemon reads `%LOCALAPPDATA%\Clawdmeter\state.json` `{agents, anim, mode}` every tick, pushes at
+  once on mtime change; `daemon/clawdmeter_state.py set|show|clear`; `usage_rate.cpp` ignores samples
+  <50 s apart so pushes don't skew the rate; 133 daemon tests pass. Tray restarted to load it.
+- **Exact next action:** end-to-end check (`clawdmeter_state.py set --agents 3 --anim "two agents"`,
+  watch the badge + creature on the panel), then wire the activity table below into hooks, with the
+  operator's yes for the settings change. Stickers: `tools/sticker.py`, `tools/sticker_neon.py`
+  (`--mug` borrows echo coffee's mug; Fable+coffee sticker shipped).
 - **Pipeline (any new creature):** edit `docs/bench/anims.js` → `node tools/bench_to_json.js` →
   `.venv\Scripts\python.exe tools/add_echo_anims.py` → `pio run … -t upload` → `anim <name>` →
   `screenshot_win.py`. GIFs: `tools/anim_gif.py`. Reference (stock) cells carry `reference: true`
