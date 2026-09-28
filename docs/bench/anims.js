@@ -894,11 +894,191 @@
     ],
   };
 
+  // 3x. Braille eye spin: each eye becomes a 2x3 braille cell (rows 5..7, the visor grown up a row as in
+  // happy eyes) and two adjacent dark dots run clockwise round its six dots, both eyes in step on one glyph.
+  const EYE_SPIN_DOTS = [[0, 0], [0, 1], [1, 1], [2, 1], [2, 0], [1, 0]];   // braille dots 1 4 5 6 3 2: clockwise from top left, the turn of ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+  // Grown visor (rows 5..7, cols 6..14), both cells (cols 6..7 and 13..14) on glyph k: dots k and k + 1 of the ring.
+  // From the bottom pair the eyes show ⠤ ⠆ ⠃ ⠉ ⠘ ⠰ and round again.
+  const eyeSpinFace = (g, k) => {
+    const b = clone(g);
+    for (let r = 5; r <= 7; r++) for (let c = 6; c <= 14; c++) set(b, r, c, 3);
+    for (const c0 of [6, 13]) for (const j of [k, k + 1]) { const [dr, dc] = EYE_SPIN_DOTS[j % 6]; set(b, 5 + dr, c0 + dc, 2); }
+    return b;
+  };
+  // The visor settles back to two rows with the eyes still on the bottom pair.
+  const eyeSpinSettle = g => { const b = eyeSpinFace(g, 3); for (let c = 6; c <= 14; c++) set(b, 5, c, g[5][c]); return b; };
+  const echoEyeSpin = {
+    name: 'ECHO · eye spin', key: 'echo_eye_spin', fwname: 'echo eye spin', category: 'Thinking',
+    intent: 'Proposal. Thinking in braille: after a half blink the visor grows up a row and each eye becomes a 2x3 braille cell whose two dark dots, the eyes in every spin frame, run clockwise like the terminal spinner, both eyes in step on the same glyph, 90 ms a step for two full turns, then the visor settles and a second half blink brings the eyes back with an antenna ping; judge whether the spinning pairs still read as eyes at 20 cells.',
+    palette: echo.palette,
+    frames: [
+      {hold: 2300, grid: echoPing(false)},                                  // rest: plain eyes, antenna tip unlit
+      {hold: 70, grid: echoBlinkFrame(echoPing(false))},                    // half blink
+      {hold: 200, grid: eyeSpinFace(echoPing(false), 3)},                   // visor grows a row, the eyes drop to the bottom pair
+      ...[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(k => ({hold: 90, grid: eyeSpinFace(echoPing(false), k)})),   // twelve steps: two full turns, back on the bottom pair
+      {hold: 200, grid: eyeSpinSettle(echoPing(false))},                    // visor settles
+      {hold: 70, grid: echoBlinkFrame(echoPing(false))},                    // second half blink, the eyes opening
+      {hold: 240, grid: echoPing(true)},                                    // eyes back, antenna ping
+    ],
+  };
+
+  // 3x. Using OpenClaw: the operator's multi-agent bot framework, played as a literal claw. The right hand
+  // lowers a claw, clamps a glowing block off the ground, lifts it and pulls it into the chest.
+  // Claw: amber joint (7) two cells wide, a ping-cyan jaw (4) either side, on an arm straight down col 17 from
+  // the hand at (10, 17). It drops from the hand, not out at rows 7..9, because col 16 is the only free column
+  // between the right foot and the block (cols 17..18), so the jaws have to sit at 16 and 19.
+  // The block is used up, so a new one sparks in at the end of the cycle; that keeps the loop clean.
+  function openclawFrame({hub = -1, dc = 0, jaws = 'shut', block = null, rim = 8, flash = false, ping = false} = {}) {
+    const b = echoPing(ping);
+    if (flash) for (let r = 6; r <= 7; r++) for (let c = 6; c <= 14; c++) if (b[r][c] === 3) b[r][c] = 8;   // absorbed: visor flashes
+    if (block) {                                                                          // rim 8, core 4 bottom right: never merges with a jaw
+      const [r, c] = block;
+      set(b, r, c, rim); set(b, r, c + 1, rim); set(b, r + 1, c, rim); set(b, r + 1, c + 1, 4);
+    }
+    if (hub >= 0) {
+      const c0 = 17 + dc;
+      for (let r = 11; r < hub; r++) set(b, r, c0, 1);                                    // the arm, down from the hand
+      set(b, hub, c0, 7); set(b, hub, c0 + 1, 7);                                         // the joint
+      if (jaws === 'shut') { set(b, hub + 1, c0, 4); set(b, hub + 1, c0 + 1, 4); }        // together under the joint
+      if (jaws === 'open') { set(b, hub, c0 - 1, 4); set(b, hub, c0 + 2, 4); }            // spread level with it
+      if (jaws === 'grip') { set(b, hub + 1, c0 - 1, 4); set(b, hub + 1, c0 + 2, 4); }    // down beside the block's top row
+    }
+    return b;
+  }
+  const echoOpenclaw = {
+    name: 'ECHO · openclaw', key: 'echo_openclaw', fwname: 'echo openclaw', category: 'Active',
+    intent: 'Proposal. The hand lowers a claw that opens, clamps a glowing block off the ground, lifts it and pulls it into the chest (the visor flashes as it is absorbed), then the claw retracts and the antenna pings twice; judge whether the claw reads as a claw at 20 cells.',
+    palette: [...echo.palette, '#e0b25a', '#eafffb'],
+    frames: [
+      {hold: 1300, grid: openclawFrame({block: [15, 17]})},                                   // a glowing block on the ground
+      {hold: 150,  grid: openclawFrame({hub: 11, block: [15, 17]})},                          // claw out of the hand, shut
+      {hold: 110,  grid: openclawFrame({hub: 12, block: [15, 17]})},
+      {hold: 170,  grid: openclawFrame({hub: 13, jaws: 'open', block: [15, 17]})},            // opens on the way down
+      {hold: 220,  grid: openclawFrame({hub: 14, jaws: 'open', block: [15, 17]})},            // over the block
+      {hold: 360,  grid: openclawFrame({hub: 14, jaws: 'grip', block: [15, 17]})},            // clamps
+      {hold: 130,  grid: openclawFrame({hub: 13, jaws: 'grip', block: [14, 17]})},            // lifts
+      {hold: 130,  grid: openclawFrame({hub: 12, jaws: 'grip', block: [13, 17]})},
+      {hold: 220,  grid: openclawFrame({hub: 11, jaws: 'grip', block: [12, 17]})},
+      {hold: 170,  grid: openclawFrame({hub: 11, dc: -1, jaws: 'grip', block: [12, 16]})},    // pulls it against the chest
+      {hold: 200,  grid: openclawFrame({hub: 11, dc: -1, block: [10, 12]})},                  // in: it glows inside, jaws shut
+      {hold: 120,  grid: openclawFrame({hub: 11, dc: -1, flash: true})},                      // absorbed: one visor flash
+      {hold: 130,  grid: openclawFrame({hub: 11, dc: -1, jaws: 'none'})},                     // claw retracts: joint only
+      {hold: 160,  grid: openclawFrame()},
+      {hold: 140,  grid: openclawFrame({ping: true})}, {hold: 200, grid: openclawFrame()},    // two pings
+      {hold: 140,  grid: openclawFrame({ping: true})},
+      {hold: 1500, grid: openclawFrame()},                                                    // rest
+      {hold: 150,  grid: set(openclawFrame(), 16, 18, 8)},                                    // a new block sparks in
+      {hold: 170,  grid: openclawFrame({block: [15, 17], rim: 4})},
+    ],
+  };
+
+  // 3x. Headphones: the ECHO edition of the operator's headphones reference. A light band arcs over the head
+  // onto two dark cups, the visor goes soft to listen, a glitch lands the drop, then four beats: the body dips a
+  // row on each with the antenna pinging, a note rises out of the right cup and off the top. Eyes open, rest.
+  const echoHeadphones = {
+    name: 'ECHO · headphones', key: 'echo_headphones', fwname: 'echo headphones', category: 'Idle',
+    intent: 'Proposal. Headphones on and the visor goes soft to listen (eyes one row, visor warm), a glitch lands the drop, the body dips a row on four beats with the antenna pinging on each while a note rises out of the right cup, then the eyes open between tracks; judge whether band and cups read as headphones at 20 cells.',
+    palette: [...echo.palette, '#0b3f36', '#eafffb'],   // 7 cup (dark teal), 8 band (flash, also softEyes' warm visor); the note is visor teal (3)
+    frames: [],
+  };
+  {
+    // Band: row 3 over the head (cols 6..14), stepping down at each end on row 4 (cols 4..5 and 15..16) so it lands
+    // on the cups; the antenna keeps col 15 above row 4 and stands beside the band. Cups: 2 x 4, rows 5..8, cols 3..4
+    // and 16..17, over the top of the arm nubs, which still show below them (rows 9..10) as in the reference.
+    const wear = g => {
+      const b = clone(g);
+      for (let c = 6; c <= 14; c++) set(b, 3, c, 8);
+      for (const c of [4, 5, 15, 16]) set(b, 4, c, 8);
+      for (let r = 5; r <= 8; r++) for (const c of [3, 4, 16, 17]) set(b, r, c, 7);
+      return b;
+    };
+    // The beat: the body (rows 0..13, headphones included) sinks one row onto its legs; the feet stay planted.
+    const dip = g => {
+      const b = empty();
+      for (let r = 15; r < G; r++) b[r] = g[r].slice();
+      for (let r = 0; r <= 13; r++) for (let c = 0; c < G; c++) if (g[r][c]) set(b, r + 1, c, g[r][c]);
+      return b;
+    };
+    // echoGlitch on this pose: rows 6..8 slip right one cell and the visor, teal or warm, paints in ping.
+    const glitch = g => {
+      const b = clone(g);
+      for (const r of [6, 7, 8]) { const row = b[r].slice(); for (let c = G - 1; c > 0; c--) b[r][c] = row[c - 1]; b[r][0] = 0; }
+      for (const r of [6, 7]) for (let c = 0; c < G; c++) if (b[r][c] === 3 || b[r][c] === 8) b[r][c] = 6;
+      return b;
+    };
+    // An eighth note (flag, stem, head), 3 x 3 like HEART_S, drawn only on empty cells; top row r0, cols 17..19.
+    // Visor teal (3), not the band's flash: its head touches the band's right step on the corner as it leaves the
+    // cup, and in the same colour the two read as one shape (the band growing a zigzag instead of a note).
+    const NOTE = [[0, 1], [0, 2], [1, 1], [2, 0], [2, 1]];
+    const note = (g, r0) => { const b = clone(g); for (const [r, c] of NOTE) if (b[r + r0] && b[r + r0][c + 17] === 0) set(b, r + r0, c + 17, 3); return b; };
+    const rest = wear(echoPing(false));
+    const up = wear(softEyes(echoPing(false)));
+    const down = dip(wear(softEyes(echoPing(true))));
+    echoHeadphones.frames.push(
+      {hold: 700, grid: up},                                                              // listening, the build
+      {hold: 60, grid: glitch(wear(softEyes(echoPing(true)))), glitch: true},            // the drop
+      {hold: 200, grid: note(down, 2)}, {hold: 200, grid: note(up, 1)}, {hold: 200, grid: note(up, 0)},   // beat 1: the note leaves the cup
+      {hold: 200, grid: note(down, -1)}, {hold: 200, grid: note(up, -2)}, {hold: 200, grid: up},          // beat 2: off the top
+      {hold: 200, grid: down}, {hold: 400, grid: up},                                     // beat 3
+      {hold: 200, grid: down}, {hold: 1000, grid: up},                                    // beat 4, then the tail
+      {hold: 1400, grid: rest},                                                           // eyes open between tracks
+    );
+  }
+
+  // 3x. Headphones: stock Clawd in big blue over ear cups on a white band (operator reference, cc1), eyes closed
+  // and content, nodding on the beat while notes float up off the right side; one held beat, one eye half opens.
+  const hpBase = (() => {
+    const b = clone(BASE);
+    for (let c = 5; c <= 15; c++) set(b, 3, c, 4);                                  // band over the head
+    set(b, 4, 4, 4); set(b, 4, 16, 4);                                               // band ends drop to the cups
+    // cups on the head's edge columns, as in cc1: the arms keep their outer column (3, 17) and stick out past
+    // them, so the stock step from the narrower head to the wider arms stays at row 7
+    for (let r = 5; r <= 8; r++) for (const c of [4, 5, 15, 16]) set(b, r, c, 3);
+    return b;
+  })();
+  // Closed and content, as in the reference: a U per eye, ends on row 6 and middle on row 7. peek leaves the
+  // col 13 eye (the note side) half open: the one cell the stock blink passes through.
+  function hpEyes(g, peek) {
+    const b = clone(g);
+    for (const c of [7, 13]) { set(b, 6, c - 1, 2); set(b, 6, c, 1); set(b, 6, c + 1, 2); set(b, 7, c, 2); }
+    if (peek) { set(b, 6, 12, 1); set(b, 6, 14, 1); }
+    return b;
+  }
+  // The nod: rows 0..13 (band, head, cups, arms) drop one row onto planted legs, which read a row shorter.
+  const hpDip = g => { const b = clone(g); for (let r = 14; r >= 1; r--) b[r] = g[r - 1].slice(); b[0] = new Array(G).fill(0); return b; };
+  // Quarter note (stem right, head below), 2 wide and 3 tall, in the note colour (6). It starts at cup height off
+  // the right side, against the hand, rises up the right edge and drifts a column left once clear of the band, then
+  // off the top; painted only on empty cells, and never touching the band, which is nearly the same white.
+  const HP_NOTE = [[0, 1], [1, 1], [2, 0], [2, 1]];
+  const HP_PATH = [[6, 18], [5, 18], [4, 18], [3, 18], [2, 18], [1, 18], [0, 17], [-1, 17], [-2, 17]];
+  function hpNote(g, k) {
+    const b = clone(g);
+    if (k >= 0 && k < HP_PATH.length) for (const [r, c] of HP_NOTE) {
+      const rr = HP_PATH[k][0] + r, cc = HP_PATH[k][1] + c;
+      if (b[rr] && b[rr][cc] === 0) set(b, rr, cc, 6);
+    }
+    return b;
+  }
+  // Frame i of 16: beats of rest (even, 500 ms) then nod (odd, 260 ms). The cycle is read from two frames in (j), so
+  // frame 0, the still, holds one whole note off the right side. Beat 7 of the cycle (j 12, 13) holds instead of nodding
+  // while the eye peeks. A note leaves every 8 frames (j 0, 8) on a 9 step path; its last step shares the next one's first.
+  function hpFrame(i) {
+    const j = (i + 2) % 16, peek = (j >> 1) === 6, nod = j % 2 === 1 && !peek;
+    const g = nod ? hpDip(hpEyes(hpBase, false)) : hpEyes(hpBase, peek);
+    return hpNote(hpNote(g, j % 8), j % 8 + 8);
+  }
+  const clawdHeadphones = {
+    name: 'Clawd · headphones', key: 'clawd_headphones', fwname: 'headphones', category: 'Idle',
+    intent: 'Proposal. Eyes closed and content under big blue cups on a white band, it nods on every beat while notes float up off the right side, and on one held beat the eye on that side half opens and closes again; judge the tempo and whether the cups read as headphones at 20 cells.',
+    palette: ['transparent', '#D97757', '#0f0f0f', '#2f5fd6', '#f4f7fb', '#0f0f0f', '#eafffb'],   // 5 is an unused filler, per the brief's index map
+    frames: Array.from({length: 16}, (_, i) => ({hold: i % 2 ? 260 : 500, grid: hpFrame(i)})),
+  };
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoHeadphones, clawdHeadphones, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
