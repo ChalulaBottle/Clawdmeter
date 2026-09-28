@@ -66,6 +66,20 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
+## Auto-rotate (2026-09-28 ~10:10, built, NOT yet flashed: the board is on a power-only cable)
+
+Operator: "if you were to turn the device can we make the screen auto adjust". The board has no IMU,
+so a **QMI8658 breakout on the I2C header** (SDA 15 / SCL 7, 3V3; addresses 0x6B or 0x6A, both probed)
+supplies the orientation. Code: `imu.cpp` (SensorLib QMI8658, same tracker as the AMOLED boards, 300 ms
+hold before a turn, flat board keeps its quadrant; `IMU_SWAP_XY / IMU_FLIP_X / IMU_FLIP_Y` in board.h
+to calibrate once the breakout is glued in), `display.cpp` `display_hal_tick` (backlight off →
+`gfx->setRotation((LCD_ROTATION + q) & 3)` → full LVGL redraw → ramp back; Arduino_RGB_Display rotates
+its own framebuffer writes, no strip buffer needed; redraw ms logged per turn), `touch.cpp` inverse
+remap per quadrant (unverified: touch dead), `caps` has_rotation/has_imu on, SensorLib added to the
+lcd_4 env. Serial: `rot N` / `rot auto`, `imu`, `fbshot` (panel framebuffer capture; the LVGL
+`screenshot` never shows rotation; `screenshot_win.py COM11 out.png fbshot`). **Next:** flash when USB
+data is back, `rot 1` + `fbshot` to prove the path and read the redraw time, then order the breakout.
+
 ## Why
 
 Operator's 4" board is the same SoC/PSRAM class and the same 480x480 resolution as the reference
