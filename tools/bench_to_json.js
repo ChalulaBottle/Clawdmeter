@@ -9,7 +9,10 @@
  */
 const fs = require('fs');
 const path = require('path');
-const BENCH = require(path.join(__dirname, '..', 'docs', 'bench', 'anims.js'));
+const BENCH_DIR = path.join(__dirname, '..', 'docs', 'bench');
+const BENCH = require(path.join(BENCH_DIR, 'anims.js'));
+// Extra creature files register themselves into BENCH.anims (see anims.js, BENCH_LIB.register).
+for (const f of fs.readdirSync(BENCH_DIR).filter(n => /^anims_.*\.js$/.test(n)).sort()) require(path.join(BENCH_DIR, f));
 
 const args = process.argv.slice(2);
 const i = args.indexOf('--out');
@@ -27,7 +30,8 @@ for (const a of BENCH.anims) {
     description: a.intent,
     palette: a.palette,
     frame_count: a.frames.length,
-    frames: a.frames.map(f => ({ hold: f.hold, grid: f.grid })),
+    // spinner cells bake in at export, phase = frame index (bench draws it from its own clock)
+    frames: a.frames.map((f, i) => ({ hold: f.hold, grid: a.spinner ? BENCH.spinnerAt(f.grid, i) : f.grid })),
   };
   fs.writeFileSync(path.join(OUT, a.key + '.json'), JSON.stringify(json, null, 1));
   index.push({ filename: json.filename, name: json.name, category: json.category, frame_count: json.frame_count, palette_size: a.palette.length });

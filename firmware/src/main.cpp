@@ -365,10 +365,16 @@ void loop() {
 
         if (power_hal_pwr_pressed()) {
             if (!idle_consume_wake_press()) {
-                // On splash: cycle animations. On the usage view: cycle
-                // screen brightness (single non-splash view, no more screens).
-                if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
-                else                                          brightness_cycle();
+                if (board_caps().pwr_toggles_stats) {
+                    // One-button boards: the press is the only way to the numbers.
+                    ui_toggle_splash();
+                } else if (ui_get_current_screen() == SCREEN_SPLASH) {
+                    // On splash: cycle animations. On the usage view: cycle
+                    // screen brightness (single non-splash view, no more screens).
+                    splash_next();
+                } else {
+                    brightness_cycle();
+                }
             }
         }
 

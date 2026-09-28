@@ -44,6 +44,7 @@ textarea{width:100%;height:120px;background:var(--surf2);color:var(--text);borde
   <button id="reset">Restart all</button>
   <label>Speed <input type="range" id="speed" min="25" max="300" value="100"> <span id="speedv">100%</span></label>
   <label>Glitch <input type="checkbox" id="glitch" checked> ECHO glitch split on</label>
+  <label>Spinner <input type="checkbox" id="spinner" checked> chest spinner on the skinned ECHO cells</label>
   <span id="clock" style="color:var(--muted);font-size:12px"></span>
 </div>
 
@@ -57,7 +58,12 @@ textarea{width:100%;height:120px;background:var(--surf2);color:var(--text);borde
   </ul>
 </div>
 
+<script src="stock_anims.js"></script>
 <script src="anims.js"></script>
+<!-- extra creature families register into BENCH.anims; a missing file is a harmless 404 -->
+<script src="anims_thinking.js"></script>
+<script src="anims_modes.js"></script>
+<script src="anims_models.js"></script>
 <script>
 // Definitions live in anims.js (shared with tools/bench_to_json.js). Everything below is the bench.
 const G = window.BENCH.G;
@@ -202,7 +208,8 @@ const cvs = [...document.querySelectorAll('canvas')];
 function draw() {
   anims.forEach((a, k) => {
     const st = state[k]; const f = a.frames[st.i];
-    const g = (f.glitch && !document.getElementById('glitch').checked) ? a.frames[0].grid : f.grid;
+    let g = (f.glitch && !document.getElementById('glitch').checked) ? a.frames[0].grid : f.grid;
+    if (a.spinner && document.getElementById('spinner').checked) g = window.BENCH.spinnerAt(g, Math.floor(clockMs / 120));
     cvs.filter(c => +c.dataset.k === k).forEach(c => paint(c, a, g));
     const cell = grid.children[k];
     cell.querySelector('.fi').textContent = st.i; cell.querySelector('.fh').textContent = f.hold;
