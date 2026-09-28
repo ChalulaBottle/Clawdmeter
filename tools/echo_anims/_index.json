@@ -77,6 +77,27 @@
     "palette_size": 7
   },
   {
+    "filename": "job_done.html",
+    "name": "job done",
+    "category": "Mode",
+    "frame_count": 14,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_love.html",
+    "name": "echo love",
+    "category": "Mode",
+    "frame_count": 12,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_consult.html",
+    "name": "echo consult",
+    "category": "Active",
+    "frame_count": 15,
+    "palette_size": 7
+  },
+  {
     "filename": "credits_out.html",
     "name": "credits out",
     "category": "Mode",
@@ -150,7 +171,7 @@
     "filename": "model_haiku.html",
     "name": "model haiku",
     "category": "Model",
-    "frame_count": 8,
+    "frame_count": 25,
     "palette_size": 6
   },
   {

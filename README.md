@@ -37,6 +37,10 @@
 > |---|---|---|---|
 > | ![](docs/media/anims/credits_out.gif) | ![](docs/media/anims/ctf_hoodie.gif) | ![](docs/media/anims/echo_coffee.gif) | ![](docs/media/anims/echo_double_coffee.gif) |
 >
+> | echo walk | job done | echo love | echo consult | ultra cube |
+> |---|---|---|---|---|
+> | ![](docs/media/anims/echo_walk.gif) | ![](docs/media/anims/job_done.gif) | ![](docs/media/anims/echo_love.gif) | ![](docs/media/anims/echo_consult.gif) | ![](docs/media/anims/ultra_cube.gif) |
+>
 > **Model tiers**, one family, four signatures (Haiku, Sonnet, Opus, Fable):
 >
 > ![Model tier creatures](docs/media/sheets/model-tiers.png)

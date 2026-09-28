@@ -193,9 +193,9 @@
     frames: [
       {hold: 1200, grid: echoPing(false)}, {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 140, grid: echoPing(true)},
       {hold: 60, grid: echoGlitch(), glitch: true},
-      {hold: 260, grid: twoAgents(3)}, {hold: 260, grid: twoAgents(1)}, {hold: 1600, grid: twoAgents(0)},
+      {hold: 260, grid: twoAgents(2)}, {hold: 260, grid: twoAgents(1)}, {hold: 1600, grid: twoAgents(0)},
       {hold: 300, grid: blit(blit(empty(), echoMini, 5, 0), echoMini, 5, 10).map((row, r) => row.map((v, c) => (v === 4 && r === 5) ? 4 : v))},
-      {hold: 700, grid: twoAgents(0)}, {hold: 260, grid: twoAgents(1)}, {hold: 260, grid: twoAgents(3)},
+      {hold: 700, grid: twoAgents(0)}, {hold: 260, grid: twoAgents(1)}, {hold: 260, grid: twoAgents(2)},
       {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 900, grid: echoPing(false)},
     ],
   };
@@ -327,8 +327,9 @@
       if (r >= 14) continue;                                      // legs drawn separately
       set(b, r - (step % 2), c + dx, v);
     }
-    const feet = step % 2 ? [6, 8, 12, 14] : [5, 8, 12, 15];      // inner/outer stance
-    for (let r = 14; r <= 16; r++) for (const c of feet) set(b, r - (step % 2 && r === 14 ? 1 : 0), c + dx, 5);
+    const feet = step % 2 ? [6, 8, 12, 14] : [5, 8, 12, 15];      // inner/outer stance, always on the ground
+    for (let r = 14; r <= 16; r++) for (const c of feet) set(b, r, c + dx, 5);
+    if (step % 2) for (const c of feet) set(b, 13, c + dx, 1);     // the body lifted a row: fill the hip row so no gap shows
     return b;
   }
   const echoWalk = {
@@ -347,6 +348,104 @@
     for (let s = 1; s <= 4; s++) f.push({hold: 240, grid: walkFrame(2 - s, s)});
     f.push({hold: 900, grid: walkFrame(-2, 0)});
   }
+
+  // 3j. Job done: the payoff animation. Two quick bounces, then the right arm shoots up with a
+  // thumbs up, the visor flashes white, confetti pops in ping, amber and flash around the head,
+  // a little sway while it holds the pose, arm down, rest. Fun on purpose, but still the family.
+  const DONE_PALETTE = [...echo.palette, '#e0b25a', '#eafffb'];   // 7 amber, 8 flash
+  function bob(g, dy) { const b = empty(); for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c]) set(b, r + dy, c, g[r][c]); return b; }
+  function thumbsUp(g, flash) {
+    const b = clone(g);
+    // right arm off the shoulder (rows 7..9, cols 16..17 are arm/hand in the base) and up along col 17
+    for (let r = 7; r <= 9; r++) { set(b, r, 16, 1); set(b, r, 17, 0); }
+    set(b, 10, 17, 0);
+    for (let r = 3; r <= 7; r++) set(b, r, 17, 1);               // arm up
+    set(b, 3, 18, 1); set(b, 4, 18, 1);                           // fist
+    set(b, 2, 18, 3); set(b, 1, 18, 3);                           // thumb, visor teal so it pops
+    if (flash) for (let r = 6; r <= 7; r++) for (let c = 6; c <= 14; c++) if (b[r][c] === 3) b[r][c] = 8;
+    return b;
+  }
+  const CONFETTI = [
+    [[1, 5, 4], [0, 9, 7], [2, 12, 8], [1, 3, 7], [3, 1, 4], [0, 14, 4]],
+    [[0, 6, 7], [2, 3, 4], [1, 11, 8], [3, 19, 7], [2, 0, 8], [0, 12, 4]],
+    [[2, 7, 8], [1, 1, 7], [0, 4, 4], [3, 13, 7], [1, 19, 4], [2, 10, 7]],
+  ];
+  function confetti(g, k) { const b = clone(g); for (const [r, c, v] of CONFETTI[k % 3]) if (b[r][c] === 0) set(b, r, c, v); return b; }
+  const jobDone = {
+    name: 'ECHO · job done', key: 'job_done', fwname: 'job done', category: 'Mode',
+    intent: 'Proposal. The payoff: two bounces, arm up with a thumbs up, visor flashes white, confetti pops, a sway on the pose, arm down. Host plays it when a task finishes.',
+    palette: DONE_PALETTE,
+    frames: [
+      {hold: 600, grid: echoPing(false)},
+      {hold: 130, grid: bob(echoBase, -1)}, {hold: 130, grid: echoBase}, {hold: 130, grid: bob(echoBase, -1)}, {hold: 160, grid: echoBase},
+      {hold: 110, grid: thumbsUp(echoBase, false)},
+      {hold: 160, grid: confetti(thumbsUp(echoPing(true), true), 0)},
+      {hold: 160, grid: confetti(bob(thumbsUp(echoBase, true), -1), 1)},
+      {hold: 160, grid: confetti(thumbsUp(echoPing(true), true), 2)},
+      {hold: 160, grid: confetti(bob(thumbsUp(echoBase, true), -1), 0)},
+      {hold: 160, grid: confetti(thumbsUp(echoPing(true), true), 1)},
+      {hold: 700, grid: thumbsUp(echoPing(true), false)},
+      {hold: 110, grid: echoBase},
+      {hold: 1400, grid: echoPing(false)},
+    ],
+  };
+
+  // 3k. Love: a pixel heart beats above the creature, then two small hearts float up and away while the
+  // eyes go soft (a one-row squint) and the visor warms to flash. "I love you", in cells.
+  const LOVE_PALETTE = [...echo.palette, '#ff6ad5', '#eafffb'];   // 7 pink, 8 flash
+  const HEART = [[0, 1], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [2, 1], [2, 2], [2, 3], [3, 2]];   // 4 rows x 5 cols
+  const HEART_S = [[0, 0], [0, 2], [1, 0], [1, 1], [1, 2], [2, 1]];                                          // 3 x 3
+  function heart(g, r0, c0, cells, v) { const b = clone(g); for (const [r, c] of cells) if (b[r + r0] && b[r + r0][c + c0] === 0) set(b, r + r0, c + c0, v); return b; }
+  const softEyes = g => { const b = clone(g); set(b, 6, 7, 3); set(b, 6, 13, 3); for (let r = 6; r <= 7; r++) for (let c = 6; c <= 14; c++) if (b[r][c] === 3) b[r][c] = 8; set(b, 7, 7, 2); set(b, 7, 13, 2); return b; };
+  const love = {
+    name: 'ECHO · love', key: 'echo_love', fwname: 'echo love', category: 'Mode',
+    intent: 'Proposal. A heart beats over the creature, then two small hearts float up and off while the eyes go soft and the visor warms. The I-love-you.',
+    palette: LOVE_PALETTE,
+    frames: [
+      {hold: 700, grid: echoPing(false)},
+      {hold: 260, grid: heart(echoBase, 0, 8, HEART, 7)}, {hold: 200, grid: heart(bob(echoBase, -1), -1, 8, HEART, 7)},
+      {hold: 260, grid: heart(echoBase, 0, 8, HEART, 7)}, {hold: 200, grid: heart(bob(echoBase, -1), -1, 8, HEART, 7)},
+      {hold: 500, grid: heart(softEyes(echoBase), 0, 8, HEART, 7)},
+      {hold: 220, grid: heart(heart(softEyes(echoBase), 2, 2, HEART_S, 7), 3, 15, HEART_S, 7)},
+      {hold: 220, grid: heart(heart(softEyes(echoBase), 1, 1, HEART_S, 7), 2, 16, HEART_S, 7)},
+      {hold: 220, grid: heart(heart(softEyes(echoBase), 0, 2, HEART_S, 7), 1, 15, HEART_S, 7)},
+      {hold: 220, grid: heart(heart(softEyes(echoBase), -1, 1, HEART_S, 7), 0, 16, HEART_S, 7)},
+      {hold: 900, grid: softEyes(echoPing(true))},
+      {hold: 1100, grid: echoPing(false)},
+    ],
+  };
+
+  // 3l. Consulting: the creature is in a conversation. A speech bubble to the right cycles three dots
+  // (thinking), then fills with three short lines (talking) while the head nods, then the bubble clears
+  // and the antenna pings once as if the advice landed. Loops with a rest.
+  function bubble(g, content) {
+    const b = clone(g);
+    // bubble frame: rows 0..4, cols 12..19, with a tail toward the head at (5, 13)
+    for (let c = 12; c <= 19; c++) { set(b, 0, c, 3); set(b, 4, c, 3); }
+    for (let r = 1; r <= 3; r++) { set(b, r, 12, 3); set(b, r, 19, 3); }
+    set(b, 5, 13, 3);
+    if (content === 'dots1') set(b, 2, 14, 4);
+    if (content === 'dots2') { set(b, 2, 14, 4); set(b, 2, 16, 4); }
+    if (content === 'dots3') { set(b, 2, 14, 4); set(b, 2, 16, 4); set(b, 2, 18, 4); }
+    if (content === 'lines') { for (const c of [14, 15, 16, 17]) set(b, 1, c, 4); for (const c of [14, 15, 16]) set(b, 2, c, 4); for (const c of [14, 15, 16, 17, 18]) set(b, 3, c, 4); }
+    return b;
+  }
+  // the antenna sits at col 15 rows 1..3, inside the bubble; hide it while the bubble is up
+  const noAntenna = g => { const b = clone(g); set(b, 1, 15, 0); set(b, 2, 15, 0); set(b, 3, 15, 0); return b; };
+  const consult = {
+    name: 'ECHO · consulting', key: 'echo_consult', fwname: 'echo consult', category: 'Active',
+    intent: 'Proposal. In conversation: a speech bubble cycles three dots, fills with lines while the head nods, clears, and the antenna pings once as the advice lands.',
+    palette: echo.palette,
+    frames: [
+      {hold: 600, grid: echoPing(false)},
+      {hold: 260, grid: bubble(noAntenna(echoBase), 'dots1')}, {hold: 260, grid: bubble(noAntenna(echoBase), 'dots2')}, {hold: 260, grid: bubble(noAntenna(echoBase), 'dots3')},
+      {hold: 260, grid: bubble(noAntenna(echoBase), 'dots1')}, {hold: 260, grid: bubble(noAntenna(echoBase), 'dots2')}, {hold: 260, grid: bubble(noAntenna(echoBase), 'dots3')},
+      {hold: 500, grid: bubble(noAntenna(echoBase), 'lines')}, {hold: 220, grid: bubble(noAntenna(bob(echoBase, 1)), 'lines')},
+      {hold: 500, grid: bubble(noAntenna(echoBase), 'lines')}, {hold: 220, grid: bubble(noAntenna(bob(echoBase, 1)), 'lines')},
+      {hold: 500, grid: bubble(noAntenna(echoBase), 'lines')},
+      {hold: 140, grid: echoBase}, {hold: 300, grid: echoPing(true)}, {hold: 1200, grid: echoPing(false)},
+    ],
+  };
 
   // 3f. Credits out: the creature cries out. Visor alert-red, a wide open mouth, tears streaming
   // from both eyes, the body shaking a cell either way, and every fourth beat a full white-out scream.
@@ -481,20 +580,36 @@
     for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c] === 2) { rows.add(r); cmin = Math.min(cmin, c); cmax = Math.max(cmax, c); }
     return {rows: [...rows], cmin, cmax};
   }
+  // Anchor on the ARM ROW, the first row with 14 or more lit cells: particles (sleep Z's, surprise
+  // sparks, bounce dust) shift a bounding box but can never fake a 14-wide run. The 2026-09-28 audit
+  // found the bbox anchor jumping the visor, antenna and feet in six of the skinned movements.
+  function anchor(g) {
+    for (let r = 0; r < G; r++) {
+      let n = 0, left = -1;
+      for (let c = 0; c < G; c++) if (g[r][c]) { n++; if (left < 0) left = c; }
+      if (n >= 14) return {row: r, left};
+    }
+    const bb = bbox(g); return {row: bb.top, left: bb.left};
+  }
   function skinFrame(g, ref) {
     const b = clone(g);
-    const bb = bbox(g), rb = bbox(ref.grid);
-    const dy = bb.top - rb.top, dx = bb.left - rb.left;
-    // visor band
+    const A = anchor(g), R = anchor(ref.grid), rb = bbox(ref.grid);
+    const dy = A.row - R.row, dx = A.left - R.left;
+    // visor band on the reference eye rows, shifted with the body
     for (const r0 of ref.eyes.rows) {
       const r = r0 + dy;
       for (let c = ref.eyes.cmin - 1 + dx; c <= ref.eyes.cmax + 1 + dx; c++) if (r >= 0 && r < G && c >= 0 && c < G && b[r][c] === 1) b[r][c] = 3;
     }
-    // antenna on the top-right body column of the top row
-    let tc = -1; for (let c = G - 1; c >= 0; c--) if (g[bb.top][c] === 1) { tc = c; break; }
-    if (tc >= 0) { set(b, bb.top - 1, tc, 1); set(b, bb.top - 2, tc, 1); set(b, bb.top - 3, tc, 4); }
-    // feet: bottom three body rows
-    for (let r = bb.bot - 2; r <= bb.bot; r++) for (let c = 0; c < G; c++) if (b[r] && b[r][c] === 1) b[r][c] = 5;
+    // no eyes in this frame (sleep): a closed-eye line on the lower band row, '222 333 222'
+    if (eyeGeom(g).rows.length === 0 && ref.eyes.rows.length) {
+      const r = ref.eyes.rows[ref.eyes.rows.length - 1] + dy;
+      for (const c0 of [ref.eyes.cmin, ref.eyes.cmax]) for (let c = c0 - 1 + dx; c <= c0 + 1 + dx; c++) if (b[r] && b[r][c] === 3) b[r][c] = 2;
+    }
+    // antenna on the reference top-right column, shifted with the body
+    let tc = -1; for (let c = G - 1; c >= 0; c--) if (ref.grid[rb.top][c] === 1) { tc = c; break; }
+    if (tc >= 0) { const t = rb.top + dy, cc = tc + dx; set(b, t - 1, cc, 1); set(b, t - 2, cc, 1); set(b, t - 3, cc, 4); }
+    // feet: the reference's bottom three rows, shifted
+    for (let r = rb.bot - 2 + dy; r <= rb.bot + dy; r++) for (let c = 0; c < G; c++) if (b[r] && b[r][c] === 1) b[r][c] = 5;
     return b;
   }
   // Chest spinner: two opposite cells orbit a 3x3 ring on the chest (8 phases). Bench-only overlay,
@@ -532,7 +647,7 @@
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, creditsOut, ctfHoodie, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, jobDone, love, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

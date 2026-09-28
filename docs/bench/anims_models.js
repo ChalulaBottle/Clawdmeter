@@ -62,15 +62,25 @@
     const tip = [H_TOP + H_ROWS.indexOf(TIP[0]), H_LEFT + H_COLS.indexOf(TIP[1])];
     const rest = tipped(haikuBase, tip, BODY);  // antenna dark while it rests
     const lit = haikuBase;                      // tip pings through the blink burst
+    // Operator 2026-09-28: "make the haiku animations super fast moving, squirrely". The small one
+    // darts: quick hops left and right (one cell, 70 to 90 ms), a head tilt, rapid blinks, the tip
+    // flickering, and only short rests. Model character as motion: Haiku is the quick one.
+    const shift = (g, dx, dy) => { const b = blank(); for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c]) set(b, r + dy, c + dx, g[r][c]); return b; };
     return {
       name: 'Model · Haiku', key: 'model_haiku', fwname: 'model haiku', category: 'Model',
-      intent: 'Haiku tier: the ECHO creature one size down (body rescaled nearest neighbour from 11 by 10 to 9 by 8, both eyes and all four feet kept) with a light teal visor and a quick double blink every 3 s; judge whether it still reads as Clawd at the smaller size.',
+      intent: 'Haiku tier: one size down and squirrelly: darts a cell left and right in 70 to 90 ms hops, tilts, blinks in bursts, tip flickering, with only short rests; judge whether quick reads as Haiku without becoming noise.',
       palette: ['transparent', '#17836f', '#06090b', '#6fe9ff', '#6fe9ff', '#0f5a4c'],
       frames: [
-        {hold: 2560, grid: rest},
-        {hold: 50, grid: lids(lit, 1)}, {hold: 70, grid: lids(lit, 2)}, {hold: 50, grid: lids(lit, 1)},
-        {hold: 100, grid: lit},
-        {hold: 50, grid: lids(lit, 1)}, {hold: 70, grid: lids(lit, 2)}, {hold: 50, grid: lids(lit, 1)},
+        {hold: 600, grid: rest},
+        {hold: 80, grid: shift(lit, -1, 0)}, {hold: 70, grid: shift(rest, -2, 0)}, {hold: 90, grid: shift(lit, -1, -1)}, {hold: 70, grid: shift(rest, 0, 0)},
+        {hold: 60, grid: lids(lit, 2)}, {hold: 60, grid: lit},
+        {hold: 80, grid: shift(rest, 1, 0)}, {hold: 70, grid: shift(lit, 2, 0)}, {hold: 90, grid: shift(rest, 1, -1)}, {hold: 70, grid: shift(lit, 0, 0)},
+        {hold: 400, grid: rest},
+        {hold: 50, grid: lids(lit, 1)}, {hold: 60, grid: lids(lit, 2)}, {hold: 50, grid: lids(lit, 1)}, {hold: 80, grid: lit},
+        {hold: 50, grid: lids(rest, 1)}, {hold: 60, grid: lids(rest, 2)}, {hold: 50, grid: lids(rest, 1)},
+        {hold: 300, grid: rest},
+        {hold: 70, grid: shift(lit, 0, -1)}, {hold: 70, grid: shift(rest, 0, 0)}, {hold: 70, grid: shift(lit, 0, -1)}, {hold: 70, grid: shift(rest, 0, 0)},
+        {hold: 500, grid: lit},
       ],
     };
   })();

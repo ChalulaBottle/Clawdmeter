@@ -96,7 +96,8 @@
   // Blit the nonzero cells of a small grid with its top left at (r0, c0), clipped to the lattice.
   // paint forces one colour: a ghost, the echo of a mini before it becomes solid.
   function place(dst, src, r0, c0, paint = 0) {
-    for (let r = 0; r < src.length; r++) for (let c = 0; c < src[r].length; c++) if (src[r][c]) set(dst, r0 + r, c0 + c, paint || src[r][c]);
+    // a ghost keeps its eyes (audit 2026-09-28: painted minis came out blind)
+    for (let r = 0; r < src.length; r++) for (let c = 0; c < src[r].length; c++) if (src[r][c]) set(dst, r0 + r, c0 + c, (paint && src[r][c] !== EYE) ? paint : src[r][c]);
     return dst;
   }
 

@@ -90,6 +90,19 @@ board decides only what it can see in its own payload (usage %, status). Table t
 Hooks go into the operator's settings only with the operator's yes (update-config skill); until
 then `clawdmeter_state.py set --anim <name>` drives it by hand and the serial poke `anim <name>` for tests.
 
+## Queued by the operator (2026-09-28, ~02:40): pages for the hub
+
+- **Built-in time**: clock page (payload `t`/`tf` exist; daemon sends them; page renders). First
+  registry page after usage.
+- **Weather**: host fetches a weather API (Open-Meteo needs no key; lat/lon from config) and pushes
+  a `weather` page: temp, condition glyph as a 20x20 creature-style pixel icon, next 3 hours.
+- **Spotify controller on the touch screen**: host holds the Spotify Web API token (PKCE, refresh on
+  the host, never on the board) and exposes play/pause, next, previous, volume ±; board shows a
+  `music` page with track/artist and tap targets. **Blocked on touch working** (GT911 silent);
+  BOOT can do play/pause meanwhile. Same "host decides" rule; the board never sees the token.
+- New creatures tonight: `job done` (thumbs up + confetti), `echo love` (beating heart, floating
+  hearts), `echo consult` (speech bubble dots → lines, nod, ping).
+
 ## Queued by the operator (2026-09-28, ~01:00): "this will turn into a big project now"
 
 - **Clock page**: local time on the device. The payload already carries `t` (epoch) and `tf`
