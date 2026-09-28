@@ -19,6 +19,7 @@ ap.add_argument("--bigmug", action="store_true")
 ap.add_argument("--inch", type=float, default=3.0)
 ap.add_argument("--dpi", type=int, default=600)
 ap.add_argument("--contour", type=float, default=0.10, help="white contour width in inches")
+ap.add_argument("--edge", default="white", help="contour fill: white | island (cyan to pink sweep) | echo (cyan, teal, amber)")
 ap.add_argument("--mugw", type=int, default=4, help="with --bigmug: mug width in cells (3 or 4)")
 ap.add_argument("--mugh", type=int, default=4, help="with --bigmug: mug height in cells incl. the coffee row (4 or 5)")
 ap.add_argument("--out", default=os.path.join("docs", "media", "sticker"))
@@ -104,11 +105,26 @@ grown = erode(dilate(mask, CONTOUR + CLOSE), CLOSE)
 # report any enclosed hole left after the close, so a printer surprise shows up here first
 probe = grown.copy(); ImageDraw.floodfill(probe, (0, 0), 128)
 holes_px = sum(1 for v in probe.getdata() if v == 0)
-white = Image.new("RGBA", (W, W), (255, 255, 255, 255)); white.putalpha(grown)
+def lerp(c0, c1, t): return tuple(int(c0[i] + (c1[i] - c0[i]) * t) for i in range(3))
+SWEEPS = {
+    "island": [(92, 225, 255), (176, 150, 255), (255, 106, 213)],       # the Island sticker: cyan, lilac, pink
+    "echo":   [(111, 233, 255), (53, 224, 192), (224, 178, 90)],       # ECHO tokens: cyan, teal, amber
+}
+if a.edge in SWEEPS:
+    stops = SWEEPS[a.edge]
+    edge = Image.new("RGB", (W, W)); px = edge.load()
+    for y in range(W):
+        for x in range(W):
+            t = (x + y) / (2 * W); k = min(int(t * (len(stops) - 1)), len(stops) - 2)
+            px[x, y] = lerp(stops[k], stops[k + 1], t * (len(stops) - 1) - k)
+    white = edge.convert("RGBA")
+else:
+    white = Image.new("RGBA", (W, W), (255, 255, 255, 255))
+white.putalpha(grown)
 out = Image.alpha_composite(white, art).crop((PAD, PAD, PAD + S, PAD + S))
 grown = grown.crop((PAD, PAD, PAD + S, PAD + S))
 
-name = f"sticker-diecut-{a.anim}{'-bigmug' if a.bigmug else ('-mug' if a.mug else '')}-{a.inch:g}in"
+name = f"sticker-diecut-{a.anim}{'-bigmug' if a.bigmug else ('-mug' if a.mug else '')}{'' if a.edge == 'white' else '-' + a.edge}-{a.inch:g}in"
 out.save(os.path.join(a.out, name + ".png"), dpi=(a.dpi, a.dpi))
 cut = Image.new("RGB", (S, S), (255, 255, 255)); cut.paste((0, 0, 0), mask=grown)
 cut.save(os.path.join(a.out, name + "-cutline.png"), dpi=(a.dpi, a.dpi))
