@@ -160,7 +160,11 @@
     const src = STOCK[key]; if (!src) continue;
     const grids = src.frames.map(f => f.rows.map(l => l.split('').map(Number)));
     const ref = {grid: grids[0], eyes: eyeGeom(grids[0])};
-    if (ref.eyes.rows.length === 0) { const k = grids.findIndex(g => eyeGeom(g).rows.length); ref.grid = grids[k]; ref.eyes = eyeGeom(grids[k]); }
+    if (ref.eyes.rows.length === 0) {
+      // eyes shut in frame 0 (sleep): take them from the first open frame, else from the stock base
+      const k = grids.findIndex(g => eyeGeom(g).rows.length);
+      ref.grid = k >= 0 ? grids[k] : BASE; ref.eyes = eyeGeom(ref.grid);
+    }
     const short = src.name.replace(/^(idle|expression|dance|work)\s+/, '');
     skinned.push({
       name: 'ECHO · ' + short, key: 'echo_' + key.replace(/^(idle|expression|dance|work)_/, ''), fwname: 'echo ' + short,
