@@ -21,6 +21,8 @@ ap.add_argument("--mug", action="store_true", help="hand the creature echo coffe
 ap.add_argument("--creature", type=float, default=0.38, help="creature height as a fraction of the sticker")
 ap.add_argument("--qr", type=float, default=0.25, help="QR tile side as a fraction of the sticker")
 ap.add_argument("--notext", action="store_true", help="no title, url or kick: creature and code only")
+ap.add_argument("--noqr", action="store_true", help="no QR tile: the creature fills the sticker")
+ap.add_argument("--bigmug", action="store_true", help="with --mug: a 4 by 5 mug with a bigger handle and taller steam")
 ap.add_argument("--out", default=os.path.join("docs", "media", "sticker"))
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -77,16 +79,26 @@ if a.mug:
     while len(pal) < 7: pal.append(None)
     pal = pal[:7] + mpal[7:10]
     mg = m["frames"][0]["grid"]
-    for r in range(20):
-        for c in range(20):
-            if mg[r][c] in (7, 8, 9): grid[r][c] = mg[r][c]
-    grid[11][16] = 1                                             # the hand under the mug
-    cols_all = [c for c in range(20) if any(grid[r][c] for r in range(20))]
+    if a.bigmug:
+        # a 4 wide by 5 tall mug held out to the right: coffee surface on top, cream body, a 2 tall
+        # handle on the far column, the hand under it, and steam rising three rows above
+        for c in range(15, 19): grid[6][c] = 8
+        for r in range(7, 11):
+            for c in range(15, 19): grid[r][c] = 7
+        grid[7][19] = 7; grid[8][19] = 7
+        grid[11][16] = 1; grid[11][17] = 1
+        for r, c in ((3, 16), (4, 17), (5, 16), (4, 15), (2, 17)):
+            if grid[r][c] == 0: grid[r][c] = 9
+    else:
+        for r in range(20):
+            for c in range(20):
+                if mg[r][c] in (7, 8, 9): grid[r][c] = mg[r][c]
+        grid[11][16] = 1                                         # the hand under the mug
 rows = [r for r in range(20) if any(grid[r])]; cols = [c for c in range(20) if any(grid[r][c] for r in range(20))]
 r0, r1, c0, c1 = min(rows), max(rows), min(cols), max(cols)
 ch, cw = r1 - r0 + 1, c1 - c0 + 1
 cell = int(S * a.creature / ch)
-ox, oy = (S - cw * cell) // 2, y + S // 60
+ox, oy = (S - cw * cell) // 2, (S - ch * cell) // 2 if a.noqr else y + S // 60
 for r in range(r0, r1 + 1):
     for c in range(c0, c1 + 1):
         v = grid[r][c]
@@ -95,6 +107,9 @@ for r in range(r0, r1 + 1):
             dr.rectangle([x, yy, x + cell - 1, yy + cell - 1], fill=pal[v] + (255,))
 
 # QR on a rounded gradient tile
+if a.noqr:
+    out = os.path.join(a.out, f"sticker-neon-{a.anim}{'-bigmug' if a.bigmug else ('-mug' if a.mug else '')}-noqr-{S}.png")
+    img.save(out, dpi=(600, 600)); print(out, f"{S}px; creature only"); raise SystemExit(0)
 qr = qrcode.QRCode(error_correction=ERROR_CORRECT_H, border=0); qr.add_data(a.url); qr.make(fit=True)
 mat = qr.get_matrix(); n = len(mat)
 tile_side = int(S * a.qr); quiet = 4
