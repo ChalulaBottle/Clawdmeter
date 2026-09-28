@@ -1,4 +1,23 @@
-> ### This is a fork
+> ### Clawdmeter, ECHO edition — a fork by Digital Orukami
+>
+> This repository is **Digital Orukami's fork**, built for
+> **[ECHO Club](https://echoclub.org)**. It adds one board to the Clawdmeter:
+> the **Waveshare ESP32-S3-Touch-LCD-4** (4 inch, 480×480, RGB parallel,
+> GT911 touch, CH32V003 or TCA9554 expander detected at boot). Landing page:
+> **[chalulabottle.github.io/Clawdmeter](https://chalulabottle.github.io/Clawdmeter/)**.
+> Port plan and state: [`plans/waveshare-lcd-4-port.md`](plans/waveshare-lcd-4-port.md).
+>
+> ```
+> pio run -d firmware -e waveshare_lcd_4 -t upload --upload-port COM11
+> ```
+>
+> The Clawdmeter itself — the device, the firmware, the board ports, the LVGL
+> work, the BLE service, the animation engine — is
+> **[Hermann Björgvin's](https://github.com/HermannBjorgvin/Clawdmeter)**
+> project. This fork was cut from juppeee's `csb-buddy` branch (the box below
+> is theirs); everything after both boxes is Hermann's README, unchanged.
+
+> ### About the csb-buddy branch (juppeee)
 >
 > The Clawdmeter — the device, this firmware, the board ports, the LVGL work,
 > the BLE service, the animation engine — is
