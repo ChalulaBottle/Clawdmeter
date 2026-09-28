@@ -22,10 +22,21 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   daemon reads `%LOCALAPPDATA%\Clawdmeter\state.json` `{agents, anim, mode}` every tick, pushes at
   once on mtime change; `daemon/clawdmeter_state.py set|show|clear`; `usage_rate.cpp` ignores samples
   <50 s apart so pushes don't skew the rate; 133 daemon tests pass. Tray restarted to load it.
-- **Exact next action:** end-to-end check (`clawdmeter_state.py set --agents 3 --anim "two agents"`,
-  watch the badge + creature on the panel), then wire the activity table below into hooks, with the
-  operator's yes for the settings change. Stickers: `tools/sticker.py`, `tools/sticker_neon.py`
-  (`--mug` borrows echo coffee's mug; Fable+coffee sticker shipped).
+- **Approve on device SHIPPED (2026-09-28 ~00:52), end-to-end on the real panel:** Claude Code
+  `PermissionRequest` hook `daemon/clawdmeter_approve.py` → `approve.json` → daemon pushes
+  `{"q","qt","qs","qx"}` as its own BLE message (`WATCH_TICK` 1 s, no API call in the path) →
+  `ui_approve_show` overlay (title, tool in accent, text, APPROVE button for touch, hint) → BOOT
+  press or tap → `ble_send_approve` `{"approve":id}` on TX (daemon now subscribes TX) → daemon writes
+  `decisions/<id>.json` → hook prints the allow JSON. Fall-through (no output, exit 0) when no fresh
+  connected heartbeat (`daemon.heartbeat`, written every tick), panel busy, no answer in 40 s, bad
+  input. 0.7 s arm delay; device self-expires; deny stays terminal only (long press collides with
+  pair_tick). Serial pokes `ask` / `ok` / `askclr`. 166 daemon tests pass. Tray restarted (PID 20852).
+  Capture `docs/media/lcd4/approve-device.png`. **Hook NOT installed in settings** (operator gated);
+  snippet in README § Approve.
+- **Exact next action:** operator decides whether to add the PermissionRequest hook to their
+  settings (README snippet). Then the activity table below into hooks (same gate). Touch-to-see-usage
+  = BOOT today (`pwr_toggles_stats`); a tap needs the GT911 answer (factory image test waits on the
+  operator). Stickers: `tools/sticker.py`, `tools/sticker_neon.py`, `tools/sticker_diecut.py`.
 - **Pipeline (any new creature):** edit `docs/bench/anims.js` → `node tools/bench_to_json.js` →
   `.venv\Scripts\python.exe tools/add_echo_anims.py` → `pio run … -t upload` → `anim <name>` →
   `screenshot_win.py`. GIFs: `tools/anim_gif.py`. Reference (stock) cells carry `reference: true`

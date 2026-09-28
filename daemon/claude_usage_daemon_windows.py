@@ -29,6 +29,7 @@ from bleak.exc import BleakError
 DEVICE_NAME = "Clawdmeter"
 SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
 RX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000002"
+TX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000003"   # device -> host: ack/nack, approve answers
 REQ_CHAR_UUID = "4c41555a-4465-7669-6365-000000000004"
 
 POLL_INTERVAL = 60
@@ -50,6 +51,18 @@ CONFIG_FILE = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Loc
 # along as "n", a non-empty "anim" as "a". "mode" stays host-side.
 STATE_FILE = CONFIG_FILE.parent / "state.json"
 ANIM_MAX = 23              # firmware keeps the animation name in char[24]
+# Approve relay (clawdmeter_approve.py <-> device). The hook writes approve.json
+# {"id", "tool", "text", "expires"}; the daemon puts it on the device at once as
+# its own message, and when the device answers, writes decisions/<id>.json for
+# the hook to pick up. The heartbeat lets the hook fall through to the terminal
+# in milliseconds when no connected daemon is around to relay.
+APPROVE_FILE = CONFIG_FILE.parent / "approve.json"
+DECISION_DIR = CONFIG_FILE.parent / "decisions"
+HEARTBEAT_FILE = CONFIG_FILE.parent / "daemon.heartbeat"   # {"ts", "connected"}
+APPROVE_ID_MAX = 23        # firmware keeps the id in char[24]
+APPROVE_TOOL_MAX = 23
+APPROVE_TEXT_MAX = 96      # what fits on the panel; the terminal has the whole thing
+WATCH_TICK = 1.0           # state / approve file checks; TICK stays the poll cadence
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -238,6 +251,86 @@ def read_state_fields() -> dict | None:
     if anim:
         fields["a"] = anim
     return fields
+
+
+def _file_stamp(path: Path) -> tuple | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
+def approve_stamp() -> tuple | None:
+    """Change stamp of the approve file (same idea as state_stamp)."""
+    return _file_stamp(APPROVE_FILE)
+
+
+def _approve_id_ok(value) -> bool:
+    return (isinstance(value, str) and 0 < len(value) <= APPROVE_ID_MAX
+            and all(c.isalnum() or c in "-_" for c in value))
+
+
+def read_approve_msg() -> dict | None:
+    """The device message for the approve file.
+
+    Pending request -> {"q": id, "qt": tool, "qs": text, "qx": seconds left}.
+    Absent file, or one already past its "expires" -> {"q": ""} (clear).
+    Unreadable or malformed -> None after a log line; the caller sends nothing.
+    """
+    try:
+        raw = APPROVE_FILE.read_bytes()
+    except FileNotFoundError:
+        return {"q": ""}
+    except OSError as e:
+        log(f"Approve file unreadable, ignoring: {e}")
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        log(f"Approve file malformed, ignoring: {e}")
+        return None
+    if not isinstance(data, dict) or not _approve_id_ok(data.get("id")):
+        log("Approve file malformed (needs an id of up to 23 letters, digits, - or _), ignoring")
+        return None
+    expires = data.get("expires")
+    left = 0
+    if isinstance(expires, (int, float)) and not isinstance(expires, bool):
+        left = int(expires - time.time())
+    if left <= 0:
+        return {"q": ""}
+    tool = data.get("tool")
+    text = data.get("text")
+    return {
+        "q": data["id"],
+        "qt": (tool if isinstance(tool, str) else "")[:APPROVE_TOOL_MAX],
+        "qs": (text if isinstance(text, str) else "")[:APPROVE_TEXT_MAX],
+        "qx": left,
+    }
+
+
+def _write_json_atomic(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(obj), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def write_heartbeat(connected: bool) -> None:
+    """Best effort: the hook reads this to decide whether relaying is worth a wait."""
+    try:
+        _write_json_atomic(HEARTBEAT_FILE, {"ts": time.time(), "connected": bool(connected)})
+    except OSError as e:
+        log(f"Heartbeat write failed: {e}")
+
+
+def write_decision(request_id: str, behavior: str = "allow") -> None:
+    """decisions/<id>.json for the waiting hook."""
+    try:
+        _write_json_atomic(DECISION_DIR / f"{request_id}.json",
+                           {"id": request_id, "behavior": behavior, "ts": time.time()})
+    except OSError as e:
+        log(f"Decision write failed: {e}")
 
 
 async def poll_api(token: str) -> dict | None:
@@ -435,6 +528,31 @@ class Session:
     def _on_refresh(self, _char, _data: bytearray) -> None:
         log("Refresh requested by device")
         self.refresh_requested.set()
+
+    def _on_tx(self, _char, data: bytearray) -> None:
+        """Device -> host notifies. Acks are noise; {"approve": id} is an answer."""
+        try:
+            msg = json.loads(bytes(data).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return
+        if not isinstance(msg, dict):
+            return
+        request_id = msg.get("approve")
+        if request_id is None:
+            return
+        if not _approve_id_ok(request_id):
+            log(f"Device sent an approve with a bad id, ignoring: {request_id!r}")
+            return
+        log(f"Device approved {request_id}")
+        write_decision(request_id, "allow")
+
+    async def setup_tx_subscription(self) -> None:
+        # Optional like the refresh subscription: without it usage still flows,
+        # only device answers to approve prompts go unheard.
+        try:
+            await self.client.start_notify(TX_CHAR_UUID, self._on_tx)
+        except (BleakError, ValueError, OSError) as e:
+            log(f"TX subscription unavailable (no approve answers): {e}")
 
     async def setup_refresh_subscription(self) -> None:
         # The refresh subscription is optional — the 60s poll loop works without it.
@@ -642,14 +760,17 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
     log("Connected")
     session = Session(client)
     await session.setup_refresh_subscription()
+    await session.setup_tx_subscription()
 
     last_poll = 0.0  # D-03: poll immediately on first connect
     used_successfully = False
     consecutive_failures = 0  # D-03: zombie-link break counter
     last_state = None  # state file stamp as of the previous tick
     state_fields: dict = {}  # last good "n"/"a" fields, merged into every payload
+    last_approve = approve_stamp()  # a request left over from before this link is stale, not ours to show
     try:
         while client.is_connected and not stop_event.is_set():
+            write_heartbeat(True)
             # Host state changed (agents / animation): push now, like a device
             # refresh request, instead of waiting out the 60s poll. Costs one
             # poll_api call per change, at most one per TICK.
@@ -661,6 +782,16 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
                     state_fields = fields
                     log(f"State file changed: {state_fields or 'absent'}")
                     session.refresh_requested.set()
+            # A permission prompt to relay (or its clear): straight to the
+            # device as its own message. No API call in the way, and no merge
+            # into the usage payload, which a prompt must never wait on.
+            stamp = approve_stamp()
+            if stamp != last_approve:
+                last_approve = stamp
+                msg = read_approve_msg()
+                if msg is not None:
+                    log(f"Approve file changed: {msg}")
+                    await session.write_payload(msg)
             now = time.time()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:
@@ -705,8 +836,9 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
             # client.disconnect() before the process exits, so the peer gets a
             # clean GATT disconnect (returns to its waiting screen) instead of
             # being left frozen on stale data after Quit (SC#3 graceful shutdown).
-            await _wait_first(session.refresh_requested, stop_event, timeout=TICK)
+            await _wait_first(session.refresh_requested, stop_event, timeout=min(TICK, WATCH_TICK))
     finally:
+        write_heartbeat(False)
         # Clean GATT disconnect on the way out — this is what tells the peripheral
         # the link is gone. WinRT can surface a raw OSError (not BleakError) here,
         # so swallow both; the link tears down regardless once we exit.
@@ -772,6 +904,7 @@ async def main(tray_state=None) -> None:
         device = await acquire_target()
         if not device:
             # Slow-search regime: device was not found by scan — back off gently
+            write_heartbeat(False)
             if tray_state:
                 tray_state.set_scanning()
             log(f"Device not found, retrying in {search_backoff}s...")

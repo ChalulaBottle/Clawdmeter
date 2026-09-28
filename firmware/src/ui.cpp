@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "splash.h"
 #include "charge_anim.h"
+#include "idle.h"
 #include <lvgl.h>
 #include <time.h>
 #include "logo.h"
@@ -390,6 +391,173 @@ static lv_obj_t* make_pill(lv_obj_t* parent, const char* text) {
     return lbl;
 }
 
+// ======== Approve overlay ========
+// A permission prompt from Claude Code, relayed by the host as its own BLE
+// message. Covers whatever screen is up. The BOOT press, or a tap on the
+// button once the panel has touch, sends {"approve": id} back; the host's
+// hook turns that into the allow. Only a yes ever leaves the device: a deny
+// is given in the terminal, and doing nothing here hands the prompt back to
+// the terminal when the host's wait runs out.
+#define APPROVE_ARM_MS     700    // a press this soon after the prompt appears was meant for something else
+#define APPROVE_SENT_MS    1500   // "Approved" stays this long, then the overlay goes
+#define APPROVE_DEFAULT_S  45
+
+static lv_obj_t* approve_group   = nullptr;
+static lv_obj_t* approve_lbl_tool = nullptr;
+static lv_obj_t* approve_lbl_text = nullptr;
+static lv_obj_t* approve_btn      = nullptr;
+static lv_obj_t* approve_btn_lbl  = nullptr;
+static lv_obj_t* approve_lbl_hint = nullptr;
+static char      approve_id[24]   = "";
+static uint32_t  approve_shown_ms = 0;
+static uint32_t  approve_until_ms = 0;
+static uint32_t  approve_sent_ms  = 0;   // 0 = not answered yet
+
+#define APPROVE_HINT "Press the button to approve. Deny in the terminal."
+
+static void approve_btn_cb(lv_event_t* e) {
+    (void)e;
+    ui_approve_accept();
+}
+
+static void init_approve_overlay(lv_obj_t* scr) {
+    const int btn_h  = L.scr_h >= 460 ? 72 : L.scr_h >= 300 ? 56 : 36;
+    const int gap    = L.scr_h >= 300 ? 12 : 6;
+    const lv_font_t* text_font = &font_mono_18;
+    const lv_font_t* hint_font = L.pace_font;
+
+    approve_group = lv_obj_create(scr);
+    lv_obj_set_pos(approve_group, 0, 0);
+    lv_obj_set_size(approve_group, L.scr_w, L.scr_h);
+    lv_obj_set_style_bg_color(approve_group, COL_BG, 0);
+    lv_obj_set_style_bg_opa(approve_group, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(approve_group, 0, 0);
+    lv_obj_set_style_radius(approve_group, 0, 0);
+    lv_obj_set_style_pad_all(approve_group, L.margin, 0);
+    lv_obj_clear_flag(approve_group, LV_OBJ_FLAG_SCROLLABLE);
+    // Clickable so a tap ends here; none reach the splash toggle underneath.
+    lv_obj_add_flag(approve_group, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(approve_group, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* title = lv_label_create(approve_group);
+    lv_label_set_text(title, "Approve?");
+    lv_obj_set_style_text_font(title, L.title_font, 0);
+    lv_obj_set_style_text_color(title, COL_TEXT, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    // What is really being approved: the tool, in the biggest type on the page.
+    const int tool_y = L.title_font->line_height + gap;
+    approve_lbl_tool = lv_label_create(approve_group);
+    lv_label_set_text(approve_lbl_tool, "");
+    lv_obj_set_style_text_font(approve_lbl_tool, L.pct_font, 0);
+    lv_obj_set_style_text_color(approve_lbl_tool, COL_ACCENT, 0);
+    lv_obj_set_width(approve_lbl_tool, L.content_w);
+    lv_label_set_long_mode(approve_lbl_tool, LV_LABEL_LONG_CLIP);
+    lv_obj_align(approve_lbl_tool, LV_ALIGN_TOP_LEFT, 0, tool_y);
+
+    // The rest of the prompt (command, path, url), wrapped; what doesn't fit
+    // ends in an ellipsis, and the terminal always has the whole thing.
+    const int hint_h = hint_font->line_height;
+    const int text_y = tool_y + L.pct_font->line_height + gap;
+    const int text_h = (L.scr_h - 2 * L.margin) - text_y - (btn_h + hint_h + 3 * gap);
+    approve_lbl_text = lv_label_create(approve_group);
+    lv_label_set_text(approve_lbl_text, "");
+    lv_obj_set_style_text_font(approve_lbl_text, text_font, 0);
+    lv_obj_set_style_text_color(approve_lbl_text, COL_TEXT, 0);
+    lv_obj_set_size(approve_lbl_text, L.content_w, text_h > text_font->line_height ? text_h : text_font->line_height);
+    lv_label_set_long_mode(approve_lbl_text, LV_LABEL_LONG_DOT);
+    lv_obj_align(approve_lbl_text, LV_ALIGN_TOP_LEFT, 0, text_y);
+
+    // The touch answer. Same path as the button press.
+    approve_btn = lv_obj_create(approve_group);
+    lv_obj_set_size(approve_btn, L.content_w, btn_h);
+    lv_obj_set_style_bg_color(approve_btn, COL_PANEL, 0);
+    lv_obj_set_style_bg_opa(approve_btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(approve_btn, 8, 0);
+    lv_obj_set_style_border_width(approve_btn, 0, 0);
+    lv_obj_set_style_pad_all(approve_btn, 0, 0);
+    lv_obj_clear_flag(approve_btn, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(approve_btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(approve_btn, approve_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_align(approve_btn, LV_ALIGN_BOTTOM_LEFT, 0, -(hint_h + gap));
+    approve_btn_lbl = lv_label_create(approve_btn);
+    lv_label_set_text(approve_btn_lbl, "APPROVE");
+    lv_obj_set_style_text_font(approve_btn_lbl, L.pill_font, 0);
+    lv_obj_set_style_text_color(approve_btn_lbl, COL_TEXT, 0);
+    lv_obj_center(approve_btn_lbl);
+
+    approve_lbl_hint = lv_label_create(approve_group);
+    lv_label_set_text(approve_lbl_hint, APPROVE_HINT);
+    lv_obj_set_style_text_font(approve_lbl_hint, hint_font, 0);
+    lv_obj_set_style_text_color(approve_lbl_hint, COL_DIM, 0);
+    lv_obj_set_width(approve_lbl_hint, L.content_w);
+    lv_label_set_long_mode(approve_lbl_hint, LV_LABEL_LONG_CLIP);
+    lv_obj_align(approve_lbl_hint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+bool ui_approve_visible(void) {
+    return approve_group && !lv_obj_has_flag(approve_group, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_approve_show(const char* id, const char* tool, const char* text, int expire_s) {
+    if (!approve_group || !id || !*id) return;
+    if (expire_s <= 0) expire_s = APPROVE_DEFAULT_S;
+    const uint32_t now = lv_tick_get();
+    // The host re-sends the same request on every state push while it waits;
+    // only the deadline moves, the arm timer does not restart.
+    if (ui_approve_visible() && strcmp(approve_id, id) == 0) {
+        if (!approve_sent_ms) approve_until_ms = now + (uint32_t)expire_s * 1000;
+        return;
+    }
+    strlcpy(approve_id, id, sizeof(approve_id));
+    lv_label_set_text(approve_lbl_tool, (tool && *tool) ? tool : "Tool");
+    lv_label_set_text(approve_lbl_text, text ? text : "");
+    lv_label_set_text(approve_btn_lbl, "APPROVE");
+    lv_label_set_text(approve_lbl_hint, APPROVE_HINT);
+    approve_shown_ms = now;
+    approve_until_ms = now + (uint32_t)expire_s * 1000;
+    approve_sent_ms  = 0;
+    lv_obj_clear_flag(approve_group, LV_OBJ_FLAG_HIDDEN);
+    // Direct-draw boards paint the creature straight onto the panel, over
+    // anything LVGL has there; stop it while the prompt is up.
+    if (current_screen == SCREEN_SPLASH) splash_hide();
+    idle_note_activity();   // a dark panel lights up for the prompt
+    Serial.printf("approve: show %s (%s)\n", approve_id, tool ? tool : "");
+}
+
+void ui_approve_clear(void) {
+    if (!ui_approve_visible()) return;
+    lv_obj_add_flag(approve_group, LV_OBJ_FLAG_HIDDEN);
+    approve_id[0] = '\0';
+    approve_sent_ms = 0;
+    ui_show_screen(current_screen);   // puts the splash back if that is where we were
+}
+
+void ui_approve_accept(void) {
+    if (!ui_approve_visible() || approve_sent_ms) return;
+    const uint32_t now = lv_tick_get();
+    if (now - approve_shown_ms < APPROVE_ARM_MS) return;
+    ble_send_approve(approve_id);
+    approve_sent_ms = now;
+    lv_label_set_text(approve_btn_lbl, "APPROVED");
+    lv_label_set_text(approve_lbl_hint, "Sent to the host.");
+}
+
+static void approve_tick(void) {
+    if (!ui_approve_visible()) return;
+    const uint32_t now = lv_tick_get();
+    if (approve_sent_ms) {
+        if (now - approve_sent_ms >= APPROVE_SENT_MS) ui_approve_clear();
+        return;
+    }
+    if ((int32_t)(now - approve_until_ms) >= 0) {
+        Serial.printf("approve: %s expired on the device\n", approve_id);
+        ui_approve_clear();
+        return;
+    }
+    idle_note_activity();   // the panel stays lit while a prompt is waiting
+}
+
 static void init_battery_icons(void) {
     if (L.small_icons) {
         init_icon_dsc_rgb565a8(&battery_dscs[0], ICON_BATTERY_SMALL_W, ICON_BATTERY_SMALL_H, icon_battery_small_data);
@@ -619,6 +787,9 @@ void ui_init(void) {
         battery_img = nullptr;
     }
 
+    // Above the screens, below the charge overlay.
+    init_approve_overlay(scr);
+
     // Last, so the charge overlay covers everything else when it plays.
     charge_anim_init(scr);
 }
@@ -751,6 +922,8 @@ static void update_view_state(void) {
 }
 
 void ui_tick_anim(void) {
+    approve_tick();
+
     // The usage tag goes stale with its panels (idle / pairing views); the
     // splash badge has no such view behind it, so drop it once the host goes
     // quiet — a count from a machine that slept mid-run isn't agents working.
@@ -834,7 +1007,9 @@ void ui_show_screen(screen_t screen) {
     splash_hide();
 
     switch (screen) {
-    case SCREEN_SPLASH:  splash_show(); break;
+    // While a prompt is up the splash stays hidden (see ui_approve_show);
+    // ui_approve_clear re-runs this to bring it back.
+    case SCREEN_SPLASH:  if (!ui_approve_visible()) splash_show(); break;
     case SCREEN_USAGE:   lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }

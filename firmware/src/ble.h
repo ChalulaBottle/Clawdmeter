@@ -20,6 +20,9 @@ const char* ble_get_data(void);
 void ble_send_ack(void);
 void ble_send_nack(void);
 void ble_request_refresh(void);
+// Answer a relayed permission prompt: {"approve":"<id>"} on the TX char. The
+// device only ever says yes; a deny is given in the terminal.
+void ble_send_approve(const char* id);
 
 void ble_set_battery_level(int pct);
 

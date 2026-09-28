@@ -277,6 +277,32 @@ The icon's corner bubble shows state — **green** Connected, **amber** Scanning
 - **Start at login** — toggle autostart on/off.
 - **Quit** — stops the daemon cleanly; leaves the Windows pairing intact (device keeps its last reading).
 
+### Approve Claude Code permission prompts from the device (ECHO edition)
+
+When Claude Code is about to ask for permission, the device can show the prompt and the button (or a tap, on boards with touch) answers it. The device can only say **yes**; a **no** is given in the terminal, and doing nothing hands the prompt back to the terminal after 40 s. If the daemon is not running or the device is not connected, the hook returns in milliseconds and the terminal prompt shows as usual.
+
+<img src="docs/media/lcd4/approve-device.png" width="240" alt="The 4 inch panel showing Approve? Bash git push origin main with an APPROVE button">
+
+How it moves: Claude Code runs `daemon/clawdmeter_approve.py` as a `PermissionRequest` hook → the script writes `%LOCALAPPDATA%\Clawdmeter\approve.json` → the daemon pushes `{"q": id, "qt": tool, "qs": text, "qx": seconds}` to the device as its own BLE message (no API call in the way) → the panel shows the tool name in large type and the command/path underneath → the press sends `{"approve": id}` back on the TX characteristic → the daemon writes `decisions/<id>.json` → the hook prints the allow decision. A press inside the first 0.7 s after the prompt appears does nothing, so a press meant for the usage toggle can't approve something.
+
+Add the hook yourself (nothing in the repo writes to your settings); `settings.json` or `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      { "matcher": "", "hooks": [
+        { "type": "command",
+          "command": "C:\\path\\to\\Clawdmeter\\.venv\\Scripts\\python.exe C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_approve.py",
+          "timeout": 60 }
+      ] }
+    ]
+  }
+}
+```
+
+The script always answers inside 40 s, under that timeout, so the hook's timeout path (which discards the output) never runs. Try it without Claude Code: `python daemon\clawdmeter_approve.py --test Bash "git push origin main"` puts a sample prompt on the device and prints what the hook would return; `ask` / `ok` / `askclr` over the serial console exercise the overlay with no host at all. The daemon must have been started from this code (restart the tray after updating).
+
 ### Logs and troubleshooting
 
 ```powershell

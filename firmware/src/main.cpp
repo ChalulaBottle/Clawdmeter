@@ -105,6 +105,25 @@ static void my_touch_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     }
 }
 
+// Approve request from the host (a Claude Code permission prompt). Its own
+// message, so the usage payload never has to carry it:
+//   {"q":"<id>","qt":"Bash","qs":"git push origin main","qx":40}   show (qx = seconds left)
+//   {"q":""}                                                        clear
+// Returns true when the message was one of these.
+static bool handle_approve_msg(const char* json) {
+    if (!strstr(json, "\"q\"")) return false;   // cheap gate: usage payloads never carry "q"
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["q"].is<const char*>() || !doc["s"].isNull()) return false;
+    const char* id = doc["q"] | "";
+    if (!*id) {
+        ui_approve_clear();
+        return true;
+    }
+    ui_approve_show(id, doc["qt"] | "", doc["qs"] | "", doc["qx"] | 0);
+    return true;
+}
+
 // Parse a JSON line into UsageData.
 static bool parse_json(const char* json, UsageData* out) {
     JsonDocument doc;
@@ -197,6 +216,14 @@ static void check_serial_cmd() {
             // device that is being flashed over that same cable.
             else if (strcmp(cmd_buf, "charge") == 0)   charge_anim_play(true);
             else if (strcmp(cmd_buf, "uncharge") == 0) charge_anim_play(false);
+            // Put a sample prompt on the panel without a host: exercises the
+            // overlay and the button path (the answer goes out over BLE if a
+            // host is connected, and is otherwise just logged).
+            else if (strcmp(cmd_buf, "ask") == 0)
+                ui_approve_show("serial", "Bash", "git push origin main   (serial test prompt)", 45);
+            else if (strcmp(cmd_buf, "askclr") == 0)   ui_approve_clear();
+            // The button press, from the bench: same arm delay, same BLE answer.
+            else if (strcmp(cmd_buf, "ok") == 0)       ui_approve_accept();
             else if (cmd_pos > 0 && !board_serial_command(cmd_buf))
                 Serial.printf("unknown command: %s\n", cmd_buf);
             cmd_pos = 0;
@@ -366,7 +393,12 @@ void loop() {
 
         if (power_hal_pwr_pressed()) {
             if (!idle_consume_wake_press()) {
-                if (board_caps().pwr_toggles_stats) {
+                if (ui_approve_visible()) {
+                    // A prompt is up: the press answers it (or, too soon after
+                    // it appeared, does nothing). It never reaches the screen
+                    // toggle underneath.
+                    ui_approve_accept();
+                } else if (board_caps().pwr_toggles_stats) {
                     // One-button boards: the press is the only way to the numbers.
                     ui_toggle_splash();
                 } else if (ui_get_current_screen() == SCREEN_SPLASH) {
@@ -457,7 +489,10 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
+        const char* raw = ble_get_data();
+        if (handle_approve_msg(raw)) {
+            ble_send_ack();
+        } else if (parse_json(raw, &usage)) {
             int g_before = usage_rate_group();
             bool session_reset = usage_rate_sample(usage.session_pct);
             int g_after = usage_rate_group();

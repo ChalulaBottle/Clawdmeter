@@ -599,8 +599,9 @@ def test_start_notify_oserror_does_not_crash_connect_and_run():
         # Must NOT raise OSError — graceful degradation into the poll loop.
         result = _run(connect_and_run(device, stop_event))
 
-    # start_notify was actually attempted (and raised), but was swallowed.
-    assert mock_client.start_notify.call_count == 1
+    # start_notify was actually attempted (and raised), but was swallowed —
+    # once for the refresh char and once for the TX (approve answers) char.
+    assert mock_client.start_notify.call_count == 2
     # Function returned normally instead of propagating the OSError.
     assert result is False
     # The link was cleaned up via the finally block.

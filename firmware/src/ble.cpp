@@ -432,6 +432,15 @@ void ble_send_nack(void) {
     }
 }
 
+void ble_send_approve(const char* id) {
+    if (state != BLE_STATE_CONNECTED || !tx_char || !id || !*id) return;
+    char msg[48];
+    snprintf(msg, sizeof(msg), "{\"approve\":\"%s\"}", id);
+    tx_char->setValue(msg);
+    tx_char->notify();
+    Serial.printf("BLE: approve %s\n", id);
+}
+
 void ble_set_battery_level(int pct) {
     if (!hid_dev || pct < 0) return;
     if (pct > 100) pct = 100;
