@@ -200,6 +200,37 @@
     ],
   };
 
+  // 3c2. SSH: the creature makes contact with another machine. It steps back to its mini, a server
+  // tower stands on the right (dark, three slots, one LED each), a packet leaves the creature along
+  // the visor row, the first LED answers, a packet comes back, then the link goes solid and the LEDs
+  // walk while the creature's antenna pings: connected. The link drops and the creature returns.
+  function sshScene(packet, link, leds, ping) {
+    const b = blit(empty(), echoMini, 5, 0);
+    set(b, 5, 7, ping ? 4 : 1);                                              // the mini's antenna tip
+    for (let r = 4; r <= 15; r++) for (let c = 13; c <= 18; c++) set(b, r, c, 5);   // the tower
+    [6, 9, 12].forEach((r, i) => { for (let c = 15; c <= 17; c++) set(b, r, c, 1); set(b, r, 14, leds[i] || 5); });
+    if (link) for (let c = 10; c <= 12; c++) set(b, 8, c, 3);               // the session, solid
+    if (packet >= 0) set(b, 8, packet, 4);                                   // one packet on the wire
+    return b;
+  }
+  const echoSsh = {
+    name: 'ECHO · ssh', key: 'echo_ssh', fwname: 'echo ssh', category: 'Active',
+    intent: 'Proposal. Contact with another machine: a packet out to the tower, an LED answers, a packet back, the link goes solid and the LEDs walk while the antenna pings. Host plays it when an agent opens a remote session.',
+    palette: echo.palette,
+    frames: [
+      {hold: 900, grid: echoPing(false)}, {hold: 60, grid: echoGlitch(), glitch: true},
+      {hold: 500, grid: sshScene(-1, false, [], false)},
+      {hold: 140, grid: sshScene(10, false, [], true)}, {hold: 140, grid: sshScene(11, false, [], false)}, {hold: 140, grid: sshScene(12, false, [], false)},
+      {hold: 320, grid: sshScene(-1, false, [4], false)},
+      {hold: 140, grid: sshScene(12, false, [4], false)}, {hold: 140, grid: sshScene(11, false, [4], false)}, {hold: 140, grid: sshScene(10, false, [4], false)},
+      {hold: 600, grid: sshScene(-1, true, [4, 4], true)},
+      {hold: 380, grid: sshScene(-1, true, [3, 4, 4], false)}, {hold: 380, grid: sshScene(-1, true, [4, 3, 4], true)},
+      {hold: 380, grid: sshScene(-1, true, [4, 4, 3], false)}, {hold: 380, grid: sshScene(-1, true, [3, 4, 4], true)},
+      {hold: 420, grid: sshScene(-1, false, [], false)},
+      {hold: 60, grid: echoGlitch(), glitch: true}, {hold: 140, grid: echoPing(true)}, {hold: 1200, grid: echoPing(false)},
+    ],
+  };
+
   // 3d. Token burner: past the budget line the creature is on fire. Amber and alert flames flicker
   // above the body and embers drift up the sides; the visor goes alert. Loud on purpose: this is the
   // state that should make you look up.
@@ -674,7 +705,7 @@
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
