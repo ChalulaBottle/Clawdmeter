@@ -1,6 +1,7 @@
 #include "board.h"
 #include "io_expander.h"
 #include <Arduino.h>
+#include <Wire.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -61,6 +62,17 @@ extern "C" bool board_serial_command(const char* cmd) {
         io_expander_touch_reset(false);
         delay(100);
         Serial.println(touch_gt911_probe_now() ? "GT911 answered after reset" : "GT911 silent after reset");
+        return true;
+    }
+    if (strncmp(cmd, "i2c ", 4) == 0) {
+        // Bus clock in kHz, then re-probe: a long touch flex with weak
+        // pull-ups can NACK at 400 kHz while the on-board parts still ACK.
+        int khz = atoi(cmd + 4);
+        if (khz < 10) khz = 10; if (khz > 1000) khz = 1000;
+        Wire.setClock((uint32_t)khz * 1000);
+        Serial.printf("I2C clock %d kHz\n", khz);
+        io_expander_i2c_scan_log();
+        Serial.println(touch_gt911_probe_now() ? "GT911 answered" : "GT911 silent");
         return true;
     }
     if (strncmp(cmd, "bl ", 3) == 0) {

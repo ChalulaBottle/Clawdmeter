@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clawdmeter, ECHO edition</title>
+<meta name="description" content="A 4 inch desk display for Claude Code usage, ported by ECHO Club onto the Waveshare ESP32-S3-Touch-LCD-4. Fork of Hermann Björgvin's Clawdmeter.">
+<style>
+/* ECHO tokens (BRAND.md, locked 2026-08-03). No webfonts by design. */
+:root{
+  --echo:#35e0c0;--echo-deep:#17836f;--ping:#6fe9ff;--warn:#e0b25a;--alert:#e0665a;
+  --on-echo:#03110e;--flash:#eafffb;
+  --bg:#06090b;--bg2:#080d10;--surf:#0c1214;--surf2:#111a1d;--surf3:#162226;
+  --line:#1d2b2f;--line-soft:#141e21;--edge:#2c4045;
+  --text:#d8e6e6;--muted:#7d9698;--dim:#48605f;
+  --head:Bahnschrift,"SF Compact Condensed","Segoe UI Semibold",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --cut:13px;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f2f6f5;--bg2:#e9efee;--surf:#ffffff;--surf2:#f4f8f7;--surf3:#e6edec;
+    --line:#cfdad8;--line-soft:#dde6e4;--edge:#a9bbb8;
+    --text:#0f1a1a;--muted:#4a5f5e;--dim:#7d9291;--echo:#0e8a74;--echo-deep:#0a5f51;--warn:#8a6a1c;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 var(--sans)}
+main{max-width:1040px;margin:0 auto;padding:0 16px}
+.kick{font:600 12px/1 var(--mono);letter-spacing:.28em;text-transform:uppercase;color:var(--echo);margin:0 0 14px}
+h1,h2,h3{font-family:var(--head);text-transform:uppercase;letter-spacing:.02em;margin:0}
+h1{font-size:clamp(34px,7vw,64px);line-height:.98;font-weight:800}
+h2{font-size:clamp(22px,4vw,32px);font-weight:800;margin-bottom:14px}
+h3{font-size:17px;font-weight:800;margin-bottom:6px}
+p{margin:0 0 12px}
+strong{color:var(--flash)}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) strong{color:var(--text)} }
+.muted{color:var(--muted)}
+.band{padding:64px 0}
+.band.dark{background:var(--bg2)}
+.band.work{background:var(--bg)}
+.hero{padding:88px 0 56px}
+.hero .lede{font-size:19px;max-width:62ch;margin:18px 0 26px;color:var(--text)}
+.erow{display:flex;flex-wrap:wrap;gap:10px;margin:0}
+.btn{display:inline-block;font:700 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  padding:14px 18px;color:var(--text);background:var(--surf2);border:1px solid var(--edge);text-decoration:none;
+  clip-path:polygon(0 8px,8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)}
+.btn.primary{background:var(--echo);color:var(--on-echo);border-color:var(--echo)}
+.btn:hover{filter:brightness(1.08)}
+.btn:focus-visible{outline:2px solid var(--ping);outline-offset:2px}
+.strip{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:38px}
+.count{padding:16px 18px;background:var(--surf);border:1px solid var(--line);position:relative;
+  clip-path:polygon(0 var(--cut),var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%)}
+.count .fig{font:800 34px/1 var(--head);color:var(--flash)}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .count .fig{color:var(--text)} }
+.count .cap{font:600 11px/1.4 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+.panel{padding:22px 24px;background:linear-gradient(155deg,var(--surf2),var(--surf));border:1px solid var(--line);position:relative;
+  clip-path:polygon(0 var(--cut),var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%)}
+.panel::before,.panel::after,.count::before,.count::after{content:"";position:absolute;width:10px;height:10px;border-color:var(--edge);border-style:solid}
+.panel::before,.count::before{top:6px;left:6px;border-width:1px 0 0 1px}
+.panel::after,.count::after{bottom:6px;right:6px;border-width:0 1px 1px 0}
+.two{display:grid;grid-template-columns:1.1fr .9fr;gap:36px;align-items:start}
+.two>*,.grid3>*,.tiles>*,.strip>*{min-width:0}
+figure.media{margin:0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.tile .fig{font:800 22px/1.1 var(--head)}
+.tile .cap{font:600 11px/1.4 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.tile .mean{font-size:14px;color:var(--muted);margin-top:8px}
+.state{font:700 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;padding:5px 8px;background:var(--surf3);color:var(--muted);display:inline-block;margin-left:8px;vertical-align:middle}
+.state.live{color:var(--echo)}
+.state.pending{color:var(--warn)}
+.media{background:var(--surf);border:1px solid var(--line);padding:14px;
+  clip-path:polygon(0 var(--cut),var(--cut) 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%)}
+.media img{display:block;width:100%;max-width:100%;height:auto;image-rendering:pixelated;background:#000}
+.media figcaption{font:500 12px/1.5 var(--mono);color:var(--muted);margin-top:10px}
+.help{font:500 13px/1.6 var(--mono);color:var(--warn)}
+.help ul{list-style:none;padding:0;margin:8px 0 0}
+.help li::before{content:"⠿  ";color:var(--warn)}
+.pull{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;margin:26px 0;font-size:20px;font-family:var(--head);text-transform:none;letter-spacing:0}
+.pull cite{display:block;font:500 12px/1 var(--mono);color:var(--muted);margin-top:10px;font-style:normal;letter-spacing:.14em}
+dl.spec{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 18px;margin:0;font-size:15px}
+dl.spec dt{font:600 12px/1.6 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+dl.spec dd{margin:0;min-width:0;overflow-wrap:anywhere}
+code{font-family:var(--mono);font-size:.92em;overflow-wrap:anywhere}
+.panel,.count,.tile{min-width:0}
+footer{padding:56px 0 72px;background:var(--bg2);border-top:1px solid var(--line-soft)}
+footer p{font-size:14px;color:var(--muted);max-width:76ch}
+@media (max-width:820px){
+  .strip,.grid3{grid-template-columns:1fr 1fr}
+  .tiles{grid-template-columns:1fr 1fr}
+  .two{grid-template-columns:1fr}
+}
+@media (max-width:520px){
+  .strip,.grid3,.tiles{grid-template-columns:1fr}
+  .band{padding:48px 0}
+  dl.spec{grid-template-columns:1fr;gap:2px 0}
+  dl.spec dd{margin-bottom:10px}
+}
+</style>
+</head>
+<body>
+
+<!-- Band 1, dark: hero. Counts, not adjectives. Every figure below is countable from the device or the code. -->
+<section class="band dark hero">
+  <main>
+    <p class="kick">ECHO · Build · Fork of Clawdmeter</p>
+    <h1>Clawdmeter,<br>ECHO edition</h1>
+    <p class="lede"><strong>A 4 inch square screen on your desk that shows how much Claude Code you have left.</strong> Built for members who live in the terminal all day and never see the usage page. The part nobody tells you: the readout is the same rate limit headers the API sends you anyway, polled once a minute by a small tray app, pushed to the screen over Bluetooth. No account scraping, no cloud in between.</p>
+    <div class="erow">
+      <a class="btn primary cdk cdk-flash" href="https://github.com/ChalulaBottle/Clawdmeter/tree/port/waveshare-lcd-4" target="_blank" rel="noopener noreferrer">Open the fork on GitHub</a>
+      <a class="btn cdk cdk-flash" href="https://github.com/HermannBjorgvin/Clawdmeter" target="_blank" rel="noopener noreferrer">The original project</a>
+    </div>
+    <div class="strip">
+      <div class="count"><div class="fig">480 × 480</div><div class="cap">pixels, IPS, 4 inch</div></div>
+      <div class="count"><div class="fig">60 s</div><div class="cap">between usage polls</div></div>
+      <div class="count"><div class="fig">1</div><div class="cap">cable: USB-C for power and flashing</div></div>
+    </div>
+  </main>
+</section>
+
+<!-- Band 2, work: the argument, unpanelled. -->
+<section class="band work">
+  <main class="two">
+    <div>
+      <p class="kick">Why a fork</p>
+      <h2>Same meter, bigger glass, one button</h2>
+      <p>Hermann Björgvin's Clawdmeter runs on small Waveshare AMOLED boards with three buttons and a power chip the firmware can talk to. The board ECHO had on the bench is different in every one of those ways: a 4 inch RGB parallel panel scanned straight out of PSRAM, a GT911 touch controller, a tiny second microcontroller that gates reset, backlight and the buzzer, and exactly one button the ESP32 can see.</p>
+      <p>The fork adds that board as a port, the way the upstream project intends: one folder of board files behind its hardware layer, no changes to the meter itself. Everything the upstream device does, this one does, at four times the area.</p>
+      <blockquote class="pull">"Adding a board means dropping in a new folder + a new build env. main.cpp, ui.cpp and splash.cpp never see board-specific code."<cite>Clawdmeter CLAUDE.md, the porting contract this fork follows</cite></blockquote>
+    </div>
+    <figure class="media">
+      <img src="media/lcd4/splash-frame.png" width="480" height="480" alt="The Clawd creature asleep on the splash screen, captured from the 4 inch board's framebuffer">
+      <figcaption>Frame captured from the board over serial on 2026 09 27, first day the port ran. Sleep animation, idle state.</figcaption>
+    </figure>
+  </main>
+</section>
+
+<!-- Band 3, dark: what is in the fork. Inputs, not features. -->
+<section class="band dark">
+  <main>
+    <p class="kick">What the fork contains</p>
+    <h2>Three inputs</h2>
+    <div class="grid3">
+      <div class="panel">
+        <h3>The board port</h3>
+        <p class="muted">ST7701 panel over 16 bit RGB with a bounce buffer, GT911 reader, both expander revisions detected at boot (TCA9554 on V1 to V3, CH32V003 on V4), backlight PWM, buzzer chime, battery through the expander's ADC.</p>
+      </div>
+      <div class="panel">
+        <h3>The Windows tray daemon</h3>
+        <p class="muted">Upstream's Python daemon, run as a tray app: pairs once through Windows Bluetooth, polls every 60 seconds, reconnects on its own, shows a green, amber or red bubble for connected, scanning, error.</p>
+      </div>
+      <div class="panel">
+        <h3>The pages to come</h3>
+        <p class="muted">Integration hooks named now so the port is built for them: a Fox agent status page over the LAN, and a Kismet status page fed by the AEGIS relay rather than Kismet directly. Same screen, more than one meter.</p>
+      </div>
+    </div>
+    <div class="help" style="margin-top:22px">
+      <ul>
+        <li>Pair the device once in Windows Bluetooth before starting the tray app. It is a bonded keyboard as well as a display.</li>
+        <li>The usage screen shows for 60 seconds every 5 minutes on its own; a tap on the screen toggles it once touch is live.</li>
+      </ul>
+    </div>
+  </main>
+</section>
+
+<!-- Band 4, work: state of the port. Honest tiles; a flagged number is a liability, not a feature. -->
+<section class="band work">
+  <main>
+    <p class="kick">State of the port · 2026 09 27</p>
+    <h2>What runs today</h2>
+    <div class="tiles">
+      <div class="panel tile"><div class="fig">Panel<span class="state live">Live</span></div><div class="cap">ST7701, 480 × 480</div><div class="mean">Splash and usage screens render; the layout is the upstream 480 × 480 layout unchanged.</div></div>
+      <div class="panel tile"><div class="fig">Bluetooth<span class="state live">Live</span></div><div class="cap">paired, polling</div><div class="mean">Usage payloads arrive every 60 seconds from the Windows tray daemon.</div></div>
+      <div class="panel tile"><div class="fig">Touch<span class="state pending">Pending</span></div><div class="cap">GT911 silent on the bus</div><div class="mean">Every reset sequence and bus speed tried; the controller never answers. Hardware under inspection.</div></div>
+      <div class="panel tile"><div class="fig">Battery<span class="state pending">Pending</span></div><div class="cap">ADC path written, unverified</div><div class="mean">Reads through the CH32 expander; the icon stays hidden until a pack is fitted and the curve checked.</div></div>
+    </div>
+    <div style="margin-top:26px" class="panel">
+      <dl class="spec">
+        <dt>Board</dt><dd>Waveshare ESP32-S3-Touch-LCD-4, revision 4.0 (ESP32-S3 N16R8: 16 MB flash, 8 MB PSRAM)</dd>
+        <dt>Build env</dt><dd><code>pio run -d firmware -e waveshare_lcd_4 -t upload --upload-port COM11</code></dd>
+        <dt>Button</dt><dd>BOOT: short press cycles animation or brightness, hold 3 seconds and release to re-pair</dd>
+        <dt>Bring-up</dt><dd>Serial pokes over USB: <code>iox</code>, <code>scan</code>, <code>gtseq</code>, <code>bl 128</code>, <code>screenshot</code></dd>
+      </dl>
+    </div>
+  </main>
+</section>
+
+<footer>
+  <main>
+    <p class="kick">Credit</p>
+    <p><strong>The Clawdmeter is Hermann Björgvin's project</strong>: the device, the firmware, the board ports, the LVGL work, the BLE service and the animation engine. ECHO Club's fork adds one board and the pages above, and claims nothing else. The macOS port is by Chris Davidson; the Claude Session Browser branch this fork was cut from is by juppeee.</p>
+    <p>Clawd pixel animations by amaanbuilds (claudepix). Icons from Lucide, MIT. Board documentation and reference drivers from Waveshare. Upstream ships no licence because it carries proprietary fonts and a copyrighted mascot; this fork inherits that caution and grants nothing beyond what upstream grants.</p>
+    <div class="erow" style="margin-top:18px">
+      <a class="btn cdk cdk-flash" href="https://github.com/HermannBjorgvin/Clawdmeter" target="_blank" rel="noopener noreferrer">Hermann Björgvin's Clawdmeter</a>
+      <a class="btn cdk cdk-flash" href="https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4" target="_blank" rel="noopener noreferrer">Waveshare board wiki</a>
+    </div>
+    <p style="margin-top:26px;font:500 12px/1.6 var(--mono)">ECHO Club · Build · a member project</p>
+  </main>
+</footer>
+</body>
+</html>

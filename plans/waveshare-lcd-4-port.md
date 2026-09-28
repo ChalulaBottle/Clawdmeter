@@ -7,10 +7,32 @@
   receiving usage payloads every 60 s. Splash visibly tears/drifts (bounce buffer added in the
   working tree, not yet observed). **Touch dead:** GT911 never ACKs at 0x5D/0x14; bus scan shows
   only 0x24 and 0x51. BOOT now plays the PWR role (short = cycle screens, long = pair); no HID key.
-- **Exact next action:** flash the working tree (adds `serial_cmd.cpp` pokes: `iox`, `iox w RR VV`,
-  `scan`, `gt`, `tprst`, `bl N`) and experiment live on CH32 bits 1 (TP_RST) and 2 (TP_INT) and
-  the DIR register until the GT911 answers; then commit. Then confirm the bounce buffer cured the
-  tearing with the operator watching, and take a `screenshot` for docs/media.
+- **Touch verdict 2026-09-27 ~22:15 (firmware side exhausted):** GT911 never ACKs at 0x5D/0x14
+  under any of: board_init release (INT driven low), datasheet reset with INT low then released
+  to input (`DIR=0xFB`, per-bit DIR confirmed: IN bit2 reads the pull-up), same with INT high,
+  DIR=0x00 (all inputs, pins float high). Bus scan always `0x24 0x51`. CH32, RTC and panel all
+  work on the same bus. Conclusion: touch flex not seated or touch IC dead. Waveshare's own V4
+  demo ships a "GT911 not found, run without pointer input" fallback. Pokes live in
+  `serial_cmd.cpp` (`iox`, `iox w RR VV`, `iox r RR`, `scan`, `gt`, `gtseq`, `gtseq hi`, `tprst`, `bl N`).
+- **Exact next action:** operator inspects/reseats the touch flex, then `gtseq` over serial (no
+  reflash needed). Meanwhile: confirm bounce buffer cured the tearing (operator's eyes), confirm
+  BOOT short press reaches the usage screen, capture `screenshot_win.py COM11 docs/media/lcd4/usage.png`,
+  update README/CLAUDE.md board lists, merge branch.
+- **Screen switching facts (main.cpp:366-373, 388-411; ui.cpp:479,559):** PWR short on splash =
+  next animation, on usage = brightness. Splash<->usage = tap (global_click_cb) or the automatic
+  peek (usage for 60 s every 5 min). With touch dead, the peek is the only route to the numbers.
+  Upstream's HID Space (BOOT) is disabled on this board while BOOT plays PWR; revisit when touch works.
+- **Landing page shipped 2026-09-27 (~22:45):** `docs/index.html`, single file, ECHO tokens
+  (BRAND.md), octagon panels, no arrows/coloured borders/icons/inline links, honest state tiles
+  (touch + battery PENDING). Media: `docs/media/landing/desktop-1280.png`, `phone-390-360.png`,
+  device frame `docs/media/lcd4/splash-frame.png`. Not yet on echoclub.org: that is a `.pj` card
+  on `site/projects.html` linking here, gated by the ECHO deploy rule. GitHub Pages for the fork
+  not enabled yet (operator call: Pages from `docs/` on this branch or after merge).
+- **Capture gotcha:** `tools/headless-shot.ps1` below ~500 px width crops a ~500 px layout (Chrome's
+  minimum window), which looks like horizontal overflow. Verify narrow widths through an iframe
+  harness (`scratchpad/harness390.html` pattern) instead.
+- **Serial gotcha:** opening COM11 with DTR/RTS asserted resets the board; both helper scripts
+  now clear them before open. Boot logs must be caught by opening the port BEFORE the reset.
 - **Toolchain gotcha:** the pinned pioarduino platform 55.03.38-1 refuses PlatformIO Core < 6.1.19;
   this box had 6.1.18. Fix: `~/.platformio/penv/Scripts/python.exe -m pip install -U platformio`.
 - **Windows helpers (scratchpad, copy to `tools/` when they prove out):** `serial_tail.py COM11 [s] [cmd]`
