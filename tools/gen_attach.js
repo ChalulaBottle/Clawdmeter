@@ -239,7 +239,7 @@ ${groups}
 <footer>
   <main>
     <p class="kick">Credit</p>
-    <p><strong>The Clawdmeter is Hermann Björgvin's project</strong>: the device, the firmware, the board ports, the LVGL work, the BLE service and the animation engine. ECHO Club's fork adds one board and this hub direction, and claims nothing else. Board documentation, schematic and reference code from Waveshare. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
+    <p><strong>Clawdmeter ECHO edition, by Digital Orukami for ECHO Club.</strong> Forked from the Clawdmeter originally created by Hermann Björgvin; the ECHO creature, its animations, the new hardware build, this hub direction and the ECHO edition UI and UX are original work by Digital Orukami, with more add ons and more devices to come. Board documentation, schematic and reference code from Waveshare. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
   </main>
 </footer>
 </body>
