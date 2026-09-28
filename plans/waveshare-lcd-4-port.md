@@ -2,10 +2,16 @@
 
 ## RESUME STATE
 
-- **Status:** PLANNING DONE, board folder not yet written. Factory firmware backed up.
-- **Exact next action:** write `firmware/src/boards/waveshare_lcd_4/` (files listed below) and the
-  `[env:waveshare_lcd_4]` block, then `pio run -d firmware -e waveshare_lcd_4` until it links.
+- **Status:** BOARD FOLDER WRITTEN (all 11 files) + `[env:waveshare_lcd_4]` appended; first build in
+  progress. Factory firmware backed up.
+- **Exact next action:** get `pio run -d firmware -e waveshare_lcd_4` to link; fix whatever the
+  compiler says about `Arduino_ESP32RGBPanel` / `Arduino_RGB_Display` argument lists in GFX 1.6.x.
   Then log intent in `C:\Users\OOrte\SYSTEM_CHANGE_LOG.md` and flash to COM11.
+- **Toolchain gotcha:** the pinned pioarduino platform 55.03.38-1 refuses PlatformIO Core < 6.1.19;
+  this box had 6.1.18. Fix: `~/.platformio/penv/Scripts/python.exe -m pip install -U platformio`.
+- **Windows helpers (scratchpad, copy to `tools/` when they prove out):** `serial_tail.py COM11 [s] [cmd]`
+  and `screenshot_win.py COM11 out.png` (pure-Python PNG writer, no ffmpeg), both run with the
+  PlatformIO penv python (pyserial comes with esptool).
 - **Device:** ESP32-S3 rev 0.2, 8 MB octal PSRAM, 16 MB quad flash, MAC `e8:3d:c1:f7:6f:20`,
   native USB-JTAG on **COM11** (Windows). Board revision (V1..V4 silkscreen) not yet read;
   factory image is ESP-IDF v5.5 which points at V4 (CH32V003 expander). The port probes both.

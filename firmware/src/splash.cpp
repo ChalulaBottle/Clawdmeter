@@ -108,6 +108,12 @@ static uint16_t *row_buf = NULL;   // scratch row, sized to canvas_w (PSRAM path
 #  define SPLASH_DIRECT_DRAW 0
 #endif
 
+#if !SPLASH_DIRECT_DRAW
+// PSRAM boards render the splash through an LVGL canvas and never wait on a
+// flush pass, but main.cpp's flush callback calls this on every board.
+void splash_note_refresh_done(void) {}
+#endif
+
 #if SPLASH_DIRECT_DRAW
 static uint16_t*       strip_buf = NULL;   // one grid-row band: (GRID*scr_cell)×scr_cell
 static int             scr_cell  = 24;     // on-screen px per grid cell
