@@ -49,19 +49,20 @@
     ],
   };
 
-  // 2. Clawd with coffee. Mug (3 cream, 4 coffee) in the raised right arm, cols 16..18, rows 8..10.
+  // 2. Clawd with coffee. A proper mug: 3 wide, 4 tall (3 cream, 4 coffee on top), held in front of the
+  // right arm at cols 16..18, rows 7..10, handle on col 19, the hand showing under it at row 11.
   // Steam (5) drifts above it. Every ~6 s the mug lifts one row to the mouth and the eyes squint (a sip).
   function mugAt(g, top) {
     const b = clone(g);
-    set(b, top, 16, 4); set(b, top, 17, 4);
-    set(b, top + 1, 16, 3); set(b, top + 1, 17, 3); set(b, top + 1, 18, 3);
-    set(b, top + 2, 16, 3); set(b, top + 2, 17, 3);
-    if (top === 8) set(b, 10, 17, 3);
+    for (let c = 15; c <= 17; c++) set(b, top, c, 4);                       // coffee surface
+    for (let r = top + 1; r <= top + 3; r++) for (let c = 15; c <= 17; c++) set(b, r, c, 3);
+    set(b, top + 1, 18, 3); set(b, top + 2, 18, 3);                          // handle
+    set(b, top + 4, 16, 1);                                                  // hand under the mug
     return b;
   }
-  const STEAM = [[[5, 17], [6, 18]], [[5, 18], [6, 17], [7, 18]], [[4, 17], [5, 18], [6, 18]], [[5, 17], [6, 17]]];
+  const STEAM = [[[4, 16], [5, 17]], [[4, 17], [5, 16], [6, 17]], [[3, 16], [4, 17], [5, 17]], [[4, 16], [5, 16], [6, 16]]];
   const steam = (g, i) => { const b = clone(g); for (const [r, c] of STEAM[i % STEAM.length]) if (b[r][c] === 0) set(b, r, c, 5); return b; };
-  const coffeeBase = mugAt(BASE, 8);
+  const coffeeBase = mugAt(BASE, 7);
   const coffee = {
     name: 'Clawd · coffee', key: 'idle_coffee', category: 'Idle',
     intent: 'Proposal. Same body, right arm holds a mug; steam is the only motion at rest, a sip every six seconds.',
@@ -75,7 +76,7 @@
     f.push({hold: 100, grid: steam(shut(coffeeBase), 1)});
     f.push({hold: 60, grid: steam(blink(coffeeBase), 2)});
     for (let k = 0; k < 4; k++) f.push({hold: 420, grid: steam(coffeeBase, k)});
-    const sip = mugAt(BASE, 7);
+    const sip = mugAt(BASE, 6);
     f.push({hold: 120, grid: steam(sip, 1)});
     f.push({hold: 700, grid: steam(shut(sip), 2)});
     f.push({hold: 120, grid: steam(sip, 3)});

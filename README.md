@@ -11,6 +11,14 @@
 > pio run -d firmware -e waveshare_lcd_4 -t upload --upload-port COM11
 > ```
 >
+> **Creatures in the works** (drawn for the ECHO edition, benched at
+> [docs/bench/animations.html](https://chalulabottle.github.io/Clawdmeter/bench/animations.html),
+> exported with `node tools/bench_to_json.js` into `tools/echo_anims/`):
+>
+> | Stock Clawd · idle blink | Clawd · coffee | ECHO creature · idle |
+> |---|---|---|
+> | ![stock](docs/media/anims/idle_blink.gif) | ![coffee](docs/media/anims/idle_coffee.gif) | ![echo](docs/media/anims/echo_idle.gif) |
+>
 > The Clawdmeter itself — the device, the firmware, the board ports, the LVGL
 > work, the BLE service, the animation engine — is
 > **[Hermann Björgvin's](https://github.com/HermannBjorgvin/Clawdmeter)**
