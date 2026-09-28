@@ -21,6 +21,20 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_coffee.html",
+    "name": "echo coffee",
+    "category": "Idle",
+    "frame_count": 14,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_double_coffee.html",
+    "name": "echo double coffee",
+    "category": "Idle",
+    "frame_count": 16,
+    "palette_size": 10
+  },
+  {
     "filename": "echo_float.html",
     "name": "echo float",
     "category": "Idle",
@@ -136,7 +150,7 @@
     "filename": "model_opus.html",
     "name": "model opus",
     "category": "Model",
-    "frame_count": 4,
+    "frame_count": 13,
     "palette_size": 8
   },
   {
