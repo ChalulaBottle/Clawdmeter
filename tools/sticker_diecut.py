@@ -66,9 +66,14 @@ ch, cw = r1 - r0 + 1, c1 - c0 + 1
 # fit the creature plus contour into the square with a small safety margin
 avail = S - 2 * CONTOUR - int(0.05 * a.dpi)
 cell = avail // max(ch, cw)
-ox, oy = (S - cw * cell) // 2, (S - ch * cell) // 2
+# work on a padded canvas so the close (extra dilate, erode back) never touches the border;
+# everything is cropped back to S x S at the end
+CLOSE = int(0.12 * a.dpi)
+PAD = CONTOUR + CLOSE + 8
+W = S + 2 * PAD
+ox, oy = PAD + (S - cw * cell) // 2, PAD + (S - ch * cell) // 2
 
-art = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+art = Image.new("RGBA", (W, W), (0, 0, 0, 0))
 dr = ImageDraw.Draw(art)
 for r in range(r0, r1 + 1):
     for c in range(c0, c1 + 1):
@@ -81,26 +86,27 @@ for r in range(r0, r1 + 1):
 # CLOSE (extra dilate, erode back) so narrow slots between the legs and around the steam fill in,
 # and a flood fill from the corner so no interior hole survives. A die cutter wants one blob with
 # no slot narrower than about 1/8 in and no islands.
+# a MaxFilter/MinFilter of size k grows/shrinks the edge by k // 2 pixels per pass
 def dilate(m, px):
     remaining = px
     while remaining > 0:
-        k = min(15, remaining); k = k if k % 2 == 1 else k + 1
-        m = m.filter(ImageFilter.MaxFilter(k)); remaining -= k // 2 * 2
+        k = min(15, 2 * remaining + 1); k = k if k % 2 == 1 else k + 1
+        m = m.filter(ImageFilter.MaxFilter(k)); remaining -= k // 2
     return m
 def erode(m, px):
     remaining = px
     while remaining > 0:
-        k = min(15, remaining); k = k if k % 2 == 1 else k + 1
-        m = m.filter(ImageFilter.MinFilter(k)); remaining -= k // 2 * 2
+        k = min(15, 2 * remaining + 1); k = k if k % 2 == 1 else k + 1
+        m = m.filter(ImageFilter.MinFilter(k)); remaining -= k // 2
     return m
-CLOSE = int(0.12 * a.dpi)
 mask = art.split()[3]
 grown = erode(dilate(mask, CONTOUR + CLOSE), CLOSE)
-outside = grown.copy(); ImageDraw.floodfill(outside, (0, 0), 128)   # 128 marks the outside
-holes = outside.point(lambda v: 255 if v == 0 else 0)                # 0 = unreached = a hole
-grown = Image.eval(Image.composite(Image.new("L", (S, S), 255), grown, holes), lambda v: v)
-white = Image.new("RGBA", (S, S), (255, 255, 255, 255)); white.putalpha(grown)
-out = Image.alpha_composite(white, art)
+# report any enclosed hole left after the close, so a printer surprise shows up here first
+probe = grown.copy(); ImageDraw.floodfill(probe, (0, 0), 128)
+holes_px = sum(1 for v in probe.getdata() if v == 0)
+white = Image.new("RGBA", (W, W), (255, 255, 255, 255)); white.putalpha(grown)
+out = Image.alpha_composite(white, art).crop((PAD, PAD, PAD + S, PAD + S))
+grown = grown.crop((PAD, PAD, PAD + S, PAD + S))
 
 name = f"sticker-diecut-{a.anim}{'-bigmug' if a.bigmug else ('-mug' if a.mug else '')}-{a.inch:g}in"
 out.save(os.path.join(a.out, name + ".png"), dpi=(a.dpi, a.dpi))
@@ -110,4 +116,4 @@ cut.save(os.path.join(a.out, name + "-cutline.png"), dpi=(a.dpi, a.dpi))
 prev = Image.new("RGBA", (S, S), (40, 44, 48, 255)); prev = Image.alpha_composite(prev, out)
 prev.convert("RGB").save(os.path.join(a.out, name + "-preview.png"))
 bbox = grown.getbbox()
-print(os.path.join(a.out, name + ".png"), f"{S}px at {a.dpi} dpi = {a.inch:g} in; cell {cell}px; contour {CONTOUR}px ({a.contour} in); cut bbox {bbox}")
+print(os.path.join(a.out, name + ".png"), f"{S}px at {a.dpi} dpi = {a.inch:g} in; cell {cell}px; contour {CONTOUR}px ({a.contour} in); cut bbox {bbox}; enclosed holes {holes_px}px")

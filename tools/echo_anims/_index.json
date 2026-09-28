@@ -42,6 +42,13 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_walk.html",
+    "name": "echo walk",
+    "category": "Active",
+    "frame_count": 13,
+    "palette_size": 7
+  },
+  {
     "filename": "echo_two_agents.html",
     "name": "two agents",
     "category": "Active",
@@ -58,6 +65,13 @@
   {
     "filename": "ultramode.html",
     "name": "ultramode",
+    "category": "Mode",
+    "frame_count": 17,
+    "palette_size": 7
+  },
+  {
+    "filename": "ultra_cube.html",
+    "name": "ultra cube",
     "category": "Mode",
     "frame_count": 27,
     "palette_size": 7

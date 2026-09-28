@@ -255,8 +255,8 @@
   }
   function dissolve(g, k) { const b = clone(g); for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (b[r][c] && ((r * 7 + c * 13 + k * 5) % 4) < k) b[r][c] = 0; return b; }
   const ultra = {
-    name: 'ECHO · ultramode', key: 'ultramode', fwname: 'ultramode', category: 'Mode',
-    intent: 'Proposal. The creature dissolves into a rotating wireframe cube that throws off spinning braille dots, collapses back into itself, then dives in again.',
+    name: 'ECHO · ultra cube', key: 'ultra_cube', fwname: 'ultra cube', category: 'Mode',
+    intent: 'Earlier ultramode idea, kept: the creature dissolves into a rotating wireframe cube with braille dots, collapses back, dives in again.',
     palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb'],
     frames: [],
   };
@@ -276,6 +276,76 @@
     f.push({hold: 1400, grid: echoPing(true)});
     f.push({hold: 60, grid: echoGlitch(), glitch: true});
     f.push({hold: 700, grid: echoPing(false)});
+  }
+
+  // 3e2. Ultramode, second take (operator: "I like the shifting concept but it can be cleaner").
+  // No dissolve, no cube: the creature stays whole and its rows SHIFT. A ripple runs down the body
+  // (each row offset by a small wave), then the creature slides apart into three horizontal bands
+  // (head, torso, legs) that pull in opposite directions and snap back, with the visor lit ping on the
+  // frames where the bands are apart. Coherent motion, one idea, then rest.
+  function shiftRows(g, fn, edge) {
+    const b = empty();
+    for (let r = 0; r < G; r++) {
+      const dx = fn(r);
+      for (let c = 0; c < G; c++) if (g[r][c]) set(b, r, c + dx, g[r][c]);
+      if (edge && dx) { // a lit cell on the leading edge of every shifted row
+        const cs = []; for (let c = 0; c < G; c++) if (b[r][c]) cs.push(c);
+        if (cs.length) set(b, r, dx > 0 ? cs[cs.length - 1] : cs[0], 4);
+      }
+    }
+    return b;
+  }
+  const ultraShift = {
+    name: 'ECHO · ultramode', key: 'ultramode', fwname: 'ultramode', category: 'Mode',
+    intent: 'Proposal, take two. The creature stays whole: a ripple shifts its rows, then head, torso and legs slide apart and snap back. Clean shifting, one idea per beat.',
+    palette: echo.palette,
+    frames: [],
+  };
+  {
+    const f = ultraShift.frames;
+    f.push({hold: 1100, grid: echoPing(false)});
+    // ripple: a wave of offsets travelling down the rows, 6 frames
+    for (let k = 0; k < 6; k++) f.push({hold: 80, grid: shiftRows(echoBase, r => Math.round(Math.sin((r - k * 2) / 1.6) * (k < 5 ? 1 : 0)), true)});
+    f.push({hold: 500, grid: echoPing(true)});
+    // bands apart: head (rows 0..7) right, torso (8..13) left, legs (14..) right; then further, then back
+    const band = amt => shiftRows(echoBase, r => r <= 7 ? amt : r <= 13 ? -amt : amt, true);
+    f.push({hold: 110, grid: band(1)}); f.push({hold: 700, grid: band(2)}); f.push({hold: 110, grid: band(1)});
+    f.push({hold: 60, grid: echoGlitch(), glitch: true});
+    f.push({hold: 900, grid: echoPing(false)});
+    // the mirror: bands the other way
+    const band2 = amt => shiftRows(echoBase, r => r <= 7 ? -amt : r <= 13 ? amt : -amt, true);
+    f.push({hold: 110, grid: band2(1)}); f.push({hold: 700, grid: band2(2)}); f.push({hold: 110, grid: band2(1)});
+    f.push({hold: 1200, grid: echoPing(true)});
+  }
+
+  // 3i. Echo walk: the creature moves around. It walks four cells to the right and back with the
+  // feet alternating and a one-row bob on every step, a glance at each turn. Movement, not a fidget.
+  function walkFrame(dx, step) {
+    const b = empty();
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) {
+      const v = echoBase[r][c]; if (!v) continue;
+      if (r >= 14) continue;                                      // legs drawn separately
+      set(b, r - (step % 2), c + dx, v);
+    }
+    const feet = step % 2 ? [6, 8, 12, 14] : [5, 8, 12, 15];      // inner/outer stance
+    for (let r = 14; r <= 16; r++) for (const c of feet) set(b, r - (step % 2 && r === 14 ? 1 : 0), c + dx, 5);
+    return b;
+  }
+  const echoWalk = {
+    name: 'ECHO · walk', key: 'echo_walk', fwname: 'echo walk', category: 'Active',
+    intent: 'Proposal. It walks: four cells right, a look back, four cells left, with alternating feet and a bob. The creature moving around the lattice.',
+    palette: echo.palette,
+    frames: [],
+  };
+  {
+    const f = echoWalk.frames;
+    f.push({hold: 700, grid: walkFrame(-2, 0)});
+    for (let s = 1; s <= 4; s++) f.push({hold: 240, grid: walkFrame(-2 + s, s)});
+    f.push({hold: 600, grid: walkFrame(2, 0)});
+    f.push({hold: 300, grid: (() => { const g = walkFrame(2, 0); for (let r = 6; r <= 7; r++) { set(g, r, 2 + 7, 3); set(g, r, 2 + 13, 3); set(g, r, 2 + 8, 2); set(g, r, 2 + 14, 2); } return g; })()});  // glance right
+    f.push({hold: 400, grid: walkFrame(2, 0)});
+    for (let s = 1; s <= 4; s++) f.push({hold: 240, grid: walkFrame(2 - s, s)});
+    f.push({hold: 900, grid: walkFrame(-2, 0)});
   }
 
   // 3f. Credits out: the creature cries out. Visor alert-red, a wide open mouth, tears streaming
@@ -462,7 +532,7 @@
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoTwoAgents, tokenBurner, ultra, creditsOut, ctfHoodie, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, tokenBurner, ultraShift, ultra, creditsOut, ctfHoodie, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
