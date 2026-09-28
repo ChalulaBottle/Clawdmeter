@@ -66,6 +66,20 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
+## 2026-09-28 ~12:45: flashed (auto-rotate + 67 animations), rotation PROVEN, touch lead 1 dead, USB flaky
+
+- Board came back on COM11 at ~12:40 (it had been on a power-only path since ~09:40; **the port also
+  dropped and returned mid-session once**, so the USB link is intermittent: cable or connector).
+- **Auto-rotate proven on the panel:** `rot 1` → "rotate: quadrant 1, redraw 76 ms", framebuffer
+  capture `docs/media/lcd4/rotate-quadrant1-device.png` shows the creature turned; `rot auto` back,
+  56 ms. IMU absent (expected: QMI8658 breakout not yet fitted). Direction convention (CW vs CCW)
+  gets settled with `IMU_SWAP_XY/FLIP` once the breakout is glued in.
+- **Touch lead 1 (TP_INT as input) FAILED:** `tprst`, `iox w 02 FB` (DIR=0xFB confirmed), `gt` →
+  "GT911 silent", scan still only 0x24 0x51. Remaining: lead 2 (does this SKU carry a GT911 / touch
+  flex at all?) and the factory-image test, both on the operator.
+- Ten new creatures confirmed on the panel (captures `echo-headphones/openclaw/loading/kiss-device.png`);
+  boards flipped to "On device".
+
 ## Attachables page + touch leads from the research (2026-09-28 ~11:30)
 
 `docs/attach.html` (live at /attach.html, generator `tools/gen_attach.js`, verified data
