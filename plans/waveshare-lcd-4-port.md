@@ -22,6 +22,13 @@
   next animation, on usage = brightness. Splash<->usage = tap (global_click_cb) or the automatic
   peek (usage for 60 s every 5 min). With touch dead, the peek is the only route to the numbers.
   Upstream's HID Space (BOOT) is disabled on this board while BOOT plays PWR; revisit when touch works.
+- **Sites, 2026-09-27 ~23:25:** fork landing LIVE at https://chalulabottle.github.io/Clawdmeter/
+  (GitHub Pages, branch `port/waveshare-lcd-4`, path `/docs`; repo description + homepage set;
+  README opens with the Digital Orukami fork box). ECHO site: `site/clawdmeter.html` + `.pj` card
+  + build-status row committed as 43dfa6b on ECHOCLUB_Site `main`, **NOT pushed** (deploy gate;
+  13 commits waiting on that branch, not all mine). Copy doc for operator revision:
+  https://claude.ai/code/artifact/29686539-7fa1-4a5d-beae-4cf873f2a358 (apply edits to all three
+  copies: docs/index.html, site/clawdmeter.html, README box).
 - **Landing page shipped 2026-09-27 (~22:45):** `docs/index.html`, single file, ECHO tokens
   (BRAND.md), octagon panels, no arrows/coloured borders/icons/inline links, honest state tiles
   (touch + battery PENDING). Media: `docs/media/landing/desktop-1280.png`, `phone-390-360.png`,
