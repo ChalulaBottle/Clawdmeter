@@ -1,4 +1,5 @@
 #include "../../hal/touch_hal.h"
+#include "../../hal/imu_hal.h"
 #include "board.h"
 #include "io_expander.h"
 #include <Arduino.h>
@@ -65,6 +66,19 @@ static void touch_read_into_shared_state(void) {
             if (LCD_ROTATION == 2) {
                 x = (LCD_WIDTH - 1) - x;
                 y = (LCD_HEIGHT - 1) - y;
+            }
+            // Auto-rotate: the picture turned by the IMU quadrant, so a panel
+            // point maps back through the inverse turn. Square panel, so the
+            // same S on both axes. To be checked against a live panel.
+            {
+                const int32_t S = LCD_WIDTH;
+                int32_t px = x, py = y;
+                switch (imu_hal_rotation_quadrant()) {
+                case 1: x = py;         y = S - 1 - px; break;
+                case 2: x = S - 1 - px; y = S - 1 - py; break;
+                case 3: x = S - 1 - py; y = px;         break;
+                default: break;
+                }
             }
             if (x < 0) x = 0; if (x >= LCD_WIDTH)  x = LCD_WIDTH - 1;
             if (y < 0) y = 0; if (y >= LCD_HEIGHT) y = LCD_HEIGHT - 1;

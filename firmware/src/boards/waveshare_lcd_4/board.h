@@ -98,9 +98,21 @@
 // synthesises the PWR-role edges from a long BOOT hold instead.
 #define BTN_BACK_GPIO        0
 
+// ---- IMU (not on the board: a QMI8658 breakout on the I2C header) ----
+// The panel turns with the board once the breakout reports which way is up.
+// Both QMI8658 addresses are probed; absent sensor = fixed orientation, and
+// the `rot N` serial command still drives the rotation path for testing.
+// Axis mapping depends on how the breakout is glued to the case; set these
+// after reading `imu` over serial in each of the four positions.
+#define QMI8658_ADDR_L       0x6B
+#define QMI8658_ADDR_H       0x6A
+#define IMU_SWAP_XY          0
+#define IMU_FLIP_X           0
+#define IMU_FLIP_Y           0
+
 // ---- Capability flags ----
 #define BOARD_HAS_SECONDARY_BUTTON 0
-#define BOARD_HAS_ROTATION         0
-#define BOARD_HAS_IMU              0
+#define BOARD_HAS_ROTATION         1
+#define BOARD_HAS_IMU              1
 #define BOARD_HAS_BATTERY          0    // flip once the V4 CH32 ADC path is verified
 #define BOARD_HAS_IO_EXPANDER      1

@@ -1,8 +1,11 @@
 #include "../../hal/display_hal.h"
+#include "../../hal/imu_hal.h"
+#include "../../brightness.h"
 #include "board.h"
 #include "io_expander.h"
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include <lvgl.h>
 
 // First RGB-parallel port in this tree. Arduino_RGB_Display owns a full
 // 480x480 RGB565 framebuffer in PSRAM and the LCD peripheral scans it out
@@ -58,8 +61,48 @@ void display_hal_draw_bitmap(int32_t x, int32_t y, int32_t w, int32_t h,
     if (gfx) gfx->draw16bitRGBBitmap(x, y, (uint16_t*)pixels, w, h);
 }
 
+// Auto-rotate. Arduino_RGB_Display rotates on its own: setRotation() changes
+// how draw16bitRGBBitmap lands each LVGL strip in the framebuffer, so the
+// panel's native mounting (LCD_ROTATION) and the IMU quadrant simply add. On
+// a change: backlight off, new rotation, full LVGL redraw, then the backlight
+// ramps back to the user's level over ~125 ms so the turn reads as deliberate.
+// The redraw is 24 strips through the library's rotated copy; the time is
+// logged once per turn so the PSRAM cost stays measured, not assumed.
 void display_hal_tick(void) {
-    // Free-running RGB scan-out; nothing to service per loop.
+    static uint8_t  last_rotation = 0;
+    static uint8_t  ramp_step = 0;     // 0 = idle, 1..4 = ramping
+    static uint32_t ramp_last = 0;
+    static uint32_t turned_at = 0;
+
+    uint8_t rot = imu_hal_rotation_quadrant();
+    if (rot != last_rotation) {
+        display_hal_set_brightness(0);
+        last_rotation = rot;
+        turned_at = millis();
+        if (gfx) gfx->setRotation((LCD_ROTATION + rot) & 3);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(NULL);   // draw the whole screen at the new orientation before the light comes back
+        Serial.printf("rotate: quadrant %d, redraw %lu ms\n", rot, (unsigned long)(millis() - turned_at));
+        ramp_step = 1;
+        return;
+    }
+
+    if (ramp_step == 0) return;
+    uint32_t now = millis();
+    if (now - ramp_last < 25) return;
+    ramp_last = now;
+
+    static const uint8_t pct[] = {30, 60, 85, 100};
+    uint8_t target = brightness_get();
+    display_hal_set_brightness((uint8_t)(((uint16_t)target * pct[ramp_step - 1]) / 100));
+    if (ramp_step >= 4) ramp_step = 0;
+    else                ramp_step++;
+}
+
+// The panel's own framebuffer (what it is scanning out right now), for the
+// `fbshot` serial capture: unlike the LVGL snapshot this shows the rotation.
+const uint16_t* display_lcd4_framebuffer(void) {
+    return gfx ? gfx->getFramebuffer() : nullptr;
 }
 
 // No alignment constraint on a framebuffer panel.
