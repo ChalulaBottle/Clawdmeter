@@ -701,11 +701,45 @@
     ],
   };
 
+  // 3m. Loading bar: the visor goes dark around the open eyes and swallows them, and the band fills as a braille loading bar
+  // in ping, top dot first, bottom dot one column behind, a flash cursor one cell ahead; then full, a flash, empty, eyes back.
+  function echoLoadingFrame(mode, s) {                                    // only the band (rows 6..7, cols 6..14) and the antenna tip change
+    const b = echoPing(false);                                            // antenna tip at rest
+    const band = v => { for (const r of [6, 7]) for (let c = 6; c <= 14; c++) set(b, r, c, v); };
+    if (mode === 'half') { set(b, 6, 7, 3); set(b, 6, 13, 3); }           // blink: only the lower eye cells stay dark
+    if (mode === 'sink' || mode === 'track' || mode === 'bar') band(5);   // dark track
+    if (mode === 'sink') for (const r of [6, 7]) { set(b, r, 7, 2); set(b, r, 13, 2); }   // the track closes round the eyes, still open
+    if (mode === 'flash') band(7);
+    if (mode === 'bar') {                                                 // s = 0..10, one column a frame
+      for (let k = 0; k < Math.min(s, 9); k++) set(b, 6, 6 + k, 4);       // top dots lead
+      for (let k = 0; k < Math.min(s - 1, 9); k++) set(b, 7, 6 + k, 4);   // bottom dots settle one column behind
+      if (s <= 8) set(b, 6, 6 + s, 7);                                    // cursor one cell ahead, runs off the end at s 9
+    }
+    return b;
+  }
+  const echoLoading = {
+    name: 'ECHO · loading bar', key: 'echo_loading', fwname: 'echo loading', category: 'Thinking',
+    intent: 'Proposal. Working or planning: after one blink the visor goes dark around the open eyes, the eyes sink into it and the band is a braille loading bar, a dark track that fills left to right in ping one column a frame with the top dot first, the bottom dot settling one column behind and a flash cursor one cell ahead, then it holds full, flashes once, empties in one frame and the eyes come back with an antenna ping; the eyes are gone only while the band is the bar, so judge whether the staggered two row fill reads as a braille loading bar and not a wipe.',
+    palette: [...echo.palette, '#eafffb'],   // 7 flash: the cursor and the completion flash
+    frames: [
+      {hold: 1000, grid: echoPing(false)},
+      {hold: 120, grid: echoLoadingFrame('half')},
+      {hold: 500, grid: echoPing(false)},
+      {hold: 200, grid: echoLoadingFrame('sink')},                        // the visor turns track round the open eyes
+      {hold: 300, grid: echoLoadingFrame('track')},                       // the eyes sink in: an empty bar
+      ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(s => ({hold: 240, grid: echoLoadingFrame('bar', s)})),
+      {hold: 600, grid: echoLoadingFrame('bar', 10)},                     // full, a beat
+      {hold: 120, grid: echoLoadingFrame('flash')},
+      {hold: 200, grid: echoLoadingFrame('track')},                       // empty in one frame
+      {hold: 300, grid: echoPing(true)},                                  // eyes back, antenna ping
+    ],
+  };
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, ...skinned], spinnerAt};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, ...skinned], spinnerAt};
   const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
