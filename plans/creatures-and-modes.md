@@ -40,6 +40,11 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   days with yday % 3 == 0 "echo coffee" becomes "echo double coffee". Logged as `splash: morning ->`.
   Serial `stats` toggles the usage screen for captures. Captures `docs/media/lcd4/clock-device.png`,
   `morning-device.png`.
+- **PAUSED 2026-09-28 ~08:20 (operator off to school).** Everything above is committed and pushed
+  (`481faa7`). Queued, not started: **coffee held by the handle** (operator: "a coffee version that
+  looks like its holding a coffee cup from the coffee handle"): new mug with a handle on the right,
+  arm out, hand on the handle; build in `docs/bench/anims.js` next to `mugAt`/`echoMug` (line ~52 and
+  ~511), both Clawd and ECHO versions, then the usual export → firmware → captures.
 - **Exact next action:** operator decides whether to add the PermissionRequest hook to their
   settings (README snippet). Then the activity table below into hooks (same gate). Touch-to-see-usage
   = BOOT today (`pwr_toggles_stats`); a tap needs the GT911 answer (factory image test waits on the
