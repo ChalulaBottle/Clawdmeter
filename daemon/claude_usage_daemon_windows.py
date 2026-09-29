@@ -26,7 +26,10 @@ from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 
-DEVICE_NAME = "Clawdmeter"
+DEVICE_NAME = "ECHO_MiniDaemon"
+# The name the board advertised before the rename; a Windows bond made then keeps it as the
+# FriendlyName until the next pairing, so the bonded lookup accepts both.
+DEVICE_NAMES = (DEVICE_NAME, "Clawdmeter")
 SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
 RX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000002"
 TX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000003"   # device -> host: ack/nack, approve answers
@@ -480,7 +483,7 @@ def discover_bonded_address() -> str | None:
         return None
     command = (
         "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | "
-        f"Where-Object {{ $_.FriendlyName -eq '{DEVICE_NAME}' }} | "
+        "Where-Object { $_.FriendlyName -in @(" + ", ".join(f"'{n}'" for n in DEVICE_NAMES) + ") } | "
         "Select-Object -ExpandProperty InstanceId"
     )
     try:

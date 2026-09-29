@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Clawdmeter, ECHO edition</title>
-<meta name="description" content="A 4 inch desk display for Claude Code usage with the ECHO creature, Digital Orukami's build for ECHO Club on the Waveshare ESP32-S3-Touch-LCD-4, forked from Hermann Björgvin's Clawdmeter.">
+<title>ECHO_MiniDaemon</title>
+<meta name="description" content="ECHO_MiniDaemon: a 4 inch desk screen with the ECHO creature that shows how much Claude Code you have left and what Claude is doing. Created and designed by Digital Orukami, inspired by Clawdmeter.">
 <style>
 /* ECHO tokens (BRAND.md, locked 2026-08-03). No webfonts by design. */
 :root{
@@ -105,12 +105,12 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
 <!-- Band 1, dark: hero. Counts, not adjectives. Every figure below is countable from the device or the code. -->
 <section class="band dark hero">
   <main>
-    <p class="kick">ECHO · Build · Digital Orukami · Fork of Clawdmeter</p>
-    <h1>Clawdmeter,<br>ECHO edition</h1>
+    <p class="kick">ECHO · Build · Digital Orukami</p>
+    <h1>ECHO_<br>MiniDaemon</h1>
     <p class="lede"><strong>A 4 inch square screen on your desk that shows how much Claude Code you have left.</strong> Built for members who live in the terminal all day and never see the usage page. The part nobody tells you: the readout is the same rate limit headers the API sends you anyway, polled once a minute by a small tray app, pushed to the screen over Bluetooth. No account scraping, no cloud in between.</p>
     <div class="erow">
-      <a class="btn primary cdk cdk-flash" href="https://github.com/ChalulaBottle/Clawdmeter/tree/port/waveshare-lcd-4" target="_blank" rel="noopener noreferrer">Open the fork on GitHub</a>
-      <a class="btn cdk cdk-flash" href="https://github.com/HermannBjorgvin/Clawdmeter" target="_blank" rel="noopener noreferrer">The original project</a>
+      <a class="btn primary cdk cdk-flash" href="https://github.com/ChalulaBottle/ECHO_MiniDaemon" target="_blank" rel="noopener noreferrer">Open on GitHub</a>
+      <a class="btn cdk cdk-flash" href="https://github.com/HermannBjorgvin/Clawdmeter" target="_blank" rel="noopener noreferrer">Inspired by Clawdmeter</a>
     </div>
     <div class="strip">
       <div class="count"><div class="fig">480 × 480</div><div class="cap">pixels, IPS, 4 inch</div></div>
@@ -288,12 +288,12 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
 <footer>
   <main>
     <p class="kick">Credit</p>
-    <p>Forked from Clawdmeter, originally by Hermann Björgvin. The Claude like ECHO creature was created by Digital Orukami; its animations and the add ons are designed for the larger board, and the firmware was rewritten to accommodate the new hardware and add ons. Clawd pixel animations by amaanbuilds (claudepix), icons from Lucide, board documentation from Waveshare; no licence is granted beyond what upstream grants.</p>
+    <p>ECHO_MiniDaemon is created and designed by Digital Orukami, inspired by Clawdmeter by Hermann Björgvin. Clawd pixel animations by amaanbuilds (claudepix), icons from Lucide, board documentation from Waveshare; no licence is granted beyond what upstream grants.</p>
     <div class="erow" style="margin-top:18px">
       <a class="btn cdk cdk-flash" href="https://github.com/HermannBjorgvin/Clawdmeter" target="_blank" rel="noopener noreferrer">Hermann Björgvin's Clawdmeter</a>
       <a class="btn cdk cdk-flash" href="https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4" target="_blank" rel="noopener noreferrer">Waveshare board wiki</a>
     </div>
-    <p style="margin-top:26px;font:500 12px/1.6 var(--mono)">A Digital Orukami build for ECHO Club · fork of Clawdmeter</p>
+    <p style="margin-top:26px;font:500 12px/1.6 var(--mono)">ECHO_MiniDaemon · created and designed by Digital Orukami · inspired by Clawdmeter</p>
   </main>
 </footer>
 </body>

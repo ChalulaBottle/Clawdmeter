@@ -188,7 +188,7 @@ def main() -> None:
     images = build_state_icons(base)
 
     ts = TrayState()
-    icon = pystray.Icon("Clawdmeter", images["scanning"], "Clawdmeter")
+    icon = pystray.Icon("ECHO_MiniDaemon", images["scanning"], "ECHO_MiniDaemon")
 
     # Set by the Quit handler so the supervisor below knows a clean stop was
     # requested and must NOT resurrect the loop.
@@ -283,7 +283,7 @@ def main() -> None:
                 _icon.title = header_text(ts)
                 # D-04: toast ONLY on transition INTO error, not on every error tick.
                 if current == "error" and prev_state["state"] != "error":
-                    _icon.notify(ts.reason or "Clawdmeter error", "Clawdmeter")
+                    _icon.notify(ts.reason or "ECHO_MiniDaemon error", "ECHO_MiniDaemon")
                 prev_state["state"] = current
                 prev_state["last_sync"] = last_sync
                 _icon.update_menu()

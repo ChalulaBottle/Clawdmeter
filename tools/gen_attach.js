@@ -52,7 +52,7 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>What can attach</title>
-<meta name="description" content="Everything that can attach to the Clawdmeter ECHO edition hub (Waveshare ESP32-S3-Touch-LCD-4 V4): every physical path, ${itemCount} parts and satellites with difficulty and the real catch, passive scanning from the hub, and how other projects compile in as modules.">
+<meta name="description" content="Everything that can attach to the ECHO_MiniDaemon hub (Waveshare ESP32-S3-Touch-LCD-4 V4): every physical path, ${itemCount} parts and satellites with difficulty and the real catch, passive scanning from the hub, and how other projects compile in as modules.">
 <style>
 :root{
   --echo:#35e0c0;--echo-deep:#17836f;--ping:#6fe9ff;--warn:#e0b25a;--alert:#e0665a;
@@ -153,12 +153,12 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
 
 <section class="band dark hero">
   <main>
-    <p class="kick">ECHO · Clawdmeter ECHO edition · The hub</p>
+    <p class="kick">ECHO · ECHO_MiniDaemon · The hub</p>
     <h1>${esc(P.headline)}</h1>
     <p class="lede">${esc(P.lede)}</p>
     <div class="erow">
       <a class="btn primary cdk cdk-flash" href="index.html">Back to the project</a>
-      <a class="btn cdk cdk-flash" href="https://github.com/ChalulaBottle/Clawdmeter/tree/port/waveshare-lcd-4" target="_blank" rel="noopener noreferrer">The fork on GitHub</a>
+      <a class="btn cdk cdk-flash" href="https://github.com/ChalulaBottle/ECHO_MiniDaemon" target="_blank" rel="noopener noreferrer">On GitHub</a>
     </div>
     <div class="strip">
       <div class="count"><div class="fig">${P.paths.length}</div><div class="cap">ways in: headers, slots, radio</div></div>
@@ -239,7 +239,7 @@ ${groups}
 <footer>
   <main>
     <p class="kick">Credit</p>
-    <p>Forked from Clawdmeter, originally by Hermann Björgvin. The Claude like ECHO creature was created by Digital Orukami; its animations and the add ons are designed for the larger board, and the firmware was rewritten to accommodate the new hardware and add ons. Board documentation, schematic and reference code from Waveshare; no licence is granted beyond what upstream grants. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
+    <p>ECHO_MiniDaemon is created and designed by Digital Orukami, inspired by Clawdmeter by Hermann Björgvin. Board documentation, schematic and reference code from Waveshare; no licence is granted beyond what upstream grants. Research compiled ${new Date().toISOString().slice(0, 10)} by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
   </main>
 </footer>
 </body>
