@@ -66,6 +66,16 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
+## 2026-09-29: touch is a hardware fault, replacement being requested
+
+Operator confirmed the box says **Touch** (so a GT911 should be fitted) and filed for a replacement. Evidence
+for the claim: I2C scan on SDA15/SCL7 only ever shows 0x24 (CH32) and 0x51 (PCF85063); no ACK at 0x5D or
+0x14 across both GT911 reset sequences, 100/400 kHz, and TP_INT released to an input after reset; the CH32
+drives the backlight and resets normally. The touch code, the tap to approve and the inverse rotation remap
+are already in the firmware and need no change on a working board: flash, run `gt`, done. Optional before
+shipping it back: Waveshare's factory demo as the vendor-side proof (operator gated, overwrites ours
+temporarily).
+
 ## 2026-09-28 ~12:45: flashed (auto-rotate + 67 animations), rotation PROVEN, touch lead 1 dead, USB flaky
 
 - Board came back on COM11 at ~12:40 (it had been on a power-only path since ~09:40; **the port also
