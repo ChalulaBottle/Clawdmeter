@@ -66,6 +66,18 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
+## 2026-09-29 ~01:30: RESUME HERE. Board holds Waveshare's FACTORY image, not ours
+
+Waveshare's own V4 factory firmware says `Touch not found` and crash-loops, beeping on every boot
+(evidence: `docs/hardware/factory-firmware-touch-not-found.log`). The operator unplugged it mid way
+through re-flashing ECHO_MiniDaemon, so the upload failed. **Next action:** hold BOOT while plugging
+in USB (download mode: the factory app does not run, no beeping), then from `firmware/`:
+`pio run -e waveshare_lcd_4 -t upload`. The factory image wrote the whole flash from 0x0 including NVS,
+so the Bluetooth bond is gone: remove "ECHO_MiniDaemon"/"Clawdmeter" in Windows Bluetooth settings and
+pair again, then restart the tray. A research agent was looking for similar GT911 failures when the
+session paused; its answer does not change the verdict (vendor firmware fails too) but may list a
+last trick to try.
+
 ## 2026-09-29: touch is a hardware fault, replacement being requested
 
 Operator confirmed the box says **Touch** (so a GT911 should be fitted) and filed for a replacement. Evidence

@@ -1,0 +1,18 @@
+Waveshare ESP32-S3-Touch-LCD-4 V4, boxed "Touch". 2026-09-29.
+Flashed Waveshare's own factory image ESP32-S3-Touch-LCD-4-V4.0-FactoryOnly-251122.bin
+(sha256 5db7ee79f1063465d8114cea3a4675c8c87bdf303c2a3edaf6a55414c8634706, from
+github.com/waveshareteam/ESP32-S3-Touch-LCD-4/firmware) at 0x0. Boot log over USB serial:
+
+I (961) app_init: Project name:     esp_brookesia_phone_s3_lcd_ev_b
+W (969) i2c.master: Please check pull-up resistances whether be connected properly. Otherwise unexpected behavior would happen. For more detailed information, please read docs
+I (1570) ESP32-S3-Touch-LCD-4: Install 3-wire SPI panel IO
+I (1570) lcd_panel.io.3wire_spi: Panel IO create success, version: 1.0.1
+W (1872) st7701_rgb: The 36h command has been used and will be overwritten by external initialization sequence
+W (1873) st7701_rgb: The 3Ah command has been used and will be overwritten by external initialization sequence
+E (1996) ESP32-S3-Touch-LCD-4: Touch not found
+file: "./components/esp32_s3_touch_lcd_4/esp32_s3_touch_lcd_4.c" line 466
+expression: bsp_touch_new(((void *)0), &tp)
+
+The factory firmware aborts on the missing touch controller and reboots in a loop (the buzzer
+sounds on each boot). Display, backlight, BLE and the CH32 expander work under ECHO_MiniDaemon;
+an I2C scan there shows only 0x24 (CH32) and 0x51 (RTC), never the GT911 at 0x5D or 0x14.
