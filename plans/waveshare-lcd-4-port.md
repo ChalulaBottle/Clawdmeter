@@ -78,6 +78,14 @@ pair again, then restart the tray. A research agent was looking for similar GT91
 session paused; its answer does not change the verdict (vendor firmware fails too) but may list a
 last trick to try.
 
+Research (2026-09-29): Waveshare issue #12 (github.com/waveshareteam/ESP32-S3-Touch-LCD-4/issues/12) is
+a V4 board with the identical "Touch not found" from the factory image, open, no fix; a healthy V4 scans
+0x24, 0x51 and 0x5D (issue #21). Touch power is not switched on V4 (TP_VCC on 3V3 at J2 pin 39) and the
+touch lines share the display's 40 pin flex, so a working display proves the flex is seated but not the
+touch layer. Our CH32 handling matches Waveshare's (1 = output; IN read 0x2E, so TP_RST bit 1 was high).
+Size check: the touch version measures 84.2 x 84.2 mm, the LCD only version about 76.5 x 74.7 mm.
+Replacement board: flash, run `gt`, expect 0x5D.
+
 ## 2026-09-29: touch is a hardware fault, replacement being requested
 
 Operator confirmed the box says **Touch** (so a GT911 should be fitted) and filed for a replacement. Evidence
