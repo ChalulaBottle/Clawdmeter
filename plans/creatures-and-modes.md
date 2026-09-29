@@ -40,6 +40,15 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
   days with yday % 3 == 0 "echo coffee" becomes "echo double coffee". Logged as `splash: morning ->`.
   Serial `stats` toggles the usage screen for captures. Captures `docs/media/lcd4/clock-device.png`,
   `morning-device.png`.
+- **Replacing the stock set (operator 2026-09-28 ~19:10):** every stock Clawd animation gets an ECHO
+  replacement drawn from scratch (no claudepix frames, no skinning), in `docs/bench/anims_replace.js`,
+  each with `replaces: '<stock name>'`. At integration: add the script tag to animations.html, teach
+  `tools/add_echo_anims.py` to drop every stock entry named in a `replaces` field from the table and from
+  `GROUP_NAMES` (splash.cpp), and put the replacement in that slot of the rotation. Order (table order):
+  dance bounce dj (**echo dj, done**), dance sway dj, dance djmix, idle breathe, idle blink, idle look
+  around, work coding, work think, expression surprise, expression sleep, expression wink, dance bounce,
+  dance sway, done, think, write, allow, limit. Note some ECHO skins already exist (echo breathe, echo
+  wink...) but they are skinned from claudepix frames, so they count as NOT original and get redone too.
 - **Batch of ten (2026-09-28 ~12:05), exported, compiled, NOT flashed (no USB data):** echo happy
   (> < eyes), echo ssh (packet to a tower), echo loading (visor = braille bar), echo eye spin, echo
   kiss + kiss b, echo summon (one variant; the "materialise behind" lane was stopped by a content
