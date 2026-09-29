@@ -445,8 +445,10 @@ void loop() {
                 ui_show_screen(SCREEN_SPLASH);
                 Serial.println("peek: zurueck zu den Animationen");
             }
-        } else if (cur != SCREEN_SPLASH) {
-            peek_ref_ms = now_ms;          // steht ohnehin auf den Zahlen
+        } else if (cur != SCREEN_SPLASH || splash_host_named()) {
+            // on the numbers already, or the host is driving the creature (Claude activity):
+            // no peek, the clock restarts
+            peek_ref_ms = now_ms;
         } else if (now_ms - peek_ref_ms >= USAGE_PEEK_EVERY_MS) {
             peeking = true;
             peek_ref_ms = now_ms;

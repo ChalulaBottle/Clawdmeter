@@ -679,6 +679,7 @@ void splash_pick_for_current_rate(void) {
 }
 
 bool splash_is_active(void) { return active; }
+bool splash_host_named(void) { return forced_idx >= 0; }
 
 void splash_request_full_redraw(void) {
 #if SPLASH_DIRECT_DRAW

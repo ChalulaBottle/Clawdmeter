@@ -200,6 +200,89 @@
     {hold: 840, grid: echoPing(false)},
   ];
 
+  // ---------- Ultracode work: the dance ----------
+  // Operator, 2026-09-28: "I like the transition into the multi agents, let's animate them, make them all
+  // dance and manoeuvre in clever geometric ways since ultracode is the ultimate combo of agents".
+  // Three 10 by 10 minis cannot pass one another in 20 cells (a line of them needs 24 columns, a stack 27
+  // rows), so the dance runs on a 7 by 7 dancer: rows 1 3 4 7 8 13 15 and columns 3 5 7 10 13 15 17 of
+  // echoBase, picked the shrinkStep way, so the antenna tip and stalk, the head, the visor with both eyes,
+  // the arms, the lower body and the two outer legs all survive exactly.
+  // The loop opens on trio(), the pose ultracode enter ends on, tightens to three dancers and runs:
+  // triangle; a line holding hands (three dancers need 21 columns, so neighbours share the hand column);
+  // an upside down triangle that turns 150 degrees clockwise in 30 degree steps round a circle of radius 6;
+  // a column; a reel, three swaps passing side by side, whose passes draw a figure eight (the upper lobe
+  // anticlockwise, the lower one clockwise); the zigzag totem, every tip standing up beside the feet above
+  // it, wiggling; the two ends orbiting the middle by half a turn round a square; back to the triangle.
+  // Every dancer ends on the spot it started from, so each keeps its own ping slot across the loop.
+  // The beat is 4 frames: all three hop a row on frame 2 of it, which is the aura's purple phase, and one
+  // tip pings on each hop, round robin top, right, left, so each dancer pings once every 12 frames.
+  function buildUltraWork() {
+    const KR = [1, 3, 4, 7, 8, 13, 15], KC = [3, 5, 7, 10, 13, 15, 17];
+    const DANCER = KR.map(r => KC.map(c => echoBase[r][c]));
+    const dancer = lit => { const m = clone(DANCER); m[0][5] = lit ? PING : BODY; return m; };
+    // A spot is a dancer's top left corner, [row, col]. Dancer 0 starts on top of the triangle, 1 on the
+    // left, 2 on the right. at(): the dancer's centre on a circle round (10, 10), radius 6, deg clockwise
+    // from three o'clock, so 270 is twelve o'clock.
+    const at = deg => { const t = deg * Math.PI / 180; return [Math.round(7 + 6 * Math.sin(t)), Math.round(7 + 6 * Math.cos(t))]; };
+    const TRI = [at(270), at(150), at(30)];                  // [1, 7] [10, 2] [10, 12]
+    const LINE = [[7, 7], [7, 1], [7, 13]];                  // hands shared on columns 7 and 13
+    const TOP = [1, 7], MID = [7, 6], BOT = [13, 7];         // the column zigzags so each tip clears the feet above
+    const steps = [];
+    const hold = (ms, spots) => steps.push({ms, spots});
+    const glide = (from, to, n, ms) => {
+      for (let k = 1; k <= n; k++) hold(ms, from.map(([r, c], i) => [Math.round(r + (to[i][0] - r) * k / n), Math.round(c + (to[i][1] - c) * k / n)]));
+      return to;
+    };
+    // One pass of the reel: dancers i and j trade spots on the two halves of an ellipse, i bulging to side
+    // (-1 left, +1 right) and j the other way, 4.5 columns out at the widest, so the pair clears by a column.
+    const BULGE = 4.5;
+    const pass = (spots, i, j, side, n, ms) => {
+      const a = spots[i], b = spots[j];
+      for (let k = 1; k <= n; k++) {
+        const u = Math.PI * k / n, t = (1 - Math.cos(u)) / 2, w = BULGE * Math.sin(u), s = spots.slice();
+        s[i] = [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t + side * w)];
+        s[j] = [Math.round(b[0] + (a[0] - b[0]) * t), Math.round(b[1] + (a[1] - b[1]) * t - side * w)];
+        hold(ms, s);
+      }
+      const out = spots.slice(); out[i] = b; out[j] = a; return out;
+    };
+
+    steps.push({ms: 240, trio: true});                                      // 0: the pose ultracode enter ends on
+    hold(180, TRI); hold(160, TRI); hold(160, TRI);                         // 1..3: tightened to three dancers
+    glide(TRI, LINE, 3, 130);                                               // 4..6
+    for (let k = 0; k < 4; k++) hold(160, LINE);                            // 7..10: holding hands
+    const INV = [at(90), at(210), at(330)];                                 // upside down: 0 bottom, 1 top left, 2 top right
+    glide(LINE, INV, 3, 130);                                               // 11..13
+    for (let k = 1; k <= 5; k++) hold(150, [at(90 + 30 * k), at(210 + 30 * k), at(330 + 30 * k)]);   // 14..18: turn 150
+    let s = glide([at(240), at(0), at(120)], [TOP, MID, BOT], 3, 130);      // 19..21: 0 top, 1 middle, 2 bottom
+    s = pass(s, 0, 1, -1, 3, 130);                                          // 22..24: 0 down the left, 1 up the right
+    s = pass(s, 0, 2, +1, 3, 130);                                          // 25..27: 0 down the right, 2 up the left
+    s = pass(s, 1, 2, -1, 3, 130);                                          // 28..30: 1 down the left, 2 up the right
+    for (let k = 0; k < 4; k++) {                                           // 31..34: totem (0 bottom, 1 middle, 2 top), wiggling
+      const w = k % 2 ? 0 : 1;
+      hold(170, [[BOT[0], BOT[1] - w], [MID[0], MID[1] + w], [TOP[0], TOP[1] - w]]);
+    }
+    // 35..42: the ends orbit the middle by half a turn, clockwise round a square, three cells a step; the
+    // square puts the diagonal steps in the corners, clear of the middle's antenna. The middle holds
+    // column 7 so its hands meet the others at the quarter turn (the line again), 6 at either end.
+    const SQUARE = [[1, 7], [1, 10], [1, 13], [4, 13], [7, 13], [10, 13], [13, 13], [13, 10], [13, 7], [13, 4], [13, 1], [10, 1], [7, 1], [4, 1], [1, 1], [1, 4]];
+    for (let k = 1; k <= 8; k++) hold(90, [SQUARE[(k + 8) % 16], [7, k < 8 ? 7 : 6], SQUARE[k]]);
+    // 43..45: back to the triangle; the middle steps out left before it drops and the bottom steps out
+    // right before it rises, so the two never cross.
+    hold(130, [TOP, [7, 4], [13, 10]]); hold(130, [TOP, [9, 2], [11, 12]]); hold(130, TRI);
+    hold(180, TRI); hold(180, TRI);                                         // 46, 47
+
+    if (steps.length % 12) throw new Error('ultracode work: ' + steps.length + ' frames, the hop and the ping round robin need a multiple of 12');
+    const TURN = [0, 2, 1];                                                 // ping order: top, right, left
+    const frames = steps.map((st, f) => {
+      if (st.trio) return {hold: st.ms, grid: trio()};
+      const beat = f % 4 === 2, who = beat ? TURN[((f - 2) / 4) % 3] : -1, g = blank();
+      st.spots.forEach(([r, c], i) => place(g, dancer(i === who), r - (beat ? 1 : 0), c));
+      return {hold: st.ms, grid: g};
+    });
+    return withAura(frames);
+  }
+
   L.register([
     {name: 'ECHO · opus enter', key: 'mode_opus_enter', fwname: 'opus enter', category: 'Mode',
       intent: 'Played once when Opus takes over: fast antenna pings, the visor charges to white, the body steps up one shade and a halo of four cells flashes, then it settles on opus work within 3.3 s; judge whether it reads as powering up rather than as an alarm.',
@@ -211,8 +294,8 @@
       intent: 'Played once when ultracode starts, inside a breathing neon purple aura: three glitch splits at widening gaps, the last one tearing, then the creature shrinks to a 10 by 10 mini and echoes into three, each mini wrapped in its own aura; judge whether the minis still read as the same creature.',
       palette: ULTRA_PALETTE, frames: withAura(ultraEnter)},
     {name: 'ECHO · ultracode work', key: 'mode_ultracode_work', fwname: 'ultracode work', category: 'Mode',
-      intent: 'Ultracode at rest, the dominant state: three minis in neon purple auras that breathe purple to magenta, one chest light passing clockwise 1.2 s at a time and each antenna pinging once per 3.6 s; judge whether it reads as a team at work rather than a marquee.',
-      palette: ULTRA_PALETTE, frames: withAura(ultraWork)},
+      intent: 'Ultracode at rest, the dominant state: three dancers, each in its own breathing neon purple aura, run through formations on a four frame beat (a triangle, a line holding hands, an upside down triangle that turns, a column, a figure eight reel, a wiggling totem, an orbit, back to the triangle), hopping together and pinging round robin; judge whether it reads as a team at work and whether the moves stay legible at 20 cells.',
+      palette: ULTRA_PALETTE, frames: buildUltraWork()},
     {name: 'ECHO · agents split', key: 'mode_agents_split', fwname: 'agents split', category: 'Mode',
       intent: 'Host triggered moment when agents start: one glitch, the creature shrinks, echoes into three minis, holds 1.1 s and folds back, a 3 s loop; judge whether the split reads in a single viewing.',
       palette: AGENTS_PALETTE, frames: agentsSplit},

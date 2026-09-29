@@ -28,6 +28,11 @@
       set(b, r - (up ? 1 : 0), c, v);
     }
     set(b, 1 - (up ? 1 : 0), 15, beat % 4 === 0 ? PING : BODY);             // antenna ping on the one
+    // headset: a white band over the head (the antenna stands beside it) onto magenta cups over the ears
+    const dy = up ? -1 : 0;
+    for (let c = 5; c <= 14; c++) set(b, 3 + dy, c, FLASH);
+    set(b, 4 + dy, 4, FLASH); set(b, 4 + dy, 16, FLASH);
+    for (let r = 5; r <= 8; r++) for (const c of [3, 4, 16, 17]) set(b, r + dy, c, LIGHT);
     if (drop) {                                                             // > < eyes on the drop
       const top = 6 - (up ? 1 : 0);
       for (const c of [7, 13]) { set(b, top, c, VISOR); set(b, top + 1, c, VISOR); }
@@ -49,11 +54,30 @@
       const h = 1 + ((beat * 7 + i * 5) % 3);
       for (let k = 0; k < h; k++) set(b, 19 - k, 7 + i, k === h - 1 ? LIGHT : VISOR);
     }
+    // lasers: beams from the two top corners sweep across the room behind the creature (they only light
+    // empty cells, so they pass behind it). One pair before the drop, crossing pairs and a strobe on it.
+    const beam = (r0, c0, r1, c1, v) => {
+      const n = Math.max(Math.abs(r1 - r0), Math.abs(c1 - c0));
+      for (let k = 0; k <= n; k++) {
+        const r = Math.round(r0 + (r1 - r0) * k / n), c = Math.round(c0 + (c1 - c0) * k / n);
+        if (r >= 0 && r < G && c >= 0 && c < G && b[r][c] === 0) b[r][c] = v;
+      }
+    };
+    const sweep = [2, 5, 8, 11, 14, 17, 14, 11, 8, 5][beat % 10];
+    if (beat % 2 === 0 || drop) {
+      beam(0, 0, 11, sweep, PING);
+      beam(0, 19, 11, 19 - sweep, LIGHT);
+    }
+    if (drop) {
+      beam(0, 0, 11, 19 - sweep, LIGHT);
+      beam(0, 19, 11, sweep, PING);
+      if (beat % 2) for (let c = 0; c < G; c++) if (b[0][c] === 0) b[0][c] = FLASH;   // the strobe
+    }
     return b;
   }
   const echoDj = {
     name: 'ECHO · dj', key: 'echo_dj', fwname: 'echo dj', category: 'Active', replaces: 'dance bounce dj',
-    intent: 'Replaces the stock bounce DJ with our own: the creature behind a deck, two platters spinning at different speeds, a scratch every fourth beat, an equaliser under the deck, a bob on every beat and > < eyes on the drop; judge the tempo and whether the deck reads at 20 cells.',
+    intent: 'Replaces the stock bounce DJ with our own: the creature in a headset behind a deck, two platters spinning at different speeds, a scratch every fourth beat, an equaliser under the deck, lasers sweeping from the corners behind it, a bob on every beat, then on the drop crossing lasers, a strobe and > < eyes; judge the tempo and whether the lasers read as behind the creature.',
     palette: DJ_PALETTE,
     frames: [],
   };

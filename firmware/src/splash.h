@@ -44,6 +44,9 @@ void splash_note_refresh_done(void);
 // True when splash is currently rendering (used to gate re-picks).
 bool splash_is_active(void);
 
+// True while the host has named an animation (splash_set_anim with a known name).
+bool splash_host_named(void);
+
 // Root container (so ui.cpp can attach a click event).
 lv_obj_t* splash_get_root(void);
 
