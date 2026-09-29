@@ -6,6 +6,10 @@
  * each frame are palette indices (0..9). Splash module looks up colors via
  * palette[cell].
  *
+ * Lattice: a JSON file may carry "size", the cells a side of every frame; without
+ * it the size is the grid's row count (20 for everything claudepix makes). Each
+ * frame is written as size times size bytes and the table row ends in the size.
+ *
  * Usage: node convert_to_c.js [--in DIR] [--out FILE]
  */
 
@@ -20,6 +24,41 @@ const OUT_FILE = path.resolve(opt('--out',
   path.join(__dirname, '..', 'firmware', 'src', 'splash_animations.h')));
 
 const PALETTE_SIZE = 10;
+
+// The struct every table row fills. tools/add_echo_anims.py carries the same
+// text (TYPEDEF there) and puts it into a header written before the size
+// field existed; keep the two identical.
+const TYPEDEF = [
+  '// One animation. frames holds frame_count frames of size by size cells, one',
+  '// palette index per byte, back to back: frame f starts at byte f * size * size',
+  '// and inside a frame the cells run row by row from the top left. size is the',
+  '// lattice edge in cells; 20, 40 and 60 cut the 480 px panel into whole 24, 12',
+  '// and 8 px cells. A row that leaves size out gets 0, which the renderer reads',
+  '// as 20. frames is const void so the generated [frame_count][size * size]',
+  '// array of any lattice goes in by name.',
+  'typedef struct {',
+  '    const char *name;',
+  '    const char *category;',
+  '    uint16_t frame_count;',
+  '    const uint16_t *palette;',
+  '    const void *frames;',
+  '    const uint16_t *holds;',
+  '    uint8_t size;',
+  '} splash_anim_def_t;',
+].join('\n') + '\n';
+
+// Cells a side of an animation's frames: its "size" field, else the grid's row
+// count. Every frame must be exactly that square.
+function latticeOf(data) {
+  const size = data.size || (data.frames[0] ? data.frames[0].grid.length : 20);
+  if (!Number.isInteger(size) || size < 1 || size > 255)
+    throw new Error(`${data.name}: size ${size} is not a lattice of 1 to 255 cells`);
+  data.frames.forEach((f, i) => {
+    if (f.grid.length !== size || f.grid.some(row => row.length !== size))
+      throw new Error(`${data.name}: frame ${i} is not ${size} by ${size} cells`);
+  });
+  return size;
+}
 
 function safeIdent(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -81,14 +120,7 @@ function main() {
 
   out += `#define SPLASH_PALETTE_SIZE ${PALETTE_SIZE}\n\n`;
 
-  out += 'typedef struct {\n';
-  out += '    const char *name;\n';
-  out += '    const char *category;\n';
-  out += '    uint16_t frame_count;\n';
-  out += '    const uint16_t *palette;\n';
-  out += '    const uint8_t (*frames)[400];\n';
-  out += '    const uint16_t *holds;\n';
-  out += '} splash_anim_def_t;\n\n';
+  out += TYPEDEF + '\n';
 
   const entries = [];
 
@@ -102,11 +134,12 @@ function main() {
     out += pal565.map(c => `0x${c.toString(16).toUpperCase().padStart(4, '0')}`).join(',');
     out += '};\n';
 
-    out += `static const uint8_t splash_${ident}_frames[${data.frames.length}][400] = {\n`;
+    const size = latticeOf(data);
+    out += `static const uint8_t splash_${ident}_frames[${data.frames.length}][${size * size}] = {\n`;
     for (const f of data.frames) {
       const flat = [];
-      for (let r = 0; r < 20; r++)
-        for (let c = 0; c < 20; c++)
+      for (let r = 0; r < size; r++)
+        for (let c = 0; c < size; c++)
           flat.push(f.grid[r][c]);
       out += '    {' + flat.join(',') + '},\n';
     }
@@ -116,13 +149,13 @@ function main() {
     out += data.frames.map(f => f.hold).join(',');
     out += '};\n\n';
 
-    entries.push({ ident, name: data.name, category: data.category, count: data.frames.length });
+    entries.push({ ident, name: data.name, category: data.category, count: data.frames.length, size });
   }
 
   out += `#define SPLASH_ANIM_COUNT ${entries.length}\n`;
   out += 'static const splash_anim_def_t splash_anims[SPLASH_ANIM_COUNT] = {\n';
   for (const e of entries) {
-    out += `    {"${e.name}", "${e.category}", ${e.count}, splash_${e.ident}_palette, splash_${e.ident}_frames, splash_${e.ident}_holds},\n`;
+    out += `    {"${e.name}", "${e.category}", ${e.count}, splash_${e.ident}_palette, splash_${e.ident}_frames, splash_${e.ident}_holds, ${e.size}},\n`;
   }
   out += '};\n';
 

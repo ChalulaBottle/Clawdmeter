@@ -8,14 +8,19 @@ This note only says what exists and where. Nothing here touches your code.
 ## The creature system (repo `ChalulaBottle/Clawdmeter`, branch `port/waveshare-lcd-4`, local `Temp Clawdmeter`)
 
 Same lattice as yours: 20x20 claudepix cells, integer scaled, `image-rendering: pixelated`. Values are
-palette indices, 0 = transparent, at most 10 colours per animation, frames carry a hold in ms.
+palette indices, 0 = transparent, at most 10 colours per animation, frames carry a hold in ms. An
+animation may set `size` (40 or 60, both cut the 480 px panel into whole cells) for finer detail; its
+frames are then size x size. Read the lattice from `size` (absent means 20), never assume 20.
 
 - `docs/bench/anims.js` is the single source. It registers `window.BENCH` (or `module.exports` under
-  node) as `{G: 20, anims: [...], spinnerAt}` and `window.BENCH_LIB` with the helpers:
-  `rows, clone, set, BASE (stock Clawd), blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch,
-  bbox, eyeGeom, skinFrame, spinnerAt, STOCK, register(cells)`. Load it, then read `BENCH.anims`.
-  Each animation is `{name, key, fwname, category, intent, palette: ['transparent', ...hex], frames:
-  [{hold, grid: number[20][20]}, ...]}`. `frames[i].grid` is exactly what the device draws.
+  node) as `{G: 20, anims: [...], spinnerAt, sizeOf}` and `window.BENCH_LIB` with the helpers:
+  `rows, clone, set, upscale, sizeOf, BASE (stock Clawd), blink, shut, ECHO_PALETTE, echoBase, echoPing,
+  echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK, register(cells)`. Load it, then read
+  `BENCH.anims`. Each animation is `{name, key, fwname, category, intent, size?, palette: ['transparent',
+  ...hex], frames: [{hold, grid: number[size][size]}, ...]}`. `frames[i].grid` is exactly what the
+  device draws. `BENCH.sizeOf(anim)` gives the lattice with the default applied; `upscale(grid, k)`
+  repeats every cell k times, so `upscale(echoBase, 3)` is the creature on a 60 cell lattice, ready
+  for fine detail through `set()`.
 - `docs/bench/anims_thinking.js`, `anims_modes.js`, `anims_models.js`: extra families that call
   `BENCH_LIB.register(...)`; load them after `anims.js` (the bench page and the exporter do).
 - `docs/bench/stock_anims.js`: the stock claudepix movements embedded as data (three colour), so the
@@ -40,10 +45,13 @@ echo think deep, echo work, echo write, echo read.
 ## Ready made exports you can consume without running anything
 
 - `tools/echo_anims/*.json` (one per creature) and `tools/echo_anims/_index.json`: claudepix format,
-  `{filename, name, category, description, palette, frame_count, frames: [{hold, grid}]}`. Read
-  these if you would rather not evaluate JS. Regenerate with `node tools/bench_to_json.js`.
-- `docs/media/anims/<key>.gif` (240 px, palette exact, transparent) and `docs/media/discord/<key>_120.gif`
-  and `_320.gif`. Regenerate with `.venv\Scripts\python.exe tools/anim_gif.py [--suffix _120 --cell 6 --out DIR]`.
+  `{filename, name, category, description, palette, size, frame_count, frames: [{hold, grid}]}`, each
+  grid `size` rows of `size` cells. Read these if you would rather not evaluate JS. Regenerate with
+  `node tools/bench_to_json.js`.
+- `docs/media/anims/<key>.gif` (240 px, palette exact, index 0 drawn black) and
+  `docs/media/discord/<key>_120.gif` and `_320.gif`. Regenerate with
+  `.venv\Scripts\python.exe tools/anim_gif.py [--suffix _120 --cell 6 --out DIR]` (`--transparent` for
+  see through index 0). A finer lattice keeps the same image edge: 60 cells draw at 4 px in the 240 px GIF.
 - Device captures (what the 480x480 panel really shows): `docs/media/lcd4/*-device.png`.
 - Stickers: `tools/sticker_neon.py`, `tools/sticker_diecut.py` (die cut, gradient contour, Island
   style borrowed from your neon sticker).

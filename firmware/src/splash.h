@@ -51,6 +51,7 @@ lv_obj_t* splash_get_root(void);
 // Renders the named claudepix animation (e.g. "expression sleep") at ~px×px
 // inside `parent`; returns the canvas object (position it with lv_obj_align) or
 // NULL if the animation isn't found / allocation fails. Drive it with
-// splash_mini_tick(). One mini creature at a time.
+// splash_mini_tick(). One mini creature at a time. Any lattice size works:
+// each cell is px divided by the animation's size, and never under 1 px.
 lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px);
 void splash_mini_tick(void);

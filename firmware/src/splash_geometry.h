@@ -38,3 +38,38 @@ static inline SplashGeometry splash_compute_geometry(int width, int height,
     g.canvas_dim = SPLASH_GRID * g.cell;
     return g;
 }
+
+// Per animation lattice. The canvas above is sized for the 20 cell lattice;
+// an animation with a finer one (40 or 60 cells a side) is drawn into that
+// same square with smaller cells: cell is the square's edge divided by the
+// lattice size, rounded down to whole px, and offset centres the art when the
+// division leaves px over (on 480 px panels 20, 40 and 60 divide exactly, so
+// the offset is 0). Because the square is 20 times a whole cell, a lattice
+// never needs a bigger buffer than the 20 cell one, so RAM stays flat.
+//
+// even keeps cell and offset even, for panels that only take even aligned
+// writes (the direct draw path bypasses the LVGL rounder that handles this
+// for everything else). It never changes the 20 cell case on the direct draw
+// boards in this tree: their 20 cell px values, 24 and 18, are already even.
+//
+// fits is false when the lattice has more cells than the square has px;
+// such an animation cannot be drawn and the renderer skips it.
+typedef struct {
+    int  size;     // cells a side
+    int  cell;     // px per cell
+    int  offset;   // px from the square's left and top edge to the art
+    bool fits;
+} SplashLattice;
+
+static inline SplashLattice splash_fit_lattice(int square_px, int size, bool even) {
+    SplashLattice l;
+    l.size = (size > 0) ? size : SPLASH_GRID;
+    l.cell = square_px / l.size;
+    if (even && l.cell > 1) l.cell &= ~1;
+    if (l.cell < 1) l.cell = 1;
+    const int art = l.size * l.cell;
+    l.fits   = art <= square_px;
+    l.offset = l.fits ? (square_px - art) / 2 : 0;
+    if (even) l.offset &= ~1;
+    return l;
+}

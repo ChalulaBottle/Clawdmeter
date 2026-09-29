@@ -35,9 +35,9 @@ node convert_to_c.js
 
 Reads `tools/claudepix_data/*.json` and emits a single
 `firmware/src/splash_animations.h` with:
-- `splash_<ident>_frames[N][400]` — per-frame cell codes (0 = empty, 1 = body, 2 = eye)
+- `splash_<ident>_frames[N][size * size]` — per frame cell codes (0 = empty, 1 = body, 2 = eye), row by row from the top left; size is the JSON `size` field, else the grid's row count, so claudepix data gives `[N][400]`
 - `splash_<ident>_holds[N]` — per-frame hold time in ms
-- `splash_anims[]` — master table with name, category, frame count, pointers
+- `splash_anims[]` — master table with name, category, frame count, pointers and the lattice size (a row without it reads as 20)
 - `SPLASH_ANIM_COUNT`
 
 The firmware (`splash.cpp`) consumes this header to render and animate.

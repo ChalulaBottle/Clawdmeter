@@ -16,9 +16,14 @@
 // it leaves vertical margin rather than cropping. On PSRAM-less boards the
 // buffer is rendered tiny (cell == 1) and LVGL scales it up to fill the panel;
 // the geometry decision lives in splash_compute_geometry() (splash_geometry.h).
+//
+// Every animation carries its own lattice size (the size field of its table
+// row; 0 reads as 20). The square stays the one sized for 20 cells; a finer
+// lattice gets smaller cells inside it, the square's edge divided by the
+// lattice size (splash_fit_lattice). On the 480 px panels that is 24, 12 and
+// 8 px for 20, 40 and 60 cells.
 #define GRID         SPLASH_GRID
-static int  cell      = 24;        // recomputed in splash_init()
-static int  canvas_w  = GRID * 24;
+static int  canvas_w  = GRID * 24;   // recomputed in splash_init()
 static int  canvas_h  = GRID * 24;
 
 // Background fallback when palette is missing
@@ -139,6 +144,44 @@ static void resolve_group_lists(void) {
 
 static uint16_t *row_buf = NULL;   // scratch row, sized to canvas_w (PSRAM path)
 
+// ─── Frame data ──────────────────────────────────────────────────────────────
+// A table row holds frame_count frames of size by size cells, back to back;
+// inside a frame the cells run row by row from the top left. Rows written
+// before the size field existed leave it 0, which is the 20 cell lattice.
+static inline int anim_size(const splash_anim_def_t *a) {
+    return a->size ? a->size : GRID;
+}
+
+static inline const uint8_t* anim_cells(const splash_anim_def_t *a, uint16_t frame) {
+    const size_t s = (size_t)anim_size(a);
+    return (const uint8_t*)a->frames + (size_t)frame * s * s;
+}
+
+static inline uint16_t cell_color(const uint16_t *palette, uint8_t code) {
+    return (palette && code < SPLASH_PALETTE_SIZE) ? palette[code] : COL_EMPTY;
+}
+
+// What the splash holds right now: the animation and the frame last drawn.
+// The frame is a pointer into the table in flash, so remembering it costs no
+// RAM whatever the lattice. The next frame of the same animation is compared
+// with it cell by cell and only what differs is drawn; a switch to another
+// animation (or nothing drawn yet) is a full paint.
+static const splash_anim_def_t *shown_anim  = NULL;
+static const uint8_t           *shown_cells = NULL;
+
+// First and last column that differ in one lattice row of `s` cells. False
+// when the row is unchanged.
+static bool row_span(const uint8_t *was, const uint8_t *now, int s, int *x0, int *x1) {
+    if (memcmp(was, now, (size_t)s) == 0) return false;
+    int l = 0;
+    while (was[l] == now[l]) l++;
+    int r = s - 1;
+    while (was[r] == now[r]) r--;
+    *x0 = l;
+    *x1 = r;
+    return true;
+}
+
 // ─── Two render paths ────────────────────────────────────────────────────────
 // PSRAM boards (S3) draw the pixel art into an LVGL canvas at native size and
 // let LVGL flush it — they have the RAM and cores to spare, no transform needed.
@@ -152,6 +195,12 @@ static uint16_t *row_buf = NULL;   // scratch row, sized to canvas_w (PSRAM path
 // the *changed* cells straight to the panel via the display HAL, bypassing LVGL.
 // That removes the transform cost (leaving just the QSPI flush) and the
 // dirty-rect is exact, so no smearing.
+//
+// Both paths draw only what changed between two frames of one animation
+// (shown_cells above). That matters most for the fine lattices: a 60 cell
+// frame is 3600 cells, and a blink touches a few dozen of them. The canvas
+// path repaints the changed span of each lattice row into the canvas buffer
+// and hands LVGL the bounding box; the direct path pushes the bounding box.
 #ifndef BOARD_HAS_PSRAM
 #  define SPLASH_DIRECT_DRAW 1
 #else
@@ -166,12 +215,11 @@ void splash_note_refresh_done(void) {}
 
 #if SPLASH_DIRECT_DRAW
 static uint16_t*       strip_buf = NULL;   // one grid-row band: (GRID*scr_cell)×scr_cell
-static int             scr_cell  = 24;     // on-screen px per grid cell
+static int             strip_px  = 0;      // strip_buf capacity in px
+static int             scr_cell  = 24;     // on-screen px per cell of the 20 cell lattice
+static int             scr_side  = 480;    // the square the art lives in: GRID * scr_cell
 static int             scr_offx  = 0;      // centering offsets (square art on panel)
 static int             scr_offy  = 0;
-static uint8_t         prev_cells[GRID * GRID];
-static const uint16_t* prev_palette = NULL;
-static bool            prev_valid   = false;
 static bool            force_full   = false;  // repaint everything on the next render
 // Zaehlt abgeschlossene LVGL-Durchlaeufe (hochgezaehlt aus dem Flush-Callback).
 // splash_show merkt sich den Stand und wartet auf eine Aenderung, bevor es
@@ -182,70 +230,177 @@ static uint32_t          wait_until_ms = 0;
 
 void splash_note_refresh_done(void) { refresh_seq++; }
 
-// Upscale grid cells [gx0..gx1]×[gy0..gy1] and push them to the panel, one
-// grid-row band at a time so the scratch buffer stays (GRID*scr_cell × scr_cell).
-static void blit_cells(const uint8_t* cells, const uint16_t* palette,
-                       int gx0, int gy0, int gx1, int gy1) {
-    if (!strip_buf) return;
-    const int spc = scr_cell;
-    const int bw  = (gx1 - gx0 + 1) * spc;          // band width, px
-    const int px  = scr_offx + gx0 * spc;
-    for (int gy = gy0; gy <= gy1; gy++) {
-        for (int gx = gx0; gx <= gx1; gx++) {       // expand one source row across
-            uint8_t code = cells[gy * GRID + gx];
-            uint16_t color = (palette && code < SPLASH_PALETTE_SIZE) ? palette[code] : COL_EMPTY;
-            uint16_t* p = &strip_buf[(gx - gx0) * spc];
-            for (int i = 0; i < spc; i++) p[i] = color;
-        }
-        for (int dy = 1; dy < spc; dy++)             // replicate that row down
-            memcpy(&strip_buf[dy * bw], strip_buf, bw * 2);
-        display_hal_draw_bitmap(px, scr_offy + gy * spc, bw, spc, strip_buf);
+// How many px rows of a band `w` px wide the strip takes in one push, at
+// most `want`. Kept even (when above 1) for panels that need even writes.
+static int strip_lines(int w, int want) {
+    int lines = strip_px / w;
+    if (lines > want) lines = want;
+    if (lines > 1) lines &= ~1;
+    return lines;
+}
+
+// Paint a panel rect in the background colour: the margin a lattice leaves
+// when it does not fill the square.
+static void clear_rect(int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return;
+    const int lines = strip_lines(w, h);
+    if (lines < 1) return;
+    for (int i = 0; i < w * lines; i++) strip_buf[i] = COL_EMPTY;
+    for (int done = 0; done < h; done += lines) {
+        const int hh = (h - done < lines) ? h - done : lines;
+        display_hal_draw_bitmap(x, y + done, w, hh, strip_buf);
     }
 }
 
-static void render_frame(const uint8_t *cells, const uint16_t *palette) {
+// Upscale lattice cells [gx0..gx1]×[gy0..gy1] and push them to the panel,
+// one lattice row at a time. The strip holds one row of the 20 cell lattice;
+// a finer lattice has smaller cells, so a row goes out in one push as before.
+// A coarser one would need more lines than the strip has and goes out in
+// chunks: every px row of a lattice row is the same, so the strip is filled
+// once and pushed again lower down.
+static void blit_cells(const uint8_t* cells, const uint16_t* palette,
+                       const SplashLattice& L, int gx0, int gy0, int gx1, int gy1) {
+    if (!strip_buf) return;
+    const int c     = L.cell;
+    const int bw    = (gx1 - gx0 + 1) * c;          // band width, px
+    const int lines = strip_lines(bw, c);
+    if (lines < 1) return;
+    const int px    = scr_offx + L.offset + gx0 * c;
+    for (int gy = gy0; gy <= gy1; gy++) {
+        const uint8_t* row = cells + gy * L.size;
+        uint16_t* p = strip_buf;
+        for (int gx = gx0; gx <= gx1; gx++) {       // expand one lattice row across
+            const uint16_t color = cell_color(palette, row[gx]);
+            for (int i = 0; i < c; i++) *p++ = color;
+        }
+        for (int dy = 1; dy < lines; dy++)           // replicate that row down
+            memcpy(&strip_buf[dy * bw], strip_buf, bw * 2);
+        const int y = scr_offy + L.offset + gy * c;
+        for (int done = 0; done < c; done += lines) {
+            const int h = (c - done < lines) ? c - done : lines;
+            display_hal_draw_bitmap(px, y + done, bw, h, strip_buf);
+        }
+    }
+}
+
+// Bounding box, in cells, of everything that differs between two frames of
+// one lattice. False when the frames are identical.
+static bool changed_box(const uint8_t* was, const uint8_t* now, int s,
+                        int* gx0, int* gy0, int* gx1, int* gy1) {
+    int bx0 = s, by0 = s, bx1 = -1, by1 = -1;
+    for (int gy = 0; gy < s; gy++) {
+        int x0, x1;
+        if (!row_span(was + gy * s, now + gy * s, s, &x0, &x1)) continue;
+        if (x0 < bx0) bx0 = x0;
+        if (x1 > bx1) bx1 = x1;
+        if (gy < by0) by0 = gy;
+        by1 = gy;
+    }
+    if (bx1 < 0) return false;
+    *gx0 = bx0; *gy0 = by0; *gx1 = bx1; *gy1 = by1;
+    return true;
+}
+
+static void render_frame(const splash_anim_def_t *a, uint16_t frame) {
     if (!strip_buf) return;
     if (!active) return;          // never draw to the panel while not shown
-    bool full = force_full || !prev_valid || palette != prev_palette;
+    const SplashLattice L = splash_fit_lattice(scr_side, anim_size(a), true);
+    if (!L.fits) return;          // more cells than the square has px
+    const uint8_t* cells = anim_cells(a, frame);
+    const bool full = force_full || a != shown_anim || !shown_cells;
     force_full = false;
 
-    int gx0 = 0, gy0 = 0, gx1 = GRID - 1, gy1 = GRID - 1;
-    if (!full) {                                     // bounding box of changed cells
-        gx0 = GRID; gy0 = GRID; gx1 = -1; gy1 = -1;
-        for (int gy = 0; gy < GRID; gy++)
-            for (int gx = 0; gx < GRID; gx++)
-                if (cells[gy * GRID + gx] != prev_cells[gy * GRID + gx]) {
-                    if (gx < gx0) gx0 = gx;
-                    if (gx > gx1) gx1 = gx;
-                    if (gy < gy0) gy0 = gy;
-                    if (gy > gy1) gy1 = gy;
-                }
-        if (gx1 < 0) return;                         // identical frame, nothing to do
+    int gx0 = 0, gy0 = 0, gx1 = L.size - 1, gy1 = L.size - 1;
+    if (full) {
+        // A lattice that does not fill the square leaves a margin, and the
+        // previous animation may have drawn there.
+        const int art = L.size * L.cell;
+        if (art < scr_side) {
+            const int end = L.offset + art;          // first px past the art
+            clear_rect(scr_offx, scr_offy, scr_side, L.offset);
+            clear_rect(scr_offx, scr_offy + end, scr_side, scr_side - end);
+            clear_rect(scr_offx, scr_offy + L.offset, L.offset, art);
+            clear_rect(scr_offx + end, scr_offy + L.offset, scr_side - end, art);
+        }
+    } else if (!changed_box(shown_cells, cells, L.size, &gx0, &gy0, &gx1, &gy1)) {
+        shown_cells = cells;                         // identical frame, nothing to do
+        return;
     }
 
-    blit_cells(cells, palette, gx0, gy0, gx1, gy1);
-
-    memcpy(prev_cells, cells, GRID * GRID);
-    prev_palette = palette;
-    prev_valid   = true;
+    blit_cells(cells, a->palette, L, gx0, gy0, gx1, gy1);
+    shown_anim  = a;
+    shown_cells = cells;
 }
 
-#else  // ── PSRAM: LVGL canvas render (unchanged) ──
+#else  // ── PSRAM: LVGL canvas render ──
 
-static void render_frame(const uint8_t *cells, const uint16_t *palette) {
+// Paint lattice cells [gx0..gx1] of lattice row gy into the canvas buffer:
+// one px row built in row_buf, copied down the height of the cell.
+static void paint_span(const uint8_t *cells, const uint16_t *palette,
+                       const SplashLattice &L, int gy, int gx0, int gx1) {
+    const int c = L.cell;
+    const int x = L.offset + gx0 * c;
+    const int w = (gx1 - gx0 + 1) * c;
+    const uint8_t *row = cells + gy * L.size;
+    uint16_t *p = &row_buf[x];
+    for (int gx = gx0; gx <= gx1; gx++) {
+        const uint16_t color = cell_color(palette, row[gx]);
+        for (int i = 0; i < c; i++) *p++ = color;
+    }
+    uint16_t *dst = &canvas_buf[(L.offset + gy * c) * canvas_w + x];
+    for (int dy = 0; dy < c; dy++, dst += canvas_w)
+        memcpy(dst, &row_buf[x], w * 2);
+}
+
+static void render_frame(const splash_anim_def_t *a, uint16_t frame) {
     if (!row_buf || !canvas_buf) return;
-    for (int gy = 0; gy < GRID; gy++) {
-        for (int gx = 0; gx < GRID; gx++) {
-            uint8_t code = cells[gy * GRID + gx];
-            uint16_t color = (palette && code < SPLASH_PALETTE_SIZE) ? palette[code] : COL_EMPTY;
-            uint16_t *p = &row_buf[gx * cell];
-            for (int i = 0; i < cell; i++) p[i] = color;
+    const SplashLattice L = splash_fit_lattice(canvas_w, anim_size(a), false);
+    if (!L.fits) return;          // more cells than the canvas has px
+    const uint8_t *cells = anim_cells(a, frame);
+    const bool full = a != shown_anim || !shown_cells;
+
+    int gx0 = 0, gy0 = 0, gx1 = L.size - 1, gy1 = L.size - 1;
+    if (full) {
+        if (L.size * L.cell < canvas_w) {            // margin around the art
+            for (int i = 0; i < canvas_w * canvas_h; i++) canvas_buf[i] = COL_EMPTY;
         }
-        for (int dy = 0; dy < cell; dy++) {
-            memcpy(&canvas_buf[(gy * cell + dy) * canvas_w], row_buf, canvas_w * 2);
+        for (int gy = 0; gy < L.size; gy++) paint_span(cells, a->palette, L, gy, 0, L.size - 1);
+    } else {
+        // Repaint the changed span of each row and grow the box LVGL redraws.
+        gx0 = L.size; gy0 = L.size; gx1 = -1; gy1 = -1;
+        for (int gy = 0; gy < L.size; gy++) {
+            int x0, x1;
+            if (!row_span(shown_cells + gy * L.size, cells + gy * L.size, L.size, &x0, &x1)) continue;
+            paint_span(cells, a->palette, L, gy, x0, x1);
+            if (x0 < gx0) gx0 = x0;
+            if (x1 > gx1) gx1 = x1;
+            if (gy < gy0) gy0 = gy;
+            gy1 = gy;
+        }
+        if (gx1 < 0) {                               // identical frame, nothing to do
+            shown_cells = cells;
+            return;
         }
     }
-    if (canvas) lv_obj_invalidate(canvas);
+    shown_anim  = a;
+    shown_cells = cells;
+    if (!canvas) return;
+    if (full) {
+        lv_obj_invalidate(canvas);
+        return;
+    }
+    // One area per frame: LVGL keeps a short list of dirty areas and redraws
+    // the whole screen once it overflows. Coordinates are absolute.
+    lv_obj_update_layout(canvas);
+    lv_area_t box;
+    lv_obj_get_coords(canvas, &box);
+    const int32_t ox = box.x1 + L.offset;
+    const int32_t oy = box.y1 + L.offset;
+    box.x1 = ox + gx0 * L.cell;
+    box.y1 = oy + gy0 * L.cell;
+    box.x2 = ox + (gx1 + 1) * L.cell - 1;
+    box.y2 = oy + (gy1 + 1) * L.cell - 1;
+    lv_obj_invalidate_area(canvas, &box);
 }
 #endif
 
@@ -262,12 +417,12 @@ static uint32_t   mini_started = 0;
 
 static void mini_render(void) {
     if (!mini_buf || !mini_anim) return;
-    const uint8_t *cells = mini_anim->frames[mini_frame];
+    const int s = anim_size(mini_anim);
+    const uint8_t *cells = anim_cells(mini_anim, mini_frame);
     const uint16_t *pal = mini_anim->palette;
-    for (int gy = 0; gy < GRID; gy++) {
-        for (int gx = 0; gx < GRID; gx++) {
-            uint8_t code = cells[gy * GRID + gx];
-            uint16_t color = (pal && code < SPLASH_PALETTE_SIZE) ? pal[code] : COL_EMPTY;
+    for (int gy = 0; gy < s; gy++) {
+        for (int gx = 0; gx < s; gx++) {
+            const uint16_t color = cell_color(pal, cells[gy * s + gx]);
             for (int dy = 0; dy < mini_cell; dy++) {
                 uint16_t *dst = &mini_buf[(gy * mini_cell + dy) * mini_w + gx * mini_cell];
                 for (int dx = 0; dx < mini_cell; dx++) dst[dx] = color;
@@ -283,9 +438,10 @@ lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
         if (strcmp(splash_anims[i].name, anim_name) == 0) { mini_anim = &splash_anims[i]; break; }
     }
     if (!mini_anim) return NULL;
-    mini_cell = px / GRID;
+    const int s = anim_size(mini_anim);   // any lattice: a finer one gets smaller cells
+    mini_cell = px / s;
     if (mini_cell < 1) mini_cell = 1;
-    mini_w = GRID * mini_cell;
+    mini_w = s * mini_cell;
 #ifdef BOARD_HAS_PSRAM
     const uint32_t caps = MALLOC_CAP_SPIRAM;
 #else
@@ -343,6 +499,7 @@ void splash_init(lv_obj_t *parent) {
     int mind = (c.width < c.height) ? c.width : c.height;
     scr_cell = mind / GRID;
     int side = GRID * scr_cell;
+    scr_side = side;
     scr_offx = (c.width  - side) / 2;
     scr_offy = (c.height - side) / 2;
     strip_buf = (uint16_t*)heap_caps_malloc((size_t)side * scr_cell * 2,
@@ -351,10 +508,10 @@ void splash_init(lv_obj_t *parent) {
         Serial.println("splash: strip buffer alloc failed");
         return;
     }
+    strip_px = side * scr_cell;
 #else
     // PSRAM path: render into an LVGL canvas at native size (no transform).
     SplashGeometry geo = splash_compute_geometry(c.width, c.height, true);
-    cell                = geo.cell;
     canvas_w            = geo.canvas_dim;
     canvas_h            = geo.canvas_dim;
     const int img_scale = geo.scale;
@@ -397,8 +554,7 @@ void splash_init(lv_obj_t *parent) {
         // PSRAM path pre-renders frame 0 into the canvas buffer. The direct
         // path draws nothing here — render_frame() bails while inactive, so the
         // splash never paints to the panel before it's actually shown.
-        const splash_anim_def_t *a = &splash_anims[0];
-        render_frame(a->frames[0], a->palette);
+        render_frame(&splash_anims[0], 0);
 #endif
         frame_started_ms = millis();
     }
@@ -425,7 +581,7 @@ void splash_tick(void) {
     if (force_full && (refresh_seq != wait_seq
                        || (int32_t)(millis() - wait_until_ms) >= 0)) {
         const splash_anim_def_t *fa = &splash_anims[cur_anim];
-        if (fa->frame_count) render_frame(fa->frames[cur_frame], fa->palette);
+        if (fa->frame_count) render_frame(fa, cur_frame);
     }
 #endif
 
@@ -443,7 +599,7 @@ void splash_tick(void) {
     if (millis() - frame_started_ms >= hold) {
         cur_frame = (cur_frame + 1) % a->frame_count;
         frame_started_ms = millis();
-        render_frame(a->frames[cur_frame], a->palette);
+        render_frame(a, cur_frame);
     }
 }
 
@@ -454,8 +610,8 @@ void splash_next(void) {
     frame_started_ms = millis();
     last_pick_ms = frame_started_ms;
     const splash_anim_def_t *a = &splash_anims[cur_anim];
-    render_frame(a->frames[0], a->palette);
-    Serial.printf("splash: -> %s\n", a->name);
+    render_frame(a, 0);
+    Serial.printf("splash: -> %s (%d cells a side)\n", a->name, anim_size(a));
 }
 
 // Switch to splash_anims[idx] and draw its first frame.
@@ -464,8 +620,7 @@ static void show_anim(int idx) {
     cur_frame = 0;
     frame_started_ms = millis();
     last_pick_ms = frame_started_ms;
-    const splash_anim_def_t *a = &splash_anims[cur_anim];
-    render_frame(a->frames[0], a->palette);
+    render_frame(&splash_anims[cur_anim], 0);
 }
 
 void splash_set_anim(const char *name) {
@@ -483,7 +638,7 @@ void splash_set_anim(const char *name) {
     for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
         if (strcmp(splash_anims[i].name, name) == 0) {
             forced_idx = i;
-            Serial.printf("splash: host -> %s\n", name);
+            Serial.printf("splash: host -> %s (%d cells a side)\n", name, anim_size(&splash_anims[i]));
             if (active) show_anim(i);
             return;
         }
@@ -520,8 +675,7 @@ void splash_pick_for_current_rate(void) {
     cur_frame = 0;
     frame_started_ms = millis();
     last_pick_ms = frame_started_ms;
-    const splash_anim_def_t *a = &splash_anims[cur_anim];
-    render_frame(a->frames[0], a->palette);
+    render_frame(&splash_anims[cur_anim], 0);
 }
 
 bool splash_is_active(void) { return active; }

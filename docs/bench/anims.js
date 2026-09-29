@@ -2,13 +2,34 @@
 // export tools (tools/bench_to_json.js writes claudepix-format JSON that
 // tools/convert_to_c.js and tools/anim_gif.py read). One source, three uses.
 //
-// Lattice: 20 x 20 cells, values are palette indices, index 0 = transparent
-// (drawn as panel black), at most 10 palette entries per animation.
+// Lattice: 20 x 20 cells unless the animation sets size, values are palette indices, index 0 =
+// transparent (drawn as panel black), at most 10 palette entries per animation.
+//
+// size (optional on an animation, default BENCH.G = 20): every frame is size x size cells and the
+// 480 px panel draws each cell at 480 divided by size, so 40 gives 12 px cells and 60 gives 8 px
+// cells, both exact. BENCH.sizeOf(anim) reads it with the default applied.
+// upscale(grid, k) repeats every cell k times across and down: a 60 cell animation starts from
+// upscale(echoBase, 3), the creature at 3x exactly, and paints its fine detail on top with set().
+// The posing helpers (blink, shut, echoPing, echoGlitch, skinFrame) stay on the 20 cell lattice.
 (function (root) {
   const G = 20;
   const rows = s => s.trim().split(/\n/).map(l => l.trim().split('').map(Number));
   const clone = g => g.map(r => r.slice());
-  const set = (g, r, c, v) => { if (r >= 0 && r < G && c >= 0 && c < G) g[r][c] = v; return g; };
+  // Clips to the grid's own lattice, never less than G: every grid of 20 rows or fewer clips
+  // exactly as it always did, and an upscaled 60 cell grid takes a write anywhere in its 60 x 60.
+  const set = (g, r, c, v) => { const n = Math.max(G, g.length); if (r >= 0 && r < n && c >= 0 && c < n) g[r][c] = v; return g; };
+  // Each cell repeated k times across and down; a fresh grid whose rows are never shared.
+  const upscale = (g, k) => {
+    if (!Number.isInteger(k) || k < 1) throw new Error('upscale: k must be a whole number, 1 or more, got ' + k);
+    const out = [];
+    for (const row of g) {
+      const wide = [];
+      for (const v of row) for (let j = 0; j < k; j++) wide.push(v);
+      for (let i = 0; i < k; i++) out.push(wide.slice());
+    }
+    return out;
+  };
+  const sizeOf = a => (a.size === undefined ? G : a.size);
 
   // Stock Clawd, frame 0 of claudepix "idle blink" (tools/claudepix_data/idle_blink.json);
   // the converter applies the brand tint (#D97757) to the body.
@@ -601,14 +622,17 @@
   // feature is placed from the frame's own geometry: body bounding box for the shift,
   // frame 0's eye rows/cols for the visor, top row for the antenna, bottom rows for feet.
   const ECHO_PALETTE = ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#6fe9ff'];
+  // bbox and eyeGeom scan the grid's own lattice (g.length), so they also work on a 40 or 60 cell grid.
   function bbox(g) {
-    let top = G, bot = -1, left = G, right = -1;
-    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c]) { top = Math.min(top, r); bot = Math.max(bot, r); left = Math.min(left, c); right = Math.max(right, c); }
+    const n = g.length;
+    let top = n, bot = -1, left = n, right = -1;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (g[r][c]) { top = Math.min(top, r); bot = Math.max(bot, r); left = Math.min(left, c); right = Math.max(right, c); }
     return {top, bot, left, right};
   }
   function eyeGeom(g) {
-    let rows = new Set(), cmin = G, cmax = -1;
-    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c] === 2) { rows.add(r); cmin = Math.min(cmin, c); cmax = Math.max(cmax, c); }
+    const n = g.length;
+    let rows = new Set(), cmin = n, cmax = -1;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (g[r][c] === 2) { rows.add(r); cmin = Math.min(cmin, c); cmax = Math.max(cmax, c); }
     return {rows: [...rows], cmin, cmax};
   }
   // Anchor on the ARM ROW, the first row with 14 or more lit cells: particles (sleep Z's, surprise
@@ -1061,12 +1085,192 @@
     frames: Array.from({length: 16}, (_, i) => ({hold: i % 2 ? 260 : 500, grid: hpFrame(i)})),
   };
 
+  // 3x. summon demon HD: the echo summon ritual on a 60 cell lattice (size 60, 8 px cells on the 480 panel).
+  // Every creature pose is a 20 cell summon A pose repeated exactly 3 times across and down, so silhouette,
+  // visor and eyes are the family's own and the new detail lives around and in front of it. A double ring on
+  // the ground (rows 45 to 59, centred under the body on col 31) draws itself from the front round both
+  // sides, a pentagon joins five points inside it, a rune on each point lights one at a time, the ring pulses,
+  // flames lick round its sides and back and a red glint sits in each eye while it burns; the eyes flash red.
+  // Then a demon (13 wide at the horns, 21 with the wings out, 20 tall from horn tips to feet: curved ember
+  // horns, ember eyes under angry brows, a toothy grin, bat wings that flap on alternate frames, a hanging tail
+  // whose spade tip sways) rises out of the ring centre in front of the creature, hovers over a glow on the
+  // ground while the glints drop to watch it, sinks back, the circle fades and the arms come down. The ground,
+  // glow included, is painted only on empty cells, so the back of the ring passes behind the legs; the demon is
+  // the one thing drawn over the creature, never above row 25, and the glint only turns an eye cell red, so
+  // the visor and both eyes stay whole in every frame.
+  const SUMMON_PALETTE_HD = [...echo.palette, '#e5443a', '#ffd166', '#5a0f1a'];   // 7 red, 8 ember, 9 dark red
+  const echoSummonHd = {
+    name: 'ECHO · summon demon HD', key: 'echo_summon_hd', fwname: 'echo summon hd', category: 'Mode', size: 60,
+    intent: 'Proposal, 60 cell lattice. The summon ritual at 8 px cells: the arms rise, a double ring draws itself on the ground from the front round both sides, a pentagon joins five points inside it, a rune on each point lights one at a time, the ring pulses with flames licking round it and the eyes flash red with a red glint, then a horned demon with ember eyes, a grin, flapping bat wings and a swaying spade tail rises out of the ring in front of the creature and hovers over its glow while the glints drop to watch it, and sinks back before the circle fades and the arms come down; judge whether the extra detail reads on the panel and whether it is still this creature.',
+    palette: SUMMON_PALETTE_HD,
+    frames: [],
+  };
+  {
+    const N = 60, CR = 52, CC = 31, CLIP = 52;                 // lattice, ring centre (row, col), portal line
+    const RED = 7, EMBER = 8, DARK = 9;
+    // The creature at 3x: each 20 cell repeated 3 times across and down, rows never shared.
+    const upscaleHd = (g, k) => {
+      const out = [];
+      for (const row of g) { const wide = []; for (const v of row) for (let j = 0; j < k; j++) wide.push(v); for (let i = 0; i < k; i++) out.push(wide.slice()); }
+      return out;
+    };
+    const blankHd = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const putHd = (g, r, c, v) => { if (r >= 0 && r < g.length && c >= 0 && c < g.length) g[r][c] = v; return g; };
+    const lineHd = (g, r0, c0, r1, c1, v) => {
+      let dx = Math.abs(c1 - c0), sx = c0 < c1 ? 1 : -1, dy = -Math.abs(r1 - r0), sy = r0 < r1 ? 1 : -1, err = dx + dy;
+      for (;;) { putHd(g, r0, c0, v); if (r0 === r1 && c0 === c1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; c0 += sx; } if (e2 <= dx) { err += dx; r0 += sy; } }
+    };
+    // Midpoint ellipse round the ring centre: a clean one cell outline, each cell tagged with its angular
+    // distance from the front centre (0) round either side to the back centre (1), so a ring can draw itself.
+    const ellipseHd = (ry, rx) => {
+      const q = [], rx2 = rx * rx, ry2 = ry * ry;
+      let x = 0, y = ry, px = 0, py = 2 * rx2 * y, p = ry2 - rx2 * ry + 0.25 * rx2;
+      q.push([x, y]);
+      while (px < py) { x++; px += 2 * ry2; if (p < 0) p += ry2 + px; else { y--; py -= 2 * rx2; p += ry2 + px - py; } q.push([x, y]); }
+      p = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
+      while (y > 0) { y--; py -= 2 * rx2; if (p > 0) p += rx2 - py; else { x++; px += 2 * ry2; p += rx2 - py + px; } q.push([x, y]); }
+      const seen = new Set(), out = [];
+      for (const [dx, dy] of q) for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        const r = CR + sy * dy, c = CC + sx * dx;
+        if (seen.has(r * N + c)) continue;
+        seen.add(r * N + c);
+        out.push([r, c, Math.abs(Math.atan2(sx * dx / rx, sy * dy / ry)) / Math.PI]);
+      }
+      return out;
+    };
+    const OUTER = ellipseHd(7, 25), INNER = ellipseHd(6, 24);
+    // Pentagon inside the ring, one point towards the viewer: (56, 31), (53, 47), (49, 41), (49, 21), (53, 15).
+    const POINTS = [0, 1, 2, 3, 4].map(k => { const t = k * 2 * Math.PI / 5; return [Math.round(CR + 4 * Math.cos(t)), Math.round(CC + 17 * Math.sin(t))]; });
+    const RUNES = [['x.x', '.x.', 'x.x'], ['xxx', '.x.', '.x.'], ['.x.', 'x.x', '.x.'], ['x..', 'xx.', 'x.x'], ['x.x', 'xxx', 'x.x']];
+    // Flames stand on the outer ring round its sides and back (distance from the front, both sides, then the
+    // back centre) and step through four shapes a frame, so the ring flickers without any flame jumping.
+    const FLAME_AT = [0.42, 0.55, 0.68, 0.8, 0.9];
+    const FLAMES = [];
+    const nearest = (a, s) => OUTER.filter(([, c]) => Math.sign(c - CC) === s).reduce((b, x) => (Math.abs(x[2] - a) < Math.abs(b[2] - a) ? x : b));
+    for (const a of FLAME_AT) for (const s of [-1, 1]) FLAMES.push(nearest(a, s));
+    FLAMES.push(OUTER.find(([r, c]) => r === CR - 7 && c === CC));
+    // Each shape 3 wide by 6 tall, top row first; its bottom row stands on the ring cell: tall, medium with a
+    // spark, low, tall leaning. Ember core, red body, dark red tips. FLAME_OFF staggers the flames so
+    // neighbours never share a shape and no wave marches round the ring.
+    const FLAME_OFF = [0, 2, 3, 1, 1, 3, 2, 0, 0, 2, 1];
+    const FLAME_SHAPES = [
+      ['.r.', '.rd', 'rer', 'rer', 'ree', '.e.'],
+      ['...', 'd..', '.r.', 'rer', 'rer', '.e.'],
+      ['...', '...', '...', '.r.', 'rer', '.e.'],
+      ['r..', 'dr.', 're.', 'rer', 'eer', '.e.'],
+    ];
+    const INK = {e: EMBER, r: RED, d: DARK, k: 2};
+    // The ground, on its own layer: ring (trace 0..1 from the front, the newest tenth in ember as the pen),
+    // pentagon, runes (0 unseen, 1 dim, 2 lit), flames by phase, the glow under the demon.
+    const groundHd = ({trace = 0, pulse = false, faded = false, penta = 0, runes = null, flames = -1, glow = 0, phase = 0}) => {
+      const s = blankHd();
+      if (trace > 0) {
+        const outerV = faded ? DARK : pulse ? EMBER : RED, innerV = faded ? 0 : pulse ? RED : DARK;
+        for (const [ring, v] of [[INNER, innerV], [OUTER, outerV]]) if (v) for (const [r, c, a] of ring) {
+          if (a > trace) continue;
+          putHd(s, r, c, (!faded && trace < 1 && a > trace - 0.1) ? EMBER : v);
+        }
+      }
+      if (penta) {
+        const v = faded ? DARK : RED, n = penta >= 1 ? 5 : Math.round(5 * penta);
+        for (let k = 0; k < n; k++) { const [r0, c0] = POINTS[k], [r1, c1] = POINTS[(k + 1) % 5]; lineHd(s, r0, c0, r1, c1, v); }
+      }
+      if (runes) POINTS.forEach(([r, c], k) => {
+        if (!runes[k]) return;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -2; dc <= 2; dc++) putHd(s, r + dr, c + dc, 0);
+        RUNES[k].forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch === 'x') putHd(s, r - 1 + dr, c - 1 + dc, runes[k] === 2 ? EMBER : DARK); }));
+      });
+      if (flames >= 0) FLAMES.forEach(([r, c], i) => {
+        const shape = FLAME_SHAPES[(flames + FLAME_OFF[i]) % FLAME_SHAPES.length];
+        shape.forEach((line, j) => [...line].forEach((ch, dc) => { if (ch !== '.') putHd(s, r - 5 + j, c - 1 + dc, INK[ch]); }));
+      });
+      if (glow) for (let r = CR - 2; r <= CR + 3; r++) for (let c = CC - 10; c <= CC + 10; c++) {
+        const d = ((r - CR - 0.5) / (1.6 * glow)) ** 2 + ((c - CC) / (5 * glow)) ** 2;
+        if (d < 0.25) putHd(s, r, c, EMBER);
+        else if (d < 0.6) putHd(s, r, c, RED);
+        else if (d < 1 && (r + c + phase) % 2 === 0) putHd(s, r, c, DARK);
+      }
+      return s;
+    };
+    // The demon, left half of a 21 col canvas (col 10 is its centre, placed on col 31); the right half mirrors.
+    // e ember, r red, d dark red, k eye black.
+    const DEMON_HALF = [
+      '.....e.....', '....e......', '....ee.....', '.....ee....', '......eeddd',
+      '.....drrrrr', '.....drdrrr', '.....drrddr', '.....dreerr', '.....dreerr',
+      '.....drrrrr', '.....drkrrr', '.....drrkek', '......drrrr', '......drrrr',
+      '......drrrr', '.......drrr', '.......drdd', '.......drd.', '.......dd..',
+    ];
+    // Bat wings, left side (mirrored): red bones round a dark red membrane with a scalloped trailing edge,
+    // rooted beside the shoulders (rows 13 and 14). The down stroke is the up stroke flipped about the root.
+    const WING_UP = [
+      [8, 0, 'r'], [9, 0, 'd'], [9, 1, 'r'], [10, 0, 'd'], [10, 1, 'd'], [10, 2, 'r'], [11, 0, 'd'], [11, 1, 'd'], [11, 2, 'd'], [11, 3, 'r'],
+      [12, 0, 'd'], [12, 1, 'd'], [12, 2, 'd'], [12, 3, 'd'], [12, 4, 'r'], [13, 0, 'r'], [13, 1, 'd'], [13, 2, 'd'], [13, 3, 'd'], [13, 4, 'd'], [13, 5, 'r'],
+      [14, 1, 'r'], [14, 3, 'r'], [14, 4, 'd'], [14, 5, 'r'], [15, 4, 'r'],
+    ];
+    const WING_DOWN = WING_UP.map(([r, c, ch]) => [27 - r, c, ch]);
+    // Tail hangs from between the feet, a spade tip pointing down: sway 0 left, 1 centre, 2 right.
+    const TAIL = [
+      [[18, 10, 'r'], [19, 10, 'r'], [20, 9, 'r'], [21, 7, 'r'], [21, 8, 'r'], [21, 9, 'r'], [22, 7, 'r'], [22, 8, 'e'], [22, 9, 'r'], [23, 8, 'r']],
+      [[18, 10, 'r'], [19, 10, 'r'], [20, 10, 'r'], [21, 9, 'r'], [21, 10, 'r'], [21, 11, 'r'], [22, 9, 'r'], [22, 10, 'e'], [22, 11, 'r'], [23, 10, 'r']],
+      [[18, 10, 'r'], [19, 10, 'r'], [20, 11, 'r'], [21, 11, 'r'], [21, 12, 'r'], [21, 13, 'r'], [22, 11, 'r'], [22, 12, 'e'], [22, 13, 'r'], [23, 12, 'r']],
+    ];
+    const demonHd = (g, top, wing, sway) => {
+      const cells = [];
+      DEMON_HALF.forEach((half, r) => [...half].forEach((ch, c) => { if (ch !== '.') { cells.push([r, c, ch]); if (c < 10) cells.push([r, 20 - c, ch]); } }));
+      for (const [r, c, ch] of (wing ? WING_DOWN : WING_UP)) cells.push([r, c, ch], [r, 20 - c, ch]);
+      cells.push(...TAIL[sway]);
+      for (const [r, c, ch] of cells) if (top + r <= CLIP) putHd(g, top + r, CC - 10 + c, INK[ch]);
+      return g;
+    };
+    // Glint: one red cell in each 3 by 6 eye (rows 18 to 23, cols 21 to 23 and 39 to 41), high and centred
+    // while the circle burns, low and inner while the demon is out, so the creature watches it. Painted only on
+    // eye black, so a red flash is left alone and each eye stays red or black.
+    const GLINT = [[[19, 22], [19, 40]], [[21, 23], [21, 39]]];
+    const frameHd = (pose, o = {}) => {
+      const g = upscaleHd(pose, 3), s = groundHd(o);
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!g[r][c] && s[r][c]) g[r][c] = s[r][c];
+      if (o.glint) for (const [r, c] of GLINT[o.demon ? 1 : 0]) if (g[r][c] === 2) g[r][c] = RED;
+      if (o.demon) demonHd(g, o.demon[0], o.demon[1], o.demon[2]);
+      return g;
+    };
+    const REST = summonRestA, HALF = summonArmsHalfA(summonRestA), UP = summonUpA, RED_EYES = summonEyesRedA(summonUpA);
+    const LIT = n => [0, 1, 2, 3, 4].map(k => (k < n ? 2 : 1));
+    const F = (hold, pose, o) => echoSummonHd.frames.push({hold, grid: frameHd(pose, o)});
+    const burn = {trace: 1, penta: 1, glint: true, runes: LIT(5)};
+    F(260, REST);                                                             // rest (loop anchor)
+    F(190, HALF);                                                             // arms rising
+    F(240, UP);                                                               // arms up
+    F(150, UP, {trace: 0.3});                                                 // the ring draws itself from the front
+    F(150, UP, {trace: 0.6});
+    F(150, UP, {trace: 0.85});
+    F(190, UP, {trace: 1, glint: true});                                      // closed; a red glint in each eye
+    F(170, UP, {trace: 1, glint: true, penta: 0.6});                          // pentagon, three sides
+    F(190, UP, {trace: 1, glint: true, penta: 1, runes: LIT(0)});             // pentagon closed, runes dim
+    for (let n = 1; n <= 5; n++) F(n < 5 ? 150 : 180, UP, {trace: 1, glint: true, penta: 1, runes: LIT(n)});   // runes light one at a time
+    F(190, UP, {...burn, pulse: true, flames: 0});                            // pulse, flames catch
+    F(190, RED_EYES, {...burn, flames: 1});                                   // eyes flash red
+    F(190, RED_EYES, {...burn, pulse: true, flames: 2});
+    [48, 43, 38, 33, 30].forEach((top, i) => F(i < 4 ? 160 : 200, UP, {...burn, flames: 3 + i, glow: 1, phase: i, demon: [top, i % 2, 1]}));   // it climbs out, horns first
+    [26, 28, 26, 28, 26, 28].forEach((top, i) => F(i % 2 ? 250 : 260, UP, {...burn, flames: 8 + i, glow: 1.2, phase: i, demon: [top, i % 2, [0, 1, 2, 1, 0, 1][i]]}));   // hover, wings flap, tail sways
+    [30, 36, 42, 48].forEach((top, i) => F(i ? 150 : 160, UP, {...burn, flames: 14 + i, glow: 1, phase: i, demon: [top, i % 2, 2 - (i % 2)]}));   // sinks back
+    F(200, UP, {...burn, flames: 18});                                        // gone, the circle still burns
+    F(190, UP, {trace: 1, penta: 1, glint: true, runes: LIT(0)});             // flames out, runes dim
+    F(180, UP, {trace: 1, faded: true});                                      // the ring fades
+    F(170, UP, {trace: 0.5, faded: true});
+    F(190, HALF);                                                             // arms lowering
+    F(240, echoPing(true));                                                   // arms down, antenna pings
+    F(260, REST);                                                             // rest (loops to frame 0)
+  }
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
   // and is loaded after this file (bench: script tags; export: tools/bench_to_json.js requires them).
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoHeadphones, clawdHeadphones, ...skinned], spinnerAt};
-  const BENCH_LIB = {G, rows, clone, set, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
+  // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
+  //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
+  // is the creature at 3x with one 8 px ping cell just right of the visor.
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoHeadphones, clawdHeadphones, echoSummonHd, ...skinned], spinnerAt, sizeOf};
+  const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
   if (typeof module !== 'undefined' && module.exports) module.exports = BENCH;

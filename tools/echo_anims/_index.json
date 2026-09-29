@@ -182,6 +182,13 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_summon_hd.html",
+    "name": "echo summon hd",
+    "category": "Mode",
+    "frame_count": 39,
+    "palette_size": 10
+  },
+  {
     "filename": "echo_breathe.html",
     "name": "echo breathe",
     "category": "Idle",
@@ -284,14 +291,14 @@
     "name": "ultracode enter",
     "category": "Mode",
     "frame_count": 12,
-    "palette_size": 7
+    "palette_size": 9
   },
   {
     "filename": "mode_ultracode_work.html",
     "name": "ultracode work",
     "category": "Mode",
     "frame_count": 9,
-    "palette_size": 7
+    "palette_size": 9
   },
   {
     "filename": "mode_agents_split.html",
@@ -306,6 +313,13 @@
     "category": "Mode",
     "frame_count": 8,
     "palette_size": 7
+  },
+  {
+    "filename": "echo_dj.html",
+    "name": "echo dj",
+    "category": "Active",
+    "frame_count": 32,
+    "palette_size": 10
   },
   {
     "filename": "echo_think_spin.html",

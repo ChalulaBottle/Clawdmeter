@@ -20,6 +20,25 @@
   const ECHO7 = ECHO_PALETTE.slice(0, 7);                // the indices echoBase uses; guards the 10 colour cap
   const OPUS_PALETTE = [...ECHO7, '#eafffb', '#1fa88c', '#90f0dd'];
   const AGENTS_PALETTE = ECHO7.slice();
+  // Ultracode carries the neon purple (operator, 2026-09-28): every empty cell touching a body lights
+  // in neon purple, swapping to the portal magenta on the off beat so the aura breathes. Computed per
+  // frame, so it follows the glitch splits and wraps each of the three minis on its own.
+  const ULTRA_PALETTE = [...ECHO7, '#b44dff', '#ff5fd2'];   // 7 neon purple, 8 portal magenta
+  const AURA_N = 7, AURA_M = 8;
+  function aura(g, phase) {
+    const b = clone(g);
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) {
+      if (g[r][c]) continue;
+      let lit = false;
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < G && cc >= 0 && cc < G && g[rr][cc] && g[rr][cc] < AURA_N) { lit = true; break; }
+      }
+      if (lit) b[r][c] = phase ? AURA_M : AURA_N;
+    }
+    return b;
+  }
+  const withAura = frames => frames.map((f, i) => Object.assign({}, f, {grid: aura(f.grid, i % 2)}));
   const TIP = [1, 15];                                   // antenna tip in echoBase
 
   const blank = () => Array.from({length: G}, () => new Array(G).fill(0));
@@ -189,11 +208,11 @@
       intent: 'Opus at rest, the dominant state: body one shade brighter, a slow visor pulse every 2 s and an antenna ping every 3 s on a 6 s loop; judge whether the brighter body alone says Opus from across the desk.',
       palette: OPUS_PALETTE, frames: opusWork},
     {name: 'ECHO · ultracode enter', key: 'mode_ultracode_enter', fwname: 'ultracode enter', category: 'Mode',
-      intent: 'Played once when ultracode starts: three glitch splits at widening gaps, the last one tearing, then the creature shrinks to a 10 by 10 mini and echoes into three; judge whether the minis still read as the same creature.',
-      palette: AGENTS_PALETTE, frames: ultraEnter},
+      intent: 'Played once when ultracode starts, inside a breathing neon purple aura: three glitch splits at widening gaps, the last one tearing, then the creature shrinks to a 10 by 10 mini and echoes into three, each mini wrapped in its own aura; judge whether the minis still read as the same creature.',
+      palette: ULTRA_PALETTE, frames: withAura(ultraEnter)},
     {name: 'ECHO · ultracode work', key: 'mode_ultracode_work', fwname: 'ultracode work', category: 'Mode',
-      intent: 'Ultracode at rest, the dominant state: three minis, one chest light passing clockwise 1.2 s at a time and each antenna pinging once per 3.6 s; judge whether it reads as a team at work rather than a marquee.',
-      palette: AGENTS_PALETTE, frames: ultraWork},
+      intent: 'Ultracode at rest, the dominant state: three minis in neon purple auras that breathe purple to magenta, one chest light passing clockwise 1.2 s at a time and each antenna pinging once per 3.6 s; judge whether it reads as a team at work rather than a marquee.',
+      palette: ULTRA_PALETTE, frames: withAura(ultraWork)},
     {name: 'ECHO · agents split', key: 'mode_agents_split', fwname: 'agents split', category: 'Mode',
       intent: 'Host triggered moment when agents start: one glitch, the creature shrinks, echoes into three minis, holds 1.1 s and folds back, a 3 s loop; judge whether the split reads in a single viewing.',
       palette: AGENTS_PALETTE, frames: agentsSplit},

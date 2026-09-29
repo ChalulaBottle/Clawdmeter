@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clawd animation bench</title>
-<meta name="description" content="Side by side bench for new 20x20 Clawdmeter splash animations: the stock creature, a coffee variant, and an ECHO creature. One master clock, same lattice, exportable in the claudepix JSON the firmware converter reads.">
+<meta name="description" content="Side by side bench for new Clawdmeter splash animations: the stock creature, a coffee variant, and an ECHO creature. One master clock, a 20x20 lattice unless a cell says 40 or 60 for finer detail, exportable in the claudepix JSON the firmware converter reads.">
 <style>
 :root{--bg:#06090b;--surf:#0c1214;--surf2:#111a1d;--line:#1d2b2f;--edge:#2c4045;--text:#d8e6e6;--muted:#7d9698;--echo:#35e0c0;--warn:#e0b25a;
   --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,monospace;--head:Bahnschrift,"Segoe UI Semibold",system-ui,sans-serif}
@@ -36,7 +36,7 @@ textarea{width:100%;height:120px;background:var(--surf2);color:var(--text);borde
 </head>
 <body>
 <h1>Clawd animation bench</h1>
-<p class="sub">Three 20 by 20 creatures on one clock, drawn at the device's cell size (24 px on the 480 panel) and at splash-thumbnail size. Stock Clawd is the reference; the other two are proposals. Each cell prints its own frame count, palette and holds. Export gives claudepix-format JSON that <code>tools/convert_to_c.js</code> already reads.</p>
+<p class="sub">The creatures on one clock, each on its own lattice (20 by 20 unless its caption says 40 or 60), drawn at the device's cell size (the 480 panel divided by the lattice: 24, 12 or 8 px) and at splash thumbnail size. Stock Clawd is the reference; the other two are proposals. Each cell prints its own lattice, frame count, palette and holds. Export gives claudepix-format JSON that <code>tools/convert_to_c.js</code> already reads.</p>
 
 <div class="master">
   <button class="primary" id="play">Pause</button>
@@ -55,6 +55,7 @@ textarea{width:100%;height:120px;background:var(--surf2);color:var(--text);borde
     <li>Judge on the device size canvas; the small one only checks that the creature survives as a thumbnail.</li>
     <li>Steam and the glitch are the loud states. The coffee cell spends 80% of its cycle in the quiet hold; decide on that, not on the sip.</li>
     <li>Palette rule from the firmware: 10 colours max per animation, index 0 is transparent (drawn as panel black), cells are palette indices.</li>
+    <li>Lattice: 20 by 20 unless an animation sets size. 40 and 60 cut the 480 panel into whole 12 and 8 px cells; the 60 px thumbnail rounds each cell edge to a whole pixel, so a 40 cell thumbnail mixes 1 and 2 px cells.</li>
   </ul>
 </div>
 
@@ -187,20 +188,25 @@ const grid = document.getElementById('grid');
 const state = anims.map(() => ({i: 0, t: 0}));
 let playing = true, speed = 1, last = performance.now(), clockMs = 0;
 
+// Cell size = canvas px divided by the animation's lattice (BENCH.sizeOf: 20 unless it sets size).
+// Edges round to whole pixels: on the 480 canvas 20, 40 and 60 divide exactly (24, 12, 8 px, the
+// same rects as before), on the 60 px thumbnail a 40 cell lattice gets 1 and 2 px cells, no seams.
 function paint(cv, a, g) {
-  const ctx = cv.getContext('2d'); const s = cv.width / G;
+  const ctx = cv.getContext('2d'), n = window.BENCH.sizeOf(a), W = cv.width;
+  const edge = i => Math.round(i * W / n);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
-  for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) { const v = g[r][c]; if (!v) continue; ctx.fillStyle = a.palette[v] || '#f0f'; ctx.fillRect(c*s, r*s, s, s); }
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const v = g[r][c]; if (!v) continue; ctx.fillStyle = a.palette[v] || '#f0f'; const x = edge(c), y = edge(r); ctx.fillRect(x, y, edge(c + 1) - x, edge(r + 1) - y); }
 }
 anims.forEach((a, k) => {
   const d = document.createElement('div'); d.className = 'cell';
   const totalMs = a.frames.reduce((s, f) => s + f.hold, 0);
   const quiet = a.frames.filter(f => f.hold >= 400).reduce((s, f) => s + f.hold, 0);
+  const n = window.BENCH.sizeOf(a);
   d.innerHTML = `<h2>${a.name}</h2><p class="intent">${a.intent}</p>
     <div class="row"><canvas width="480" height="480" data-k="${k}"></canvas><canvas class="mini" width="60" height="60" data-k="${k}"></canvas></div>
-    <div class="meta"><b>${a.frames.length} frames</b> · cycle ${(totalMs/1000).toFixed(1)} s · quiet holds ${(100*quiet/totalMs).toFixed(0)}% of cycle · palette ${a.palette.length}:
+    <div class="meta"><b>${a.frames.length} frames</b> · lattice ${n} x ${n}, ${+(480 / n).toFixed(2)} px cells on the panel · cycle ${(totalMs/1000).toFixed(1)} s · quiet holds ${(100*quiet/totalMs).toFixed(0)}% of cycle · palette ${a.palette.length}:
     ${a.palette.map(p => `<span class="sw" style="background:${p==='transparent'?'#000':p}"></span>`).join('')}<br>
-    frame <span class="fi">0</span> · hold <span class="fh">${a.frames[0].hold}</span> ms · cells lit <span class="fc">0</span> of 400</div>
+    frame <span class="fi">0</span> · hold <span class="fh">${a.frames[0].hold}</span> ms · cells lit <span class="fc">0</span> of ${n * n}</div>
     <div class="row" style="margin-top:10px"><button data-exp="${k}">Export JSON</button></div><textarea readonly></textarea>`;
   grid.appendChild(d);
 });
@@ -229,7 +235,7 @@ document.getElementById('speed').oninput = e => { speed = e.target.value / 100; 
 grid.addEventListener('click', e => {
   const k = e.target.dataset.exp; if (k === undefined) return;
   const a = anims[k]; const ta = e.target.closest('.cell').querySelector('textarea');
-  const json = {filename: a.key + '.html', name: a.name, category: 'ECHO', description: a.intent, palette: a.palette, frame_count: a.frames.length,
+  const json = {filename: a.key + '.html', name: a.name, category: 'ECHO', description: a.intent, palette: a.palette, size: window.BENCH.sizeOf(a), frame_count: a.frames.length,
     frames: a.frames.map(f => ({hold: f.hold, grid: f.grid}))};
   ta.style.display = 'block'; ta.value = JSON.stringify(json); ta.select();
 });

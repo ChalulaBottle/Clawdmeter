@@ -6,6 +6,16 @@ delimited block (palette, frames, per-frame holds per animation) and rewrites
 the splash_anims table and SPLASH_ANIM_COUNT. Idempotent: an earlier ECHO block
 and its table rows are removed first. Never hand-edit the header.
 
+Lattice: every animation has its own size, the cells a side of its frames (the
+JSON "size" field, else the row count of its grids). A frame is written as size
+times size bytes, the array is frames[frame_count][size * size], and the table
+row ends in the size, for a 60 cell creature:
+    {"name", "ECHO Model", 12, <id>_palette, <id>_frames, <id>_holds, 60},
+The struct those rows fill carries the size as its last field (TYPEDEF below,
+the same text tools/convert_to_c.js writes). A header written before that field
+existed gets the struct put in, and its table rows without a size get 20, the
+lattice they always had.
+
 Source: tools/echo_anims/*.json (claudepix format) written by
     node tools/bench_to_json.js
 Run:
@@ -20,6 +30,33 @@ import sys
 BEGIN = "// ==== ECHO-ANIMATIONEN ANFANG (tools/add_echo_anims.py) ===="
 END = "// ==== ECHO-ANIMATIONEN ENDE ===="
 CATEGORY_MARK = '"ECHO'   # our rows carry a category starting with ECHO
+DEFAULT_SIZE = 20         # the lattice of every row written before the size field
+PALETTE_MAX = 10          # SPLASH_PALETTE_SIZE; cells index 0..9
+
+# Keep identical to TYPEDEF in tools/convert_to_c.js.
+TYPEDEF = """// One animation. frames holds frame_count frames of size by size cells, one
+// palette index per byte, back to back: frame f starts at byte f * size * size
+// and inside a frame the cells run row by row from the top left. size is the
+// lattice edge in cells; 20, 40 and 60 cut the 480 px panel into whole 24, 12
+// and 8 px cells. A row that leaves size out gets 0, which the renderer reads
+// as 20. frames is const void so the generated [frame_count][size * size]
+// array of any lattice goes in by name.
+typedef struct {
+    const char *name;
+    const char *category;
+    uint16_t frame_count;
+    const uint16_t *palette;
+    const void *frames;
+    const uint16_t *holds;
+    uint8_t size;
+} splash_anim_def_t;
+"""
+
+# The struct as any version of the header writes it, with the comment lines
+# straight above it (the ones TYPEDEF brings along).
+TYPEDEF_RE = re.compile(r"(?://[^\n]*\n)*typedef struct \{\n.*?\n\} splash_anim_def_t;\n", re.S)
+# A table row without a size: name, category, count, palette, frames, holds.
+ROW_WITHOUT_SIZE = re.compile(r'^(\s*\{"[^"]*", "[^"]*", \d+, \w+, \w+, \w+)\},$')
 
 
 def rgb565(hex_color: str) -> int:
@@ -34,28 +71,51 @@ def c_ident(name: str) -> str:
     return "splash_echo_" + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+def lattice(name: str, anim: dict) -> int:
+    """Cells a side: the "size" field, else the row count of the first grid."""
+    if not anim["frames"]:
+        raise ValueError(f"{name}: no frames")
+    size = anim.get("size") or len(anim["frames"][0]["grid"])
+    if not isinstance(size, int) or not 1 <= size <= 255:
+        raise ValueError(f"{name}: size {size!r} is not a lattice of 1 to 255 cells")
+    return size
+
+
 def emit(name: str, category: str, anim: dict) -> tuple[str, str]:
     ident = c_ident(name)
-    pal = [rgb565(c) for c in anim["palette"]][:10]
-    pal += [0] * (10 - len(pal))
+    size = lattice(name, anim)
+    pal = [rgb565(c) for c in anim["palette"]][:PALETTE_MAX]
+    pal += [0] * (PALETTE_MAX - len(pal))
+    for i, f in enumerate(anim["frames"]):
+        g = f["grid"]
+        if len(g) != size or any(len(row) != size for row in g):
+            raise ValueError(f"{name}: frame {i} is not {size} by {size} cells")
     frames = [[v for row in f["grid"] for v in row] for f in anim["frames"]]
     holds = [int(f["hold"]) for f in anim["frames"]]
     for i, f in enumerate(frames):
-        if len(f) != 400:
-            raise ValueError(f"{name}: frame {i} has {len(f)} cells, not 400")
-        if max(f) > 9 or min(f) < 0:
+        if max(f) >= PALETTE_MAX or min(f) < 0:
             raise ValueError(f"{name}: frame {i} has values outside 0..9")
     out = [f"static const uint16_t {ident}_palette[10] = {{"
            + ",".join(f"0x{v:04X}" for v in pal) + "};"]
-    out.append(f"static const uint8_t {ident}_frames[{len(frames)}][400] = {{")
+    out.append(f"static const uint8_t {ident}_frames[{len(frames)}][{size * size}] = {{")
     for f in frames:
         out.append("    {" + ",".join(str(v) for v in f) + "},")
     out.append("};")
     out.append(f"static const uint16_t {ident}_holds[{len(frames)}] = {{"
                + ",".join(str(h) for h in holds) + "};")
     row = (f'    {{"{name}", "{category}", {len(frames)}, '
-           f"{ident}_palette, {ident}_frames, {ident}_holds}},")
+           f"{ident}_palette, {ident}_frames, {ident}_holds, {size}}},")
     return "\n".join(out), row
+
+
+def ensure_typedef(src: str) -> tuple[str, bool]:
+    """Put TYPEDEF in place of the struct the header carries. True when it changed."""
+    if TYPEDEF in src:
+        return src, False
+    m = TYPEDEF_RE.search(src)
+    if not m:
+        raise ValueError("struct splash_anim_def_t not found; format changed?")
+    return src[:m.start()] + TYPEDEF + src[m.end():], True
 
 
 def main() -> int:
@@ -79,8 +139,20 @@ def main() -> int:
         print("no animations in", args.src)
         return 1
 
+    # Everything is checked and emitted before the header is touched.
+    try:
+        emitted = [emit(name, cat, d) for name, cat, d in anims]
+    except ValueError as err:
+        print("ERROR:", err)
+        return 1
+
     path = os.path.abspath(args.out)
     src = open(path, encoding="utf-8").read()
+    try:
+        src, struct_changed = ensure_typedef(src)
+    except ValueError as err:
+        print("ERROR:", err)
+        return 1
     src = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", "", src, flags=re.S)
 
     m = re.search(r"#define SPLASH_ANIM_COUNT (\d+)\n"
@@ -92,19 +164,23 @@ def main() -> int:
     rows = m.group(2).splitlines()
     names = {n for n, _, _ in anims}
     keep = []
+    sized = 0
     for ln in rows:
         if not ln.strip():
             continue
         mm = re.match(r'\s*\{"([^"]+)",\s*"([^"]+)"', ln)
         if mm and (mm.group(2).startswith("ECHO") or mm.group(1) in names):
             continue
+        # rows from the other generators that predate the size field: say 20,
+        # the lattice they always had, so every row in the table carries one
+        rs = ROW_WITHOUT_SIZE.match(ln)
+        if rs:
+            ln = f"{rs.group(1)}, {DEFAULT_SIZE}}},"
+            sized += 1
         keep.append(ln)
 
-    defs, new_rows = [], []
-    for name, cat, d in anims:
-        dd, r = emit(name, cat, d)
-        defs.append(dd)
-        new_rows.append(r)
+    defs = [dd for dd, _ in emitted]
+    new_rows = [r for _, r in emitted]
 
     block = (BEGIN + "\n"
              + "// Generated from tools/echo_anims/*.json (docs/bench/anims.js via\n"
@@ -119,8 +195,17 @@ def main() -> int:
         fh.write(src)
 
     frames = sum(len(d["frames"]) for _, _, d in anims)
-    print(f"{len(anims)} ECHO animations ({frames} frames, {frames * 400 / 1024:.1f} KB): "
+    size_of = {n: lattice(n, d) for n, _, d in anims}
+    kb = sum(len(d["frames"]) * size_of[n] ** 2 for n, _, d in anims) / 1024
+    print(f"{len(anims)} ECHO animations ({frames} frames, {kb:.1f} KB): "
           + ", ".join(n for n, _, _ in anims) + f" -> SPLASH_ANIM_COUNT {total}")
+    fine = [f"{n} ({s} cells)" for n, s in size_of.items() if s != DEFAULT_SIZE]
+    if fine:
+        print("lattices other than 20: " + ", ".join(fine))
+    if struct_changed:
+        print("struct splash_anim_def_t now carries the lattice size")
+    if sized:
+        print(f"{sized} table rows without a size now say {DEFAULT_SIZE}")
     return 0
 
 

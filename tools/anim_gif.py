@@ -6,16 +6,26 @@ usage: python tools/anim_gif.py [--in tools/echo_anims] [--out docs/media/anims]
 Palette-exact: each frame is a "P" image over the animation's own palette (<= 10 colours),
 so colours match the panel and files stay tiny. --transparent makes index 0 see-through
 (Discord emoji/stickers); without it index 0 is panel black. Holds are kept per frame.
+Lattice: --cell is the cell size in px on the 20 cell lattice, so the image edge is 20 times
+--cell for every animation, whatever its size (the JSON "size" field, else its grid length).
+A finer lattice gets that edge divided by its size: at the default 12 (240 px, the site GIFs)
+40 cells draw at 6 px and 60 cells at 4 px; at --cell 6 (120 px) at 3 and 2 px. Where the
+edge does not divide (60 cells at --cell 16, 320 px) each cell takes the whole px below (5)
+and index 0 pads the rest evenly, so the file keeps its exact edge. Only a lattice with more
+cells than the edge has px (60 cells at --cell 2) draws at 1 px a cell and grows past it.
 Needs Pillow (the Windows daemon venv has it: .venv\\Scripts\\python.exe).
 Discord limits: emoji 128x128 and < 256 KB; stickers 320x320 and < 512 KB.
 """
 import argparse, json, os
 from PIL import Image
 
+LATTICE = 20   # --cell is given on this lattice; every lattice gets the same image edge
+
 ap = argparse.ArgumentParser()
 ap.add_argument("--in", dest="src", default=os.path.join("tools", "echo_anims"))
 ap.add_argument("--out", default=os.path.join("docs", "media", "anims"))
-ap.add_argument("--cell", type=int, default=12)
+ap.add_argument("--cell", type=int, default=12,
+                help="px per cell on the 20 cell lattice; the image edge is 20 times this for every lattice")
 ap.add_argument("--transparent", action="store_true")
 ap.add_argument("--suffix", default="")
 ap.add_argument("--only", default="")
@@ -40,8 +50,14 @@ for e in index:
     for rgb in pal:
         flat_pal.extend(rgb)
     flat_pal.extend([0] * (768 - len(flat_pal)))
-    g = len(d["frames"][0]["grid"])
-    size = g * a.cell
+    n = d.get("size") or len(d["frames"][0]["grid"])   # lattice: n x n cells
+    for i, f in enumerate(d["frames"]):
+        if len(f["grid"]) != n or any(len(row) != n for row in f["grid"]):
+            raise SystemExit(f"{key}: frame {i} is not {n} x {n} cells")
+    edge = LATTICE * a.cell               # image edge in px, the same for every lattice
+    cell = max(1, edge // n)              # whole px per cell
+    pad = max(0, edge - n * cell) // 2    # index 0 border, only where the edge does not divide
+    size = max(edge, n * cell)
     frames, holds = [], []
     for f in d["frames"]:
         im = Image.new("P", (size, size), 0)
@@ -50,9 +66,10 @@ for e in index:
         for r, row in enumerate(f["grid"]):
             for c, v in enumerate(row):
                 if v:
-                    for y in range(a.cell):
-                        for x in range(a.cell):
-                            px[c * a.cell + x, r * a.cell + y] = v
+                    x0, y0 = pad + c * cell, pad + r * cell
+                    for y in range(cell):
+                        for x in range(cell):
+                            px[x0 + x, y0 + y] = v
         frames.append(im)
         holds.append(max(20, int(f["hold"])))
     name = key + a.suffix
@@ -70,4 +87,5 @@ for e in index:
         png.putdata(datas)
     png.save(os.path.join(a.out, name + ".png"))
     kb = os.path.getsize(gif) / 1024
-    print(f"{name}: {len(frames)} frames, cycle {sum(holds)/1000:.1f}s, {size}px, {kb:.0f} KB")
+    print(f"{name}: {len(frames)} frames, cycle {sum(holds)/1000:.1f}s, {size}px "
+          f"({n} cells at {cell} px{', padded ' + str(pad) + ' px' if pad else ''}), {kb:.0f} KB")
