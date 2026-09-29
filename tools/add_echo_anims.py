@@ -138,6 +138,13 @@ def main() -> int:
     if not anims:
         print("no animations in", args.src)
         return 1
+    # An animation that another one replaces leaves the build, whether it is a stock row (dropped from
+    # the kept rows below) or one of ours (dropped here, e.g. the orange Clawd coffee).
+    replaced_names = {d["replaces"] for _, _, d in anims if d.get("replaces")}
+    dropped = [n for n, _, _ in anims if n in replaced_names]
+    anims = [a for a in anims if a[0] not in replaced_names]
+    if dropped:
+        print("replaced, not shipped:", ", ".join(dropped))
 
     # Everything is checked and emitted before the header is touched.
     try:

@@ -63,14 +63,14 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // Group 0 — idle / sleepy. The ECHO edition's own creatures (tools/add_echo_anims.py)
     // live here too, listed first so they come up in normal rotation and not only on
     // request; names missing from the table are skipped by resolve_group_lists().
-    { "echo idle", "echo sleep", "echo breathe", "echo wink", "coffee", "echo happy", "echo headphones", "headphones", "echo pizza",
-      "echo doze", "echo breath", "echo blink", "expression wink", "echo done" },
+    { "echo idle", "echo sleep", "echo breathe", "echo wink", "echo coffee", "echo happy", "echo headphones", "echo morning", "echo pizza",
+      "echo doze", "echo breath", "echo blink", "echo winky", "echo done" },
     // Group 1 — normal pace
-    { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "echo glance", "work think", "work coding", "think", "allow" },
+    { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "echo glance", "echo ponder", "echo code", "echo bubble", "echo ask" },
     // Group 2 — active
-    { "echo bounce", "echo sway", "echo surprise", "echo openclaw", "echo nanoclaw", "echo ssh", "echo swing", "echo startle", "echo hop", "echo high five", "echo catch", "write" },
+    { "echo bounce", "echo sway", "echo surprise", "echo openclaw", "echo nanoclaw", "echo ssh", "echo swing", "echo startle", "echo hop", "echo high five", "echo catch", "echo notes" },
     // Group 3 — heavy
-    { "echo summon", "echo dj", "dance sway dj", "dance djmix", "limit", NULL },
+    { "echo summon", "echo dj", "echo rave", "echo mixer", "echo alarm", NULL },
 };
 
 // Host-driven animation (see splash_set_anim). -1 = no override, the usage-rate
@@ -85,7 +85,7 @@ static char forced_req[24] = "";
 // come from here so the other creatures still get a turn.
 #define MORNING_FROM 6
 #define MORNING_TO   10
-static const char* MORNING_NAMES[] = { "coffee morning", "echo coffee", "coffee" };
+static const char* MORNING_NAMES[] = { "echo morning", "echo coffee", "echo double coffee" };
 static const char* MORNING_DOUBLE  = "echo double coffee";
 #define MORNING_MAX (sizeof(MORNING_NAMES) / sizeof(MORNING_NAMES[0]))
 static int8_t  morning_list[MORNING_MAX];

@@ -455,6 +455,76 @@
     "palette_size": 9
   },
   {
+    "filename": "echo_rave.html",
+    "name": "echo rave",
+    "category": "Active",
+    "frame_count": 8,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_mixer.html",
+    "name": "echo mixer",
+    "category": "Active",
+    "frame_count": 12,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_code.html",
+    "name": "echo code",
+    "category": "Active",
+    "frame_count": 16,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_ponder.html",
+    "name": "echo ponder",
+    "category": "Thinking",
+    "frame_count": 9,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_winky.html",
+    "name": "echo winky",
+    "category": "Idle",
+    "frame_count": 9,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_bubble.html",
+    "name": "echo bubble",
+    "category": "Thinking",
+    "frame_count": 11,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_notes.html",
+    "name": "echo notes",
+    "category": "Active",
+    "frame_count": 17,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_ask.html",
+    "name": "echo ask",
+    "category": "Idle",
+    "frame_count": 8,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_alarm.html",
+    "name": "echo alarm",
+    "category": "Mode",
+    "frame_count": 10,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_morning.html",
+    "name": "echo morning",
+    "category": "Idle",
+    "frame_count": 11,
+    "palette_size": 10
+  },
+  {
     "filename": "echo_think_spin.html",
     "name": "echo think spin",
     "category": "Active",

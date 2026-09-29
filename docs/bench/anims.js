@@ -604,7 +604,7 @@
   }
   const echoCoffeeBase = echoMug(echoBase, 7, 1);
   const echoCoffee = {
-    name: 'ECHO · coffee', key: 'echo_coffee', fwname: 'echo coffee', category: 'Idle',
+    name: 'ECHO · coffee', key: 'echo_coffee', fwname: 'echo coffee', category: 'Idle', replaces: 'coffee',
     intent: 'Proposal. The ECHO creature with its own mug: steam at rest, an antenna ping, a sip.',
     palette: ECHO_COFFEE_PALETTE,
     frames: [],
@@ -1107,7 +1107,7 @@
   // onto two dark cups, the visor goes soft to listen, a glitch lands the drop, then four beats: the body dips a
   // row on each with the antenna pinging, a note rises out of the right cup and off the top. Eyes open, rest.
   const echoHeadphones = {
-    name: 'ECHO · headphones', key: 'echo_headphones', fwname: 'echo headphones', category: 'Idle',
+    name: 'ECHO · headphones', key: 'echo_headphones', fwname: 'echo headphones', category: 'Idle', replaces: 'headphones',
     intent: 'Proposal. Headphones on and the visor goes soft to listen (eyes one row, visor warm), a glitch lands the drop, the body dips a row on four beats with the antenna pinging on each while a note rises out of the right cup, then the eyes open between tracks; judge whether band and cups read as headphones at 20 cells.',
     palette: [...echo.palette, '#2f5fd6', '#eafffb'],   // 7 cup (blue, as in the reference: reads apart from the teal body), 8 band (flash, also softEyes' warm visor); the note is visor teal (3)
     frames: [],

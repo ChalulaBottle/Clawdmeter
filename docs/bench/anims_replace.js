@@ -272,5 +272,159 @@
     ],
   };
 
-  L.register([echoDj, echoBlink, echoBreath, echoGlance, echoStartle, echoDoze, echoHop, echoSway2, echoDone, echoHighFive, echoCatch]);
+  // ---------- the rest of the stock set, and our own orange ones ----------
+  const P9 = extra => [...RP, extra];                       // RP plus one colour at index 9
+  const X = 9;
+  const paint = (g, cells, v) => { const b = clone(g); for (const [r, c] of cells) set(b, r, c, v); return b; };
+  const paintEmpty = (g, cells, v) => { const b = clone(g); for (const [r, c] of cells) if (r >= 0 && r < G && c >= 0 && c < G && b[r][c] === 0) b[r][c] = v; return b; };
+  const headset = (g, dy = 0, dx = 0) => { let b = clone(g); for (let c = 5; c <= 14; c++) set(b, 3 + dy, c + dx, W); set(b, 4 + dy, 4 + dx, W); set(b, 4 + dy, 16 + dx, W); for (let r = 5; r <= 8; r++) for (const c of [3, 4, 16, 17]) set(b, r + dy, c + dx, MAG); return b; };
+  const lookUp = g => eyes(g, [[6, 7], [6, 13]]);
+  const lookDown = g => eyes(g, [[7, 7], [7, 13]]);
+
+  // echo rave (replaces "dance sway dj"): headset on, the torso sways, two spotlight cones sweep down
+  // from the ceiling behind it and cross on the beat, happy eyes on every fourth.
+  const cone = (g, c0) => paintEmpty(g, [0, 1, 2, 3, 4, 5].flatMap(r => [[r, c0 - Math.floor(r / 2)], [r, c0 + Math.floor(r / 2)]]), PING);
+  const echoRave = {
+    name: 'ECHO · rave', key: 'echo_rave', fwname: 'echo rave', category: 'Active', replaces: 'dance sway dj',
+    intent: 'Replaces the stock sway DJ: headset on, the torso sways over planted legs, two spotlight cones sweep from the ceiling behind it and cross on the beat, happy eyes on every fourth; judge whether the cones read as light behind it.',
+    palette: RP,
+    frames: [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
+      const dx = [0, -1, 0, 1][i % 4];
+      let g = headset(torso(i % 4 === 3 ? happy : B0, 0, dx), 0, dx);
+      g = cone(cone(g, [2, 6, 10, 14, 17, 14, 10, 6][i]), [17, 13, 9, 5, 2, 5, 9, 13][i]);
+      return F(220, g);
+    }),
+  };
+
+  // echo mixer (replaces "dance djmix"): a mixing desk in front, five faders riding up and down, the
+  // hands working them in turn, the head nodding to the beat.
+  const DESK = 9;
+  const mixer = k => {
+    let g = torso(k % 2 ? lookDown(B0) : B0, k % 2);
+    for (let r = 13; r <= 16; r++) for (let c = 2; c <= 17; c++) set(g, r, c, DESK);
+    [5, 7, 9, 11, 13, 15].forEach((c, i) => { for (let r = 13; r <= 16; r++) set(g, r, c, 5); set(g, 13 + ((k + i * 2) % 4), c, i % 2 ? MAG : W); });
+    set(g, 12, 4 + (k % 3) * 2, BODY); set(g, 12, 15 - (k % 3) * 2, BODY);       // hands on the faders
+    return g;
+  };
+  const echoMixer = {
+    name: 'ECHO · mixer', key: 'echo_mixer', fwname: 'echo mixer', category: 'Active', replaces: 'dance djmix',
+    intent: 'Replaces the stock DJ mix: a mixing desk, six faders riding up and down in waves, the hands working them, the head nodding on the beat; judge whether the faders read as a desk.',
+    palette: P9('#1a2124'),
+    frames: Array.from({length: 12}, (_, k) => F(180, mixer(k))),
+  };
+
+  // echo code (replaces "work coding"): a laptop in front, code lines scrolling up its screen, the eyes
+  // down on it, the hands typing (the arm cells tap), an antenna ping when a line completes.
+  const LINES = [[2, 5], [1, 3], [2, 6], [1, 4], [3, 4], [2, 5], [1, 2], [2, 6]];
+  const laptop = k => {
+    let g = lookDown(B0);
+    for (let r = 9; r <= 13; r++) for (let c = 5; c <= 14; c++) set(g, r, c, X);
+    for (let i = 0; i < 4; i++) { const [ind, len] = LINES[(k + i) % LINES.length]; for (let c = 0; c < len; c++) set(g, 9 + i, 6 + ind + c, c === 0 ? MAG : (i % 2 ? PING : VISOR)); }
+    for (let c = 4; c <= 15; c++) set(g, 14, c, W);                                // the keyboard edge
+    if (k % 2) { set(g, 9, 3, 0); set(g, 10, 4, BODY); } else { set(g, 9, 17, 0); set(g, 10, 16, BODY); }
+    return k % 4 === 3 ? tip(g, PING) : g;
+  };
+  const echoCode = {
+    name: 'ECHO · code', key: 'echo_code', fwname: 'echo code', category: 'Active', replaces: 'work coding',
+    intent: 'Replaces the stock coding: a laptop in front, code lines scrolling up the screen, eyes down on it, hands tapping, a ping every few lines; judge whether the screen reads as code.',
+    palette: P9('#0b1418'),
+    frames: Array.from({length: 16}, (_, k) => F(170, laptop(k))),
+  };
+
+  // echo ponder (replaces "work think"): a hand to the chin, eyes up, three dots rising over the head
+  // one at a time, a slow blink, the dots fade.
+  // the right arm folds up the side of the head and the hand rests against the visor's end
+  const chin = g => { const b = clone(g); for (let r = 7; r <= 9; r++) set(b, r, 17, 0); for (let r = 5; r <= 8; r++) set(b, r, 17, BODY); set(b, 5, 16, BODY); set(b, 6, 16, BODY); return b; };
+  const dots = (g, n) => paintEmpty(g, [[2, 8], [1, 10], [0, 12]].slice(0, n), W);
+  const pondering = chin(lookUp(B0));
+  const echoPonder = {
+    name: 'ECHO · ponder', key: 'echo_ponder', fwname: 'echo ponder', category: 'Thinking', replaces: 'work think',
+    intent: 'Replaces the stock work think: a hand to the chin, eyes up, three dots rising over the head one at a time, a slow blink, the dots fade; judge whether it reads as thinking hard.',
+    palette: RP,
+    frames: [F(700, B0), F(500, pondering), F(500, dots(pondering, 1)), F(500, dots(pondering, 2)), F(900, dots(pondering, 3)),
+      F(90, chin(eyes(B0, HALF))), F(900, dots(pondering, 3)), F(400, dots(pondering, 1)), F(500, pondering)],
+  };
+
+  // echo winky (replaces "expression wink"): the right eye closes to a line, a star sparkles off it.
+  const winkR = g => eyes(g, [[6, 7], [7, 7], [7, 12], [7, 13], [7, 14]]);
+  const star = (g, k) => paintEmpty(g, k === 0 ? [[5, 18]] : [[5, 18], [4, 18], [6, 18], [5, 17], [5, 19]], k === 1 ? W : MAG);
+  const echoWinky = {
+    name: 'ECHO · winky', key: 'echo_winky', fwname: 'echo winky', category: 'Idle', replaces: 'expression wink',
+    intent: 'Replaces the stock wink: the right eye closes to a line and a small star sparkles off it, the antenna pings; judge the timing of the sparkle.',
+    palette: RP,
+    frames: [F(1600, B0), F(80, eyes(B0, [[6, 7], [7, 7], [7, 13]])), F(160, winkR(B0)), F(120, star(winkR(B0), 0)), F(200, star(winkR(B0), 1)), F(260, star(tip(winkR(B0), PING), 2)), F(300, winkR(B0)), F(80, eyes(B0, [[6, 7], [7, 7], [7, 13]])), F(1400, B0)],
+  };
+
+  // echo bubble (replaces "think"): a thought bubble grows off the antenna side in three puffs, and a
+  // bulb lights inside it.
+  const BUB = [[3, 13], [2, 14], [1, 15], [1, 16], [0, 15], [0, 16], [0, 17], [0, 18], [1, 19], [2, 18], [2, 17], [1, 18], [1, 17]];
+  const bubble = (g, n, bulb) => { let b = paintEmpty(g, BUB.slice(0, n), W); if (bulb) b = paint(b, [[1, 17], [1, 18]], X); return b; };
+  const thinking = lookUp(B0);
+  const echoBubble = {
+    name: 'ECHO · bubble', key: 'echo_bubble', fwname: 'echo bubble', category: 'Thinking', replaces: 'think',
+    intent: 'Replaces the stock think: eyes up, a thought bubble puffs out beside the antenna in three steps and a little amber bulb lights inside it; judge whether the bulb reads at 20 cells.',
+    palette: P9('#ffd166'),
+    frames: [F(700, B0), F(300, thinking), F(260, bubble(thinking, 1)), F(260, bubble(thinking, 2)), F(260, bubble(thinking, 4)), F(300, bubble(thinking, 13)),
+      F(700, bubble(thinking, 13, true)), F(150, bubble(tip(thinking, PING), 13, true)), F(800, bubble(thinking, 13, true)), F(300, bubble(thinking, 4)), F(500, B0)],
+  };
+
+  // echo notes (replaces "write"): a notepad held at the chest, the head down, lines of writing appear
+  // one by one, the pen hand moving along each.
+  const pad = (n, pen) => {
+    let g = lookDown(B0);
+    for (let r = 9; r <= 13; r++) for (let c = 7; c <= 13; c++) set(g, r, c, W);
+    for (let i = 0; i < n; i++) for (let c = 8; c <= (i % 2 ? 11 : 12); c++) set(g, 10 + i, c, VISOR);
+    if (pen != null) { set(g, 9 + Math.min(n, 3), pen, MAG); set(g, 9 + Math.min(n, 3), pen + 1, BODY); }
+    return g;
+  };
+  const echoNotes = {
+    name: 'ECHO · notes', key: 'echo_notes', fwname: 'echo notes', category: 'Active', replaces: 'write',
+    intent: 'Replaces the stock write: a notepad at the chest, the head down, lines of writing appear one by one as a magenta pen tip runs along each; judge whether it reads as writing.',
+    palette: RP,
+    frames: [F(500, B0), F(300, pad(0)), ...[0, 1, 2, 3].flatMap(n => [F(150, pad(n, 8)), F(150, pad(n, 10)), F(150, pad(n + 1, 12))]), F(700, pad(4)), F(140, tip(pad(4), PING)), F(400, B0)],
+  };
+
+  // echo ask (replaces "allow"): waiting on a yes. A question mark over the head blinks, the eyes look
+  // straight out, the antenna pings, a small patient bob.
+  const QM = [[0, 9], [0, 10], [0, 11], [1, 11], [2, 10], [3, 10], [4, 10]];   // row 4 is the dot, one gap above it
+  const qm = (g, on) => on ? paint(paintEmpty(g, QM.slice(0, 5), W), [], W) : g;
+  const echoAsk = {
+    name: 'ECHO · ask', key: 'echo_ask', fwname: 'echo ask', category: 'Idle', replaces: 'allow',
+    intent: 'Replaces the stock allow (waiting for a yes): a question mark blinks over the head, the eyes look straight out, a small patient bob, an antenna ping; judge whether it reads as asking.',
+    palette: RP,
+    frames: [F(600, qm(B0, true)), F(400, B0), F(600, qm(B0, true)), F(200, qm(shift(B0, -1), true)), F(400, qm(tip(B0, PING), true)), F(400, B0), F(90, qm(eyes(B0, HALF), true)), F(700, qm(B0, true))],
+  };
+
+  // echo alarm (replaces "limit"): the body flashes red, double bangs in both top corners, a shake, the
+  // visor goes red, then a breath of normal before it goes again.
+  const RED = 9;
+  const redden = g => g.map(r => r.map(v => (v === BODY || v === VISOR) ? RED : v));
+  const bangs = g => paintEmpty(g, [[0, 1], [1, 1], [3, 1], [0, 3], [1, 3], [3, 3], [0, 16], [1, 16], [3, 16], [0, 18], [1, 18], [3, 18]], W);
+  const echoAlarm = {
+    name: 'ECHO · alarm', key: 'echo_alarm', fwname: 'echo alarm', category: 'Mode', replaces: 'limit',
+    intent: 'Replaces the stock limit: the body flashes red with double bangs in the top corners and a shake, a breath of normal, then again; loud on purpose, the rate limit state.',
+    palette: P9('#e0665a'),
+    frames: [F(120, bangs(redden(B0))), F(100, bangs(redden(shift(B0, 0, -1)))), F(100, bangs(redden(shift(B0, 0, 1)))), F(120, bangs(redden(B0))),
+      F(160, B0), F(120, bangs(redden(B0))), F(100, bangs(redden(shift(B0, 0, 1)))), F(100, bangs(redden(shift(B0, 0, -1)))), F(700, redden(B0)), F(500, B0)],
+  };
+
+  // echo morning (replaces our orange "coffee morning"): the ECHO creature holding a mug, waking up:
+  // eyes shut, a half open, back under, then open, a sip, steam curling off the mug.
+  const MUG = [[9, 16, X], [9, 17, X], [9, 18, X], [10, 16, W], [10, 17, W], [10, 18, W], [11, 16, W], [11, 17, W], [11, 18, W], [12, 16, W], [12, 17, W], [12, 18, W], [11, 19, W]];
+  const mug = (g, lift = 0) => { const b = clone(g); for (let r = 7; r <= 9; r++) set(b, r, 17, 0); for (const [r, c, v] of MUG) set(b, r - lift, c, v); set(b, 12 - lift + 1, 17, BODY); return b; };
+  const steam = (g, k, lift = 0) => paintEmpty(g, [[[8, 16], [6, 17]], [[7, 17], [5, 16]], [[8, 17], [6, 18]], [[7, 16], [5, 17]]][k % 4].map(([r, c]) => [r - lift, c]), W);
+  const echoMorning = {
+    name: 'ECHO · morning', key: 'echo_morning', fwname: 'echo morning', category: 'Idle', replaces: 'coffee morning',
+    intent: 'Replaces our orange coffee morning with the ECHO creature: holding a mug and waking up, eyes shut, a half open, back under, then open, a sip with the mug lifted, steam curling off it; judge the slowness of the wake.',
+    palette: P9('#5b3a29'),
+    frames: [
+      F(1200, steam(mug(eyes(B0, LINE)), 0)), F(800, steam(mug(eyes(B0, LINE)), 1)), F(500, steam(mug(eyes(B0, HALF)), 2)),
+      F(900, steam(mug(eyes(B0, LINE)), 3)), F(450, steam(mug(eyes(B0, HALF)), 0)), F(1100, steam(mug(B0), 1)),
+      F(300, steam(mug(eyes(B0, HALF), 2), 2, 2)), F(700, steam(mug(eyes(B0, LINE), 2), 3, 2)), F(900, steam(mug(B0), 0)),
+      F(140, steam(mug(tip(B0, PING)), 1)), F(900, steam(mug(B0), 2)),
+    ],
+  };
+
+  L.register([echoDj, echoBlink, echoBreath, echoGlance, echoStartle, echoDoze, echoHop, echoSway2, echoDone, echoHighFive, echoCatch,
+    echoRave, echoMixer, echoCode, echoPonder, echoWinky, echoBubble, echoNotes, echoAsk, echoAlarm, echoMorning]);
 })(typeof window !== 'undefined' ? window : globalThis);
