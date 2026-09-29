@@ -767,13 +767,15 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
     consecutive_failures = 0  # D-03: zombie-link break counter
     last_state = None  # state file stamp as of the previous tick
     state_fields: dict = {}  # last good "n"/"a" fields, merged into every payload
+    last_usage: dict | None = None  # the last polled usage payload, without the state fields
     last_approve = approve_stamp()  # a request left over from before this link is stale, not ours to show
     try:
         while client.is_connected and not stop_event.is_set():
             write_heartbeat(True)
-            # Host state changed (agents / animation): push now, like a device
-            # refresh request, instead of waiting out the 60s poll. Costs one
-            # poll_api call per change, at most one per TICK.
+            # Host state changed (agents / animation): push now instead of waiting
+            # out the 60s poll. With a fresh usage payload in hand, resend it with
+            # the new fields and no API call (the creature hooks change the state
+            # on every tool call); otherwise poll, like a device refresh request.
             stamp = state_stamp()
             if stamp != last_state:
                 last_state = stamp
@@ -781,7 +783,13 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
                 if fields is not None:  # None = malformed; keep the last good state
                     state_fields = fields
                     log(f"State file changed: {state_fields or 'absent'}")
-                    session.refresh_requested.set()
+                    if last_usage is not None and time.time() - last_poll < POLL_INTERVAL:
+                        cached = dict(last_usage)
+                        add_clock_fields(cached)
+                        cached.update(state_fields)
+                        await session.write_payload(cached)
+                    else:
+                        session.refresh_requested.set()
             # A permission prompt to relay (or its clear): straight to the
             # device as its own message. No API call in the way, and no merge
             # into the usage payload, which a prompt must never wait on.
@@ -810,6 +818,7 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
                             tray_state.set_error("token expired — run claude login")
                         payload = None
                     if payload is not None:
+                        last_usage = dict(payload)
                         payload.update(state_fields)
                         if await session.write_payload(payload):
                             last_poll = time.time()

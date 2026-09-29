@@ -12,15 +12,18 @@ when it changes, sends "n" (agents) and "a" (anim, only when non-empty) to the
 device right away instead of at the next 60s poll. "mode" stays on the host.
 
 Writes are atomic (temp file + replace), so the daemon never reads half a file.
-Stdlib only on purpose: hooks call this often, and importing the daemon module
-would pull in bleak and httpx on every call.
+Stdlib only on purpose: scripts may call this often, and importing the daemon
+module would pull in bleak and httpx on every call. argparse is imported inside
+main() only, and save() makes its temp file with os.open instead of the
+tempfile module (which brings shutil, bz2, lzma and random), so importing this
+module stays cheap. clawdmeter_hooks.py does not import it: its json and
+pathlib imports alone cost about 50 ms per tool call, so the hooks keep their
+own copy of load() and save(), and the tests hold the two to the same results.
 """
 
-import argparse
 import json
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -50,10 +53,25 @@ def load() -> dict:
     return state
 
 
+def _mkstemp(directory, prefix: str) -> tuple[int, str]:
+    """A new, empty temp file in `directory`, open for writing: (fd, path).
+    Same guarantees as tempfile.mkstemp (a fresh name, O_EXCL, binary, owner
+    only, never through a symlink) without importing tempfile."""
+    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
+             | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
+    for _ in range(100):
+        path = os.path.join(directory, f"{prefix}{os.urandom(6).hex()}.tmp")
+        try:
+            return os.open(path, flags, 0o600), path
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"no free temp file name in {directory}")
+
+
 def save(state: dict) -> None:
     """Write atomically: a temp file in the same directory, then os.replace."""
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=STATE_FILE.parent, prefix=".state-", suffix=".tmp")
+    fd, tmp = _mkstemp(STATE_FILE.parent, ".state-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(state, f)
@@ -76,6 +94,7 @@ def save(state: dict) -> None:
 
 
 def _agents(text: str) -> int:
+    import argparse  # already loaded by main(); only argparse calls this
     try:
         n = int(text)
     except ValueError:
@@ -86,12 +105,14 @@ def _agents(text: str) -> int:
 
 
 def _anim(text: str) -> str:
+    import argparse
     if len(text) > ANIM_MAX:
         raise argparse.ArgumentTypeError(f"longer than the device takes ({ANIM_MAX} chars)")
     return text
 
 
 def main(argv: list[str] | None = None) -> int:
+    import argparse  # here, not at the top: importing this module never parses arguments
     parser = argparse.ArgumentParser(
         prog="clawdmeter_state",
         description="Set, clear or show the host state the Clawdmeter daemon sends to the device.",

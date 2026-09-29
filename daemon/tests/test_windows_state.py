@@ -93,6 +93,7 @@ def test_state_change_pushes_without_waiting_for_the_poll(state_file, monkeypatc
     second send on the next tick even though POLL_INTERVAL (60s) hasn't passed."""
     _write(state_file, {"agents": 2, "anim": "", "mode": ""})
     monkeypatch.setattr(mod, "TICK", 0.01)
+    monkeypatch.setattr(mod, "read_clock_setting", lambda: "off")   # the live config may turn the clock on
 
     stop_event = asyncio.Event()
     sent = []
@@ -123,6 +124,8 @@ def test_state_change_pushes_without_waiting_for_the_poll(state_file, monkeypatc
         {"s": 10, "ok": True, "n": 2},
         {"s": 10, "ok": True, "n": 5, "a": "work coding"},
     ]
+    # the second send reused the fresh usage payload: one API call, not one per state change
+    assert poll.call_count == 1
 
 
 # ---------------------------------------------------------------------------

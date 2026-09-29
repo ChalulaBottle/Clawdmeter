@@ -313,6 +313,74 @@ Add the hook yourself (nothing in the repo writes to your settings); `settings.j
 
 The script always answers inside 40 s, under that timeout, so the hook's timeout path (which discards the output) never runs. Try it without Claude Code: `python daemon\clawdmeter_approve.py --test Bash "git push origin main"` puts a sample prompt on the device and prints what the hook would return; `ask` / `ok` / `askclr` over the serial console exercise the overlay with no host at all. The daemon must have been started from this code (restart the tray after updating).
 
+### Make the creature follow Claude
+
+The device can show what Claude Code is doing without you picking anything. Claude Code runs `daemon\clawdmeter_hooks.py` on its lifecycle events, the script chooses the creature for the moment and writes it to `%LOCALAPPDATA%\Clawdmeter\state.json`, and the daemon pushes it to the device within about a second. Nothing in the repo installs the hooks or writes your settings.
+
+| Claude Code event | Creature on the device |
+|---|---|
+| `SessionStart` | `token burner` while the last request carried more than 500k tokens, else `ctf hoodie` in a CTF folder, else the model tier, else the device's own choice; this session's agents are reset |
+| `SessionStart` after a compaction | nothing changes, except that the loading bar of a compaction you typed comes down |
+| `UserPromptSubmit` | the same checks, with `echo think spin` in place of the device's choice |
+| `PreToolUse` Edit, Write, MultiEdit, NotebookEdit | `echo write` |
+| `PreToolUse` Read, Glob, Grep | `echo read` |
+| `PreToolUse` Bash, PowerShell | `echo work`, or `echo ssh` when the command runs ssh, scp or sftp |
+| `PreToolUse` WebFetch, WebSearch | `echo consult` |
+| `PreToolUse` Skill | `echo loading` |
+| `PreToolUse` Agent (Task) | `two agents`, or `ultracode work` from three agents up |
+| `PreToolUse` Workflow | `ultracode enter`, then `ultracode work` on the calls that follow while its agents run |
+| `PreToolUse` any other tool | `echo work` |
+| `PreToolUse` inside a subagent | the agents creature (`two agents` or `ultracode work`) |
+| `PreToolUse` when the token reading first passes 500k | `token burner` |
+| `PostToolUse` Agent (Task) | nothing of its own |
+| `SubagentStart`, `SubagentStop` | the N AGENTS badge counts up and down; `agents join` when the last one finishes |
+| `Stop` | `job done`, cleared by whatever comes next; held back while agents still run or a workflow is starting |
+| `Notification`, idle prompt | back to the device's own choice (also after Esc, which sends no `Stop`) |
+| `PreCompact` | `echo loading` |
+| `PostModelSwitch` | remembers the new tier for the next prompt |
+| `SessionEnd` | this session's agents and marks cleared, back to the device's own choice |
+
+The model tier is `model haiku`, `model sonnet`, `model opus` or `model fable`. It comes from `PostModelSwitch`, else the `model` field that `SessionStart` sometimes carries, else the newest reply in the session transcript. Only the transcript's tail is read, however large the file: the last 128 KB, or the last 1 MB when that reply sits further back, and a line still being written is skipped. No hook payload carries token usage, so the token burner reads the newest request's tokens from the same tail and holds for 60 s after the last reading above 500k. A CTF folder is one where ctf or htb starts a word or ctf ends one (`ctf`, `htb-borrowedname`, `h7ctf-2026-quals`, `picoCTF`), or whose path has hackthebox or holmes in it; ProjectFiles is not one, and `python daemon\clawdmeter_state.py set --mode ctf` puts the hoodie on anywhere. Working creatures win while tools run: the tier and the hoodie show at the start of a session and of each prompt. A tool call in the first 3 s of the current creature leaves it on screen (the next call after that brings its own), so a burst of quick calls does not flicker; prompts, stops, agents, workflows and compaction go through at once. Permission prompts stay with the approve hook above, and `credits out` comes from the usage feed, not from the hooks.
+
+Subagents are counted by `SubagentStart` and `SubagentStop`, keyed by agent id: a background agent's `PostToolUse` fires when it launches, not when it finishes, and a workflow's agents never pass through the Agent tool. One that never reports its end drops out of the count after 15 minutes of silence. The hooks keep this bookkeeping (running subagents, model tier, token reading) in `%LOCALAPPDATA%\Clawdmeter\hooks.json`, which the daemon never reads, and take turns through `hooks.lock` when several run at once. A run waits up to 3 s for its turn, which holds up nothing, since Claude Code runs them in the background; 30 agents starting together all count, and all leave the count again when they stop. Each run is placed by the moment it started, not by when it got its turn: a start or a tool call that gets its turn after that agent's stop does not bring it back, and a run older than the creature on screen keeps its bookkeeping but changes nothing you see.
+
+Print the block for this machine (absolute paths; it writes nothing):
+
+```powershell
+python daemon\clawdmeter_hooks.py --print-settings
+```
+
+The command it prints is the base Python behind the interpreter that ran it, so running it with the venv's `python.exe` still prints the quick one: the venv's `python.exe` is a launcher that starts a second process on every run, and the hooks need only what is built into Python. Paste the printed entries under `"hooks"` in `%USERPROFILE%\.claude\settings.json` (or a project's `.claude\settings.json`), next to the `PermissionRequest` entry if you use the approve hook. With placeholder paths it looks like this:
+
+```json
+{
+  "hooks": {
+    "SessionStart":     [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "SessionStart"], "timeout": 5, "async": true}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "UserPromptSubmit"], "timeout": 5, "async": true}]}],
+    "PreToolUse":       [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "PreToolUse"], "timeout": 5, "async": true}]}],
+    "PostToolUse":      [{"matcher": "Agent|Task", "hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "PostToolUse"], "timeout": 5, "async": true}]}],
+    "SubagentStart":    [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "SubagentStart"], "timeout": 5, "async": true}]}],
+    "SubagentStop":     [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "SubagentStop"], "timeout": 5, "async": true}]}],
+    "Stop":             [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "Stop"], "timeout": 5, "async": true}]}],
+    "Notification":     [{"matcher": "idle_prompt", "hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "Notification"], "timeout": 5, "async": true}]}],
+    "PreCompact":       [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "PreCompact"], "timeout": 5, "async": true}]}],
+    "PostModelSwitch":  [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "PostModelSwitch"], "timeout": 5, "async": true}]}],
+    "SessionEnd":       [{"hooks": [{"type": "command", "command": "C:\\path\\to\\python.exe", "args": ["-E", "-S", "C:\\path\\to\\Clawdmeter\\daemon\\clawdmeter_hooks.py", "SessionEnd"], "timeout": 5}]}]
+  }
+}
+```
+
+Every entry runs in the background (`"async": true`) except `SessionEnd`, which Claude Code waits for (5 s at most) so the clear lands before it exits. `-E` and `-S` start Python without its environment variables and site packages, so nothing from elsewhere can print into a hook or slow it down. Each run prints nothing and exits 0 whatever happens, even when the script is copied somewhere on its own, so a broken hook never changes what Claude Code does; delete the entries to stop. The daemon already reads `state.json`, so there is nothing to restart.
+
+Cost, measured on the development machine (Windows 11, Python 3.11, 200 interleaved runs per setup, a `PreToolUse` with a 5 MB transcript, the machine at 14 to 24% CPU with about 40 other Python processes, state kept in a scratch folder): one hook run averaged 40 to 54 ms with the base `python.exe`, of which 27 to 36 ms is Python starting, and 74 ms through a venv's launcher. What keeps it there is the import list: the script loads only modules built into Python (`os`, `sys`, `time`, `_json`, `msvcrt`) and reads JSON through `_json`, the C scanner under the json package. Importing json (which brings re) and pathlib instead costs about 50 ms on every run here, and a test fails if any of them comes back. Transcript size barely matters, since only its tail is read.
+
+Try it without Claude Code; the device follows, and `clear` hands the choice back:
+
+```powershell
+'{"session_id":"try","tool_name":"Bash","tool_input":{"command":"ssh fox-pool"}}' | python daemon\clawdmeter_hooks.py PreToolUse
+python daemon\clawdmeter_state.py clear
+```
+
 ### Logs and troubleshooting
 
 ```powershell
