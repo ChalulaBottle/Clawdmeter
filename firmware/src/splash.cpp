@@ -64,11 +64,11 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // live here too, listed first so they come up in normal rotation and not only on
     // request; names missing from the table are skipped by resolve_group_lists().
     { "echo idle", "echo sleep", "echo breathe", "echo wink", "coffee", "echo happy", "echo headphones", "headphones", "echo pizza",
-      "expression sleep", "idle breathe", "idle blink", "expression wink", "done" },
+      "echo doze", "echo breath", "echo blink", "expression wink", "echo done" },
     // Group 1 — normal pace
-    { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "idle look around", "work think", "work coding", "think", "allow" },
+    { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "echo glance", "work think", "work coding", "think", "allow" },
     // Group 2 — active
-    { "echo bounce", "echo sway", "echo surprise", "echo openclaw", "echo nanoclaw", "echo ssh", "dance sway", "expression surprise", "dance bounce", "write" },
+    { "echo bounce", "echo sway", "echo surprise", "echo openclaw", "echo nanoclaw", "echo ssh", "echo swing", "echo startle", "echo hop", "echo high five", "echo catch", "write" },
     // Group 3 — heavy
     { "echo summon", "echo dj", "dance sway dj", "dance djmix", "limit", NULL },
 };
