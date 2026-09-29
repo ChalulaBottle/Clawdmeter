@@ -74,7 +74,7 @@
     "name": "ultramode",
     "category": "Mode",
     "frame_count": 17,
-    "palette_size": 7
+    "palette_size": 9
   },
   {
     "filename": "ultra_cube.html",
@@ -122,8 +122,8 @@
     "filename": "ctf_hoodie.html",
     "name": "ctf hoodie",
     "category": "Idle",
-    "frame_count": 8,
-    "palette_size": 8
+    "frame_count": 57,
+    "palette_size": 10
   },
   {
     "filename": "echo_loading.html",
@@ -143,7 +143,7 @@
     "filename": "echo_summon.html",
     "name": "echo summon",
     "category": "Mode",
-    "frame_count": 31,
+    "frame_count": 38,
     "palette_size": 9
   },
   {
@@ -164,8 +164,22 @@
     "filename": "echo_openclaw.html",
     "name": "echo openclaw",
     "category": "Active",
-    "frame_count": 30,
+    "frame_count": 31,
     "palette_size": 9
+  },
+  {
+    "filename": "echo_nanoclaw.html",
+    "name": "echo nanoclaw",
+    "category": "Active",
+    "frame_count": 25,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_pizza.html",
+    "name": "echo pizza",
+    "category": "Idle",
+    "frame_count": 21,
+    "palette_size": 10
   },
   {
     "filename": "echo_headphones.html",
@@ -186,6 +200,34 @@
     "name": "echo summon hd",
     "category": "Mode",
     "frame_count": 39,
+    "palette_size": 10
+  },
+  {
+    "filename": "ultra_braille.html",
+    "name": "ultra braille",
+    "category": "Mode",
+    "frame_count": 53,
+    "palette_size": 10
+  },
+  {
+    "filename": "fable_gaze.html",
+    "name": "fable gaze",
+    "category": "Thinking",
+    "frame_count": 19,
+    "palette_size": 9
+  },
+  {
+    "filename": "fable_eyes.html",
+    "name": "fable eyes",
+    "category": "Mode",
+    "frame_count": 41,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_portal.html",
+    "name": "echo portal",
+    "category": "Mode",
+    "frame_count": 24,
     "palette_size": 10
   },
   {

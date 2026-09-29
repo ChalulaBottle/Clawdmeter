@@ -163,13 +163,16 @@ def main() -> int:
         return 1
     rows = m.group(2).splitlines()
     names = {n for n, _, _ in anims}
+    # stock rows an ECHO animation replaces (the "replaces" field, docs/bench/anims_replace.js) leave
+    # the table; their data arrays stay in the header but nothing references them, so the linker drops them
+    replaced = {d["replaces"] for _, _, d in anims if d.get("replaces")}
     keep = []
     sized = 0
     for ln in rows:
         if not ln.strip():
             continue
         mm = re.match(r'\s*\{"([^"]+)",\s*"([^"]+)"', ln)
-        if mm and (mm.group(2).startswith("ECHO") or mm.group(1) in names):
+        if mm and (mm.group(2).startswith("ECHO") or mm.group(1) in names or mm.group(1) in replaced):
             continue
         # rows from the other generators that predate the size field: say 20,
         # the lattice they always had, so every row in the table carries one

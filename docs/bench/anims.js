@@ -370,6 +370,27 @@
     f.push({hold: 1200, grid: echoPing(true)});
   }
 
+  // Neon purple aura for ultramode (operator, 2026-09-28): every empty cell touching the body lights
+  // up in neon purple, and the aura breathes by swapping to the portal magenta on the off beat. It is
+  // computed from each frame's own grid, so it follows the ripple and the bands.
+  const ULTRA_PALETTE = [...echo.palette, '#b44dff', '#ff5fd2'];   // 7 neon purple, 8 portal magenta
+  function aura(g, phase) {
+    const b = clone(g);
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) {
+      if (g[r][c]) continue;
+      let lit = false;
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < G && cc >= 0 && cc < G && g[rr][cc] && g[rr][cc] < 7) { lit = true; break; }
+      }
+      if (lit) b[r][c] = phase ? 8 : 7;
+    }
+    return b;
+  }
+  ultraShift.palette = ULTRA_PALETTE;
+  ultraShift.intent = 'Proposal, take two, with the aura. The creature stays whole inside a neon purple aura that breathes: a ripple shifts its rows, then head, torso and legs slide apart and snap back, the aura following every shift.';
+  ultraShift.frames = ultraShift.frames.map((fr, i) => Object.assign({}, fr, {grid: aura(fr.grid, i % 2)}));
+
   // 3i. Echo walk: the creature moves around. It walks four cells to the right and back with the
   // feet alternating and a one-row bob on every step, a glance at each turn. Movement, not a fidget.
   function walkFrame(dx, step) {
@@ -886,6 +907,37 @@
       {hold: 600, grid: summonRestA},                                            // rest (loops to frame 0)
     ],
   };
+  // Rework (operator, 2026-09-28: "more demon looking with horns, or more demons coming out"): both.
+  // The demon grows taller horns (two rows, tips apart, bases on the head) and after the first one is
+  // up, two more climb out: one at the circle's left rim, one at the front over the creature's feet.
+  // All three hover and bob together before sinking back in the order they came.
+  const DEMON_H = [[0, 0, 7], [0, 2, 7], [1, 0, 7], [1, 1, 7], [1, 2, 7], [2, 0, 7], [2, 1, 7], [2, 2, 7],
+                   [3, 0, 8], [3, 1, 7], [3, 2, 8], [4, 0, 7], [4, 1, 7], [4, 2, 7]];   // horn tips, horn bases + crown, head, ember eyes, body
+  function demonAt(g, top, col, rim) { const b = clone(g); for (const [dr, dc, v] of DEMON_H) if (top + dr <= rim) set(b, top + dr, col + dc, v); return b; }
+  const ring = (n, c) => summonCircleA(summonUpA, n, c);
+  const trio = (t1, t2, t3, c) => { let g = ring(3, c); if (t1 != null) g = demonAt(g, t1, 17, 18); if (t2 != null) g = demonAt(g, t2, 1, 18); if (t3 != null) g = demonAt(g, t3, 9, 19); return g; };
+  echoSummonA.intent = 'Proposal. Both arms rise, a red circle draws itself and pulses, the eyes flash red, a horned demon climbs out of the circle, then two more follow (left rim, front), all three hover and bob, then sink back in turn before the circle fades; judge whether the horns read and whether three demons are too many.';
+  echoSummonA.frames = [
+    {hold: 800, grid: summonRestA},
+    {hold: 160, grid: summonArmsHalfA(summonRestA)},
+    {hold: 220, grid: summonUpA},
+    {hold: 190, grid: ring(1, 7)}, {hold: 190, grid: ring(2, 7)}, {hold: 200, grid: ring(3, 7)},
+    {hold: 150, grid: ring(3, 8)}, {hold: 150, grid: ring(3, 7)},
+    {hold: 150, grid: summonEyesRedA(ring(3, 8))}, {hold: 150, grid: summonEyesRedA(ring(3, 7))},
+    {hold: 140, grid: trio(17, null, null, 7)}, {hold: 140, grid: trio(15, null, null, 7)}, {hold: 140, grid: trio(13, null, null, 7)}, {hold: 140, grid: trio(11, null, null, 7)},
+    {hold: 260, grid: trio(10, null, null, 8)},
+    {hold: 140, grid: trio(10, 17, null, 7)}, {hold: 140, grid: trio(11, 15, null, 7)}, {hold: 140, grid: trio(10, 13, null, 7)},
+    {hold: 260, grid: summonEyesRedA(trio(10, 12, null, 8))},
+    {hold: 140, grid: trio(10, 12, 18, 7)}, {hold: 140, grid: trio(11, 13, 16, 7)}, {hold: 140, grid: trio(10, 12, 14, 7)},
+    {hold: 300, grid: summonEyesRedA(trio(10, 12, 13, 8))},
+    {hold: 220, grid: trio(11, 13, 14, 7)}, {hold: 300, grid: summonEyesRedA(trio(10, 12, 13, 8))},
+    {hold: 220, grid: trio(11, 13, 14, 7)}, {hold: 300, grid: summonEyesRedA(trio(10, 12, 13, 8))},
+    {hold: 130, grid: trio(13, 12, 13, 7)}, {hold: 130, grid: trio(16, 14, 13, 7)}, {hold: 130, grid: trio(null, 17, 15, 7)},
+    {hold: 130, grid: trio(null, null, 17, 7)}, {hold: 130, grid: trio(null, null, 19, 7)},
+    {hold: 200, grid: ring(3, 7)}, {hold: 160, grid: ring(2, 7)}, {hold: 160, grid: ring(1, 7)},
+    {hold: 160, grid: summonUpA}, {hold: 160, grid: summonArmsHalfA(summonRestA)},
+    {hold: 600, grid: summonRestA},
+  ];
 
   // 3x. kiss (pucker): no arm move. The eyes go soft and a two cell pink pucker holds just under the visor
   // centre; on the mwah the body hops a row, the antenna pings and a heart and two pink sparks stream off up and right.
@@ -950,11 +1002,17 @@
   // in along the ground, climbs the creature's left side, crosses the top of its head, waves its claws up
   // there, comes down the right side and leaves. The creature's eyes follow it. Crab: 5 wide, 3 tall: two
   // raised claws, a body with two ember eyes, three legs; legs and claws alternate to read as scuttling.
-  const CRAB_A = [[0, 0, 7], [0, 4, 7], [1, 1, 8], [1, 2, 7], [1, 3, 8], [2, 0, 7], [2, 2, 7], [2, 4, 7]];
-  const CRAB_B = [[0, 1, 7], [0, 3, 7], [1, 1, 8], [1, 2, 7], [1, 3, 8], [2, 1, 7], [2, 3, 7]];
+  // Crab, 7 wide by 4 tall: eye stalks (ember) on top, a wide body, a pincer either side that opens and
+  // closes, four legs that alternate. Painted over whatever it walks on.
+  const CRAB_A = [[0, 1, 8], [0, 5, 8], [1, 0, 7], [1, 2, 7], [1, 3, 7], [1, 4, 7], [1, 6, 7],
+                  [2, 0, 7], [2, 1, 7], [2, 2, 7], [2, 3, 7], [2, 4, 7], [2, 5, 7], [2, 6, 7],
+                  [3, 1, 7], [3, 3, 7], [3, 5, 7]];                                        // pincers open, legs in
+  const CRAB_B = [[0, 1, 8], [0, 5, 8], [1, 1, 7], [1, 2, 7], [1, 3, 7], [1, 4, 7], [1, 5, 7],
+                  [2, 0, 7], [2, 1, 7], [2, 2, 7], [2, 3, 7], [2, 4, 7], [2, 5, 7], [2, 6, 7],
+                  [3, 0, 7], [3, 2, 7], [3, 4, 7], [3, 6, 7]];                              // pincers closed, legs out
   function crabAt(g, r0, c0, phase) {
     const b = clone(g);
-    for (const [r, c, v] of (phase ? CRAB_B : CRAB_A)) set(b, r0 + r, c0 + c, v);   // painted over whatever is there
+    for (const [r, c, v] of (phase ? CRAB_B : CRAB_A)) set(b, r0 + r, c0 + c, v);
     return b;
   }
   // The eyes slide one cell toward the crab (left, centre or right) without leaving the visor.
@@ -964,21 +1022,83 @@
     for (const c of [7 + dir, 13 + dir]) for (const r of [6, 7]) set(b, r, c, 2);
     return b;
   }
-  // Path of the crab's top-left corner. Ground rows 17..19 (under the feet), left side cols 0..4 over the
-  // arm, top rows 1..3 above the head (the antenna at col 15 gets walked over), right side, off the edge.
+  // Path of the crab's top-left corner (7x4): along the ground under the feet, up the left side over
+  // the arm, across the top of the head (rows 0..3 sit on the head, the antenna gets walked over),
+  // a pause on top, down the right side, off the edge.
   const CRAB_PATH = [
-    [17, 18, 0], [17, 16, -0], [17, 14, 0], [17, 12, 0], [17, 10, 0], [17, 8, -1], [17, 6, -1], [17, 4, -1], [17, 2, -1],
-    [14, 0, -1], [11, 0, -1], [8, 0, -1], [5, 0, -1], [2, 1, -1],
-    [1, 4, -1], [1, 7, 0], [1, 10, 0], [1, 10, 0], [1, 10, 0], [1, 13, 1],
-    [2, 15, 1], [5, 16, 1], [8, 16, 1], [11, 16, 1], [14, 16, 1], [17, 16, 1], [17, 18, 0],
+    [16, 15, 0], [16, 13, 0], [16, 11, 0], [16, 9, 0], [16, 7, -1], [16, 5, -1], [16, 3, -1], [16, 1, -1],
+    [13, 0, -1], [10, 0, -1], [7, 0, -1], [4, 0, -1], [1, 0, -1],
+    [0, 3, -1], [0, 6, 0], [0, 6, 0], [0, 6, 0], [0, 9, 0], [0, 12, 1],
+    [2, 13, 1], [5, 13, 1], [8, 13, 1], [11, 13, 1], [14, 13, 1], [16, 13, 1], [16, 15, 1], [16, 17, 0], [16, 19, 0],
   ];
+  // Nano claw: a 3x2 crab (two claws over a body with one ember eye) that skitters the same route
+  // at twice the pace, steps of three cells, and never pauses. The small fast one.
+  const NANO_A = [[0, 0, 7], [0, 2, 7], [1, 0, 7], [1, 1, 8], [1, 2, 7]];
+  const NANO_B = [[0, 1, 7], [1, 0, 7], [1, 1, 8], [1, 2, 7]];
+  function nanoAt(g, r0, c0, phase) {
+    const b = clone(g);
+    for (const [r, c, v] of (phase ? NANO_B : NANO_A)) set(b, r0 + r, c0 + c, v);
+    return b;
+  }
+  const NANO_PATH = [
+    [17, 17, 0], [17, 14, 0], [17, 11, 0], [17, 8, -1], [17, 5, -1], [17, 2, -1],
+    [14, 0, -1], [11, 0, -1], [8, 0, -1], [5, 0, -1], [2, 0, -1],
+    [2, 3, -1], [2, 6, 0], [2, 9, 0], [2, 12, 1], [2, 15, 1],
+    [5, 17, 1], [8, 17, 1], [11, 17, 1], [14, 17, 1], [17, 17, 1], [17, 19, 0],
+  ];
+  const echoNanoclaw = {
+    name: 'ECHO · nanoclaw', key: 'echo_nanoclaw', fwname: 'echo nanoclaw', category: 'Active',
+    intent: 'Proposal. The nano claw: a tiny red crab skitters the crab route at speed, no pauses, the eyes barely keeping up; judge whether three cells still read as a crab.',
+    palette: [...echo.palette, '#e5443a', '#ffd166'],
+    frames: [
+      {hold: 700, grid: echoPing(false)},
+      ...NANO_PATH.map(([r, c, dir], i) => ({hold: 80, grid: nanoAt(eyesToward(echoPing(i % 5 === 0), dir), r, c, i % 2)})),
+      {hold: 120, grid: echoPing(true)}, {hold: 900, grid: echoPing(false)},
+    ],
+  };
+  // 3x. Pizza: a slice held in front of the chest, tip toward the mouth (crust amber, cheese light,
+  // three pepperoni). It lifts to the visor, the eyes squint, a bite takes the tip, two chew bobs,
+  // again, again, then the crust goes too and the eyes go > < for a beat. A new slice arrives.
+  const PIZZA_FULL = [[8, 16, 9], [8, 17, 7], [9, 14, 9], [9, 15, 8], [9, 16, 9], [9, 17, 7],
+                      [10, 13, 9], [10, 14, 8], [10, 15, 9], [10, 16, 9], [10, 17, 7], [11, 15, 9], [11, 16, 8], [11, 17, 7]];
+  function pizzaAt(g, bites, lift) {
+    const b = clone(g);
+    const minCol = 13 + bites * 2;                           // each bite takes two columns off the tip
+    for (const [r, c, v] of PIZZA_FULL) if (c >= minCol) set(b, r - lift, c, v);
+    if (bites < 3) set(b, 12 - lift, 16, 1);                 // the hand under the slice
+    return b;
+  }
+  const squint = g => { const b = clone(g); set(b, 6, 7, 3); set(b, 6, 13, 3); return b; };
+  const chew = (g, k) => bob(g, k % 2 ? -1 : 0);
+  const echoPizza = {
+    name: 'ECHO · pizza', key: 'echo_pizza', fwname: 'echo pizza', category: 'Idle',
+    intent: 'Proposal. Eating a slice: lift to the visor, squint, bite, chew, three times until only the crust is left, then happy eyes and a new slice; judge whether the slice reads as pizza and whether the bites read.',
+    palette: [...echo.palette, '#e0b25a', '#e5443a', '#ffd166'],   // 7 crust, 8 pepperoni, 9 cheese
+    frames: [
+      {hold: 800, grid: echoPing(false)},
+      {hold: 600, grid: pizzaAt(echoBase, 0, 0)},
+      {hold: 260, grid: pizzaAt(squint(echoBase), 0, 2)},
+      {hold: 220, grid: pizzaAt(squint(echoBase), 1, 2)},
+      {hold: 150, grid: chew(pizzaAt(echoBase, 1, 0), 1)}, {hold: 150, grid: chew(pizzaAt(echoBase, 1, 0), 0)}, {hold: 150, grid: chew(pizzaAt(echoBase, 1, 0), 1)},
+      {hold: 400, grid: pizzaAt(echoPing(true), 1, 0)},
+      {hold: 260, grid: pizzaAt(squint(echoBase), 1, 2)},
+      {hold: 220, grid: pizzaAt(squint(echoBase), 2, 2)},
+      {hold: 150, grid: chew(pizzaAt(echoBase, 2, 0), 1)}, {hold: 150, grid: chew(pizzaAt(echoBase, 2, 0), 0)}, {hold: 150, grid: chew(pizzaAt(echoBase, 2, 0), 1)},
+      {hold: 400, grid: pizzaAt(echoBase, 2, 0)},
+      {hold: 260, grid: pizzaAt(squint(echoBase), 2, 2)},
+      {hold: 220, grid: pizzaAt(squint(echoBase), 3, 2)},
+      {hold: 150, grid: chew(echoBase, 1)}, {hold: 150, grid: chew(echoBase, 0)}, {hold: 150, grid: chew(echoBase, 1)},
+      {hold: 900, grid: happyEyes(echoPing(true))},
+      {hold: 700, grid: echoPing(false)},
+    ],
+  };
   const echoOpenclaw = {
     name: 'ECHO · openclaw', key: 'echo_openclaw', fwname: 'echo openclaw', category: 'Active',
     intent: 'Proposal. A small red crab scuttles in, climbs the left side, crosses the top of the head waving its claws, comes down the right side and leaves while the eyes follow it; judge whether it reads as a crab at 20 cells and whether the eye tracking sells it.',
     palette: [...echo.palette, '#e5443a', '#ffd166'],   // 7 crab red, 8 crab eyes
     frames: [
       {hold: 900, grid: echoPing(false)},
-      ...CRAB_PATH.map(([r, c, dir], i) => ({hold: (r === 1 && c === 10) ? 260 : 170, grid: crabAt(eyesToward(echoPing(i % 6 === 0), dir), r, c, i % 2)})),
+      ...CRAB_PATH.map(([r, c, dir], i) => ({hold: (r === 0 && c === 6) ? 240 : 170, grid: crabAt(eyesToward(echoPing(i % 6 === 0), dir), r, c, i % 2)})),
       {hold: 140, grid: echoPing(true)}, {hold: 1100, grid: echoPing(false)},
     ],
   };
@@ -1262,6 +1382,813 @@
     F(260, REST);                                                             // rest (loops to frame 0)
   }
 
+  // CTF hoodie, reworked (operator, 2026-09-28: "doing something other than standing there"). Matrix
+  // rain falls behind it (only on empty cells, so it passes behind the body), a 404 flashes on the chest
+  // like a print on the hoodie, alert boxes pop in the corners, then a purple portal opens on the floor,
+  // the hacker sinks into it and is gone (eyes go with it, by design), the portal closes, and it drops
+  // back in from the top with a flash.
+  const HACK_PALETTE = ['transparent', '#1b2326', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb',
+                        '#39ff6a', '#17836f', '#ff5fd2'];   // 7 rain head, 8 rain trail and the creature's own teal before the hoodie, 9 portal and 404
+  const RAIN_COLS = [0, 2, 3, 5, 8, 11, 13, 16, 17, 19];
+  function rain(g, k) {
+    const b = clone(g);
+    RAIN_COLS.forEach((c, i) => {
+      const head = (k * (1 + (i % 3)) + i * 5) % (G + 6) - 3;
+      for (let t = 0; t < 4; t++) { const r = head - t; if (r >= 0 && r < G && b[r][c] === 0) b[r][c] = t === 0 ? 7 : 8; }
+    });
+    return b;
+  }
+  const DIGIT = {4: ['1.1', '1.1', '111', '..1', '..1'], 0: ['111', '1.1', '1.1', '1.1', '111']};
+  function print404(g) {
+    const b = clone(g);
+    [4, 0, 4].forEach((d, i) => DIGIT[d].forEach((row, r) => row.split('').forEach((ch, c) => { if (ch === '1') set(b, 9 + r, 5 + i * 4 + c, 9); })));
+    return b;
+  }
+  function alertBox(g, corner) {   // a 3x3 box with a bang, top left or top right
+    const b = clone(g); const c0 = corner ? 17 : 0;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) set(b, r, c0 + c, (r === 1 && c === 1) ? 9 : 6);
+    return b;
+  }
+  const portalRing = (g, w) => { const b = clone(g); for (let c = 10 - w; c <= 10 + w; c++) { set(b, 19, c, 9); } set(b, 18, 10 - w, 9); set(b, 18, 10 + w, 9); return b; };
+  function sink(g, d) {             // the whole creature drops d rows; nothing below row 17 is drawn
+    const b = empty();
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c] && r + d <= 17) set(b, r + d, c, g[r][c]);
+    return b;
+  }
+  const hoodOpen = hoodieFrame(0, true), hoodLeft = hoodieFrame(-1, true), hoodRight = hoodieFrame(1, true), hoodShut = hoodieFrame(0, false);
+  ctfHoodie.palette = HACK_PALETTE;
+  ctfHoodie.intent = 'Proposal. Working a CTF: matrix rain falls behind the hoodie, a 404 flashes on the chest, alert boxes pop, then a purple portal opens on the floor and the hacker sinks through it and is gone (eyes gone by design while it is under), the portal closes and it drops back in; judge whether the rain reads as behind it.';
+  // Suiting up: it starts as itself in ECHO teal (index 8 here), the hood drops in from above, then the
+  // black spreads down the body one row per frame and the drawstrings get a tug.
+  const tealSelf = echoBase.map(r => r.map(v => v === 1 ? 8 : v));
+  function suitUp(thr) {            // rows up to thr are hoodie, rows below are still teal
+    const b = clone(tealSelf);
+    for (let r = 0; r <= Math.min(thr, G - 1); r++) b[r] = hoodOpen[r].slice();
+    return b;
+  }
+  function hoodAbove(dy) {          // just the hood shape, dy rows above where it will sit, over the teal self
+    const b = clone(tealSelf);
+    for (let c = 5; c <= 15; c++) set(b, 3 - dy, c, 1);
+    for (let r = 4; r <= 6; r++) { set(b, r - dy, 4, 1); set(b, r - dy, 16, 1); }
+    return b;
+  }
+  ctfHoodie.intent = 'Proposal. Working a CTF: it starts as itself in teal, pulls a black hoodie down over its head (the black spreads down row by row, a tug on the drawstrings), then matrix rain falls behind it, a 404 flashes on the chest, alert boxes pop, a purple portal opens on the floor and the hacker sinks through it (eyes gone by design while under), and it drops back in as itself, ready to suit up again; judge the suit up and whether the rain reads as behind it.';
+  ctfHoodie.frames = [];
+  { const f = ctfHoodie.frames; let k = 0;
+    f.push({hold: 700, grid: tealSelf});
+    f.push({hold: 160, grid: hoodAbove(3)}); f.push({hold: 140, grid: hoodAbove(2)}); f.push({hold: 120, grid: hoodAbove(1)});
+    for (let thr = 7; thr <= 13; thr++) f.push({hold: 90, grid: suitUp(thr)});
+    f.push({hold: 120, grid: suitUp(13).map((r, i) => i === 10 ? r.map((v, c) => (c === 9 || c === 11) ? 6 : v) : r)});   // the tug
+    for (let i = 0; i < 8; i++) f.push({hold: 140, grid: rain(i === 5 ? hoodShut : hoodOpen, k++)});
+    for (let i = 0; i < 4; i++) f.push({hold: 140, grid: rain(i % 2 ? hoodOpen : print404(hoodOpen), k++)});
+    for (let i = 0; i < 4; i++) f.push({hold: 140, grid: rain(alertBox(i < 2 ? hoodLeft : hoodRight, i < 2 ? 0 : 1), k++)});
+    for (let i = 0; i < 3; i++) f.push({hold: 140, grid: rain(print404(hoodOpen), k++)});
+    for (let w = 1; w <= 5; w++) f.push({hold: 100, grid: rain(portalRing(hoodOpen, w), k++)});
+    for (const d of [1, 3, 5, 8, 11, 14, 17]) f.push({hold: 90, grid: rain(portalRing(sink(hoodOpen, d), 5), k++)});
+    for (let i = 0; i < 3; i++) f.push({hold: 160, grid: rain(portalRing(empty(), i % 2 ? 5 : 4), k++)});
+    for (let w = 4; w >= 1; w--) f.push({hold: 90, grid: rain(portalRing(empty(), w), k++)});
+    f.push({hold: 400, grid: rain(empty(), k++)});
+    for (const d of [-14, -9, -5, -2]) f.push({hold: 80, grid: sink(tealSelf, d)});   // back as itself: the hoodie stayed in the portal
+    f.push({hold: 90, grid: tealSelf.map(r => r.map(v => v === 8 ? 6 : v))});
+    f.push({hold: 500, grid: tealSelf});
+  }
+
+  // 3x. Ultra braille (operator: "a larger braille ascii rotation with rainbow and neon purple colours",
+  // a variation of ultracode). 60 cell lattice. The creature is drawn at 3x, dissolves into a sphere of
+  // braille dots (about 240 points on a Fibonacci lattice, each dot a 2x2 block) that turns on a tilted
+  // axis; front dots are rainbow by longitude band, back dots neon purple and dim; then it reassembles.
+  const UB = 60;
+  const UB_PALETTE = ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c',
+                      '#b44dff', '#ff5fd2', '#ff4b4b', '#ffd166'];   // 6 neon purple, 7 magenta, 8 red, 9 amber
+  // rainbow by band: ping cyan (4), visor teal (3), amber (9), red (8), magenta (7); back side purple (6)
+  const UB_RAINBOW = [4, 3, 9, 8, 7];
+  const ubEmpty = () => Array.from({length: UB}, () => new Array(UB).fill(0));
+  const ubSet = (g, r, c, v) => { if (r >= 0 && r < UB && c >= 0 && c < UB) g[r][c] = v; };
+  function ubUp(g20) {                                                    // exact 3x of a 20 cell frame
+    const b = ubEmpty();
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g20[r][c]) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) b[r * 3 + i][c * 3 + j] = g20[r][c];
+    return b;
+  }
+  const UB_POINTS = (() => {                                              // Fibonacci sphere, unit radius
+    const n = 240, pts = [], phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rad = Math.sqrt(1 - y * y), t = phi * i; pts.push([Math.cos(t) * rad, y, Math.sin(t) * rad]); }
+    return pts;
+  })();
+  function ubSphere(angle, radius, tilt) {
+    const b = ubEmpty();
+    const cx = 30, cy = 30, ct = Math.cos(tilt), st = Math.sin(tilt), ca = Math.cos(angle), sa = Math.sin(angle);
+    const order = UB_POINTS.map(([x, y, z]) => {
+      const x1 = x * ca - z * sa, z1 = x * sa + z * ca;                     // spin about the vertical axis
+      const y2 = y * ct - z1 * st, z2 = y * st + z1 * ct;                   // tilt toward the viewer
+      const band = Math.floor(((Math.atan2(z1, x1) + Math.PI) / (2 * Math.PI)) * UB_RAINBOW.length) % UB_RAINBOW.length;
+      return {x: x1, y: y2, z: z2, band};
+    }).sort((p, q) => p.z - q.z);                                          // back first so the front paints last
+    for (const p of order) {
+      const r = Math.round(cy + p.y * radius), c = Math.round(cx + p.x * radius);
+      const v = p.z >= 0 ? UB_RAINBOW[p.band] : 6;
+      if (p.z < -0.35 && ((r + c) & 1)) continue;                            // the far back thins out
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) ubSet(b, r + i, c + j, v);
+    }
+    return b;
+  }
+  // dissolve: the 3x creature keeps every k-th cell on a checker as it thins toward the sphere
+  function ubDissolve(g60, k) { const b = ubEmpty(); for (let r = 0; r < UB; r++) for (let c = 0; c < UB; c++) if (g60[r][c] && ((r * 7 + c * 3) % 5) >= k) b[r][c] = g60[r][c]; return b; }
+  const ultraBraille = {
+    name: 'ECHO · ultra braille', key: 'ultra_braille', fwname: 'ultra braille', category: 'Mode', size: UB,
+    intent: 'Proposal, 60 cells. Ultracode as a large rotating sphere of braille dots: the creature dissolves into it, it turns on a tilted axis in rainbow bands with the back side neon purple, then pulls itself back together; judge the rotation read and whether 60 cells earn their keep.',
+    palette: UB_PALETTE,
+    frames: [],
+  };
+  {
+    const f = ultraBraille.frames;
+    const base = ubUp(echoPing(false)), ping = ubUp(echoPing(true));
+    f.push({hold: 900, grid: base});
+    f.push({hold: 60, grid: ubUp(echoGlitch()), glitch: true});
+    for (let k = 1; k <= 4; k++) f.push({hold: 80, grid: ubDissolve(base, k)});
+    for (let k = 0; k < 8; k++) f.push({hold: 70, grid: ubSphere(k * Math.PI / 12, 10 + k * 2, 0.5)});      // the sphere grows in
+    for (let k = 0; k < 24; k++) f.push({hold: 90, grid: ubSphere(Math.PI * 2 / 3 + k * Math.PI / 12, 26, 0.5 + Math.sin(k / 4) * 0.25)});   // two full turns, tilt breathing
+    for (let k = 7; k >= 0; k--) f.push({hold: 70, grid: ubSphere(Math.PI * 8 / 3 + k * Math.PI / 12, 10 + k * 2, 0.5)});  // shrinks
+    for (let k = 4; k >= 1; k--) f.push({hold: 80, grid: ubDissolve(base, k)});
+    f.push({hold: 1000, grid: ping});
+    f.push({hold: 60, grid: ubUp(echoGlitch()), glitch: true});
+    f.push({hold: 700, grid: base});
+  }
+
+  // 3x. fable gaze: the quieter Fable, and its eyes are the show. The Fable creature as the model tier draws it
+  // (anims_models.js: amber antenna tip, a two cell amber ear on the top left corner, and four sideways eyes, single
+  // dark cells on the lower visor row at cols 6, 8, 12 and 14). The pairs close ranks into a line of four that drifts
+  // as a group, left, centre, right, one cell a frame; on the third drift the leftmost eye turns amber and the others
+  // follow one per drift, left to right toward the antenna, which pings as the fourth turns. The line opens back into
+  // its two pairs, each pair meets in the middle as one tall eye (the plain ECHO face, in amber), lies down and splits
+  // sideways into two again. Then the four spin once as tiny braille pairs (1x2 on rows 6..7): each lit dot steps up
+  // and back down one eye behind the last, so the four read as a wave, and lands dark. Then it settles.
+  const fableGaze = {
+    name: 'Fable · gaze', key: 'fable_gaze', fwname: 'fable gaze', category: 'Thinking',
+    intent: 'Proposal. The quieter Fable, and the eyes are the show: its four sideways eyes close ranks into a line and drift as a group, left, centre, right, one cell a frame at 160 ms; on the third drift the leftmost eye turns amber and the others follow one per drift like a wave, and the antenna pings as the fourth turns; the line opens back into two pairs, each pair meets in the middle as one tall eye, the plain ECHO face in amber, which lies down and splits sideways into four again; then the four spin once as tiny braille pairs, each lit dot stepping up and back down one eye behind the last so the four read as a wave, and each eye lands dark; judge whether amber on the teal visor still reads as eyes at 20 cells.',
+    palette: [...echo.palette, '#e0b25a', '#ffd166'],   // 7 Fable amber (ear, antenna tip), 8 eye amber: the eyes' second colour, an eye cell wherever it sits
+    frames: [],
+  };
+  {
+    const AMBER = 7, HOT = 8, DARK = 2, VISOR = 3, PING = 4;
+    // The Fable body: echoBase plus the three amber cells anims_models.js adds (tip and ear; index 6 in its palette).
+    const body = clone(echoBase);
+    for (const [r, c] of [[1, 15], [3, 5], [2, 4]]) set(body, r, c, AMBER);
+    // Every frame is this one face: the visor band (rows 6..7, cols 6..14) repainted plain, then the eye cells as
+    // [row, col, colour], then the antenna tip. Nothing else changes, so the silhouette is the same in every frame.
+    const face = (eyes, tip = AMBER) => {
+      const b = clone(body);
+      for (const r of [6, 7]) for (let c = 6; c <= 14; c++) set(b, r, c, VISOR);
+      for (const [r, c, v] of eyes) set(b, r, c, v);
+      set(b, 1, 15, tip);
+      return b;
+    };
+    const PAIRS = [6, 8, 12, 14];                                       // Fable at rest: two pairs of sideways eyes
+    const LINE = o => [7, 9, 11, 13].map(c => c + o);                   // closed ranks, evenly spaced; o -1 left, 0 centre, 1 right
+    const eyesAt = (cols, hot = 0) => cols.map((c, k) => [7, c, k < hot ? HOT : DARK]);   // the first hot eyes from the left are amber
+    // The drift. The gather (PAIRS into LINE(0)) is a formation change, not a drift; the drifts are then 1 left,
+    // 2 centre, 3 right, 4 centre, 5 left, 6 centre. The third drift turns eye 0 amber and each drift after it one
+    // more eye, so the wave completes on the sixth drift (the next third) and the antenna pings there.
+    const DRIFT = [-1, 0, 1, 0, -1, 0];
+    // The braille spin, steps s 1..5: eye k is a 1x2 pair on rows 6..7 at its PAIRS column. With t = s - k its lit
+    // dot is up on row 6 for t 1 and 2 and down on row 7 otherwise, amber until it has turned and dark once it lands
+    // (t 3 on). A crest two eyes wide runs left to right, so the spin is also the wave that cools the eyes.
+    const spin = s => PAIRS.map((c, k) => { const t = s - k; return [t === 1 || t === 2 ? 6 : 7, c, t >= 3 ? DARK : HOT]; });
+    const two = [6, 7].flatMap(r => [[r, 7, HOT], [r, 13, HOT]]);     // each pair met in the middle: the family's two eyes, amber
+    const lying = [6, 7, 8, 12, 13, 14].map(c => [7, c, HOT]);        // each tall eye lies down, three wide, before it splits
+    fableGaze.frames.push(
+      {hold: 1000, grid: face(eyesAt(PAIRS))},                                          // rest: two pairs, dark
+      {hold: 160, grid: face(eyesAt(LINE(0)))},                                         // the pairs close ranks into a line
+      ...DRIFT.map((o, i) => ({hold: i === 5 ? 300 : 160,                               // drifts 1..6, the sixth lands and holds
+        grid: face(eyesAt(LINE(o), Math.max(0, i - 1)), i === 5 ? PING : AMBER)})),     // amber from the third; ping on the fourth eye
+      {hold: 160, grid: face(eyesAt(PAIRS, 4))},                                        // the line opens back into two pairs
+      {hold: 160, grid: face([[7, 7, HOT], [7, 13, HOT]])},                             // each pair meets in the middle
+      {hold: 700, grid: face(two)},                                                     // two eyes: the plain ECHO face, in amber
+      {hold: 140, grid: face(lying)},                                                   // each eye lies down and stretches
+      {hold: 500, grid: face(eyesAt(PAIRS, 4))},                                        // and pinches in two: four again
+      ...[1, 2, 3, 4, 5].map(s => ({hold: 140, grid: face(spin(s))})),                  // one turn of the braille wave
+      {hold: 1000, grid: face(eyesAt(PAIRS))},                                          // settled, dark
+    );
+  }
+
+  // 3x. Fable eyes: the Fable creature (amber antenna tip and two cell amber ear, as model fable in
+  // anims_models.js, rebuilt here because that file loads after this one) with the eyes as the show.
+  // Every blink swaps in a new set on the visor: the normal pair, the Fable sideways four, six eyes, one
+  // big eye, a colour roll, braille cells whose lit dots spin, then the braille cells and the four at
+  // once, and the normal pair comes back with an antenna ping. One closure, so fableEyes is the only
+  // name added to this scope.
+  const fableEyes = (() => {
+    const EYE = 2, VISOR = 3, PING = 4, FABLE = 6, MAGENTA = 7, AMBER = 8, RED = 9;   // eye colours: 2, 7, 8, 9
+    // The body never changes: echoBase, the tip resting in Fable amber (a ping lights it in index 4) and
+    // the ear rooted on the top left corner (4,5), pointing up and out, cell for cell as fableBase.
+    const body = tip => { const b = clone(echoBase); set(b, 1, 15, tip); set(b, 3, 5, FABLE); set(b, 2, 4, FABLE); return b; };
+    // Repaint the whole band first (rows 6..7, or rows 5..7 when grown a row as happyEyes grows it, cols
+    // 6..14; echoBase carries its own eyes at cols 7 and 13), then paint the cells [row, col, index].
+    const face = (cells, {grown = false, ping = false} = {}) => {
+      const b = body(ping ? PING : FABLE);
+      for (let r = grown ? 5 : 6; r <= 7; r++) for (let c = 6; c <= 14; c++) set(b, r, c, VISOR);
+      for (const [r, c, v] of cells) set(b, r, c, v);
+      return b;
+    };
+    const dark = cells => cells.map(([r, c]) => [r, c, EYE]);
+    const PAIR = (top = EYE, low = EYE) => [[6, 7, top], [6, 13, top], [7, 7, low], [7, 13, low]];   // the family's 1x2 eyes
+    const SIDE4 = dark([[7, 6], [7, 8], [7, 12], [7, 14]]);                                        // the Fable four
+    const SHUT = dark([[7, 6], [7, 7], [7, 8], [7, 12], [7, 13], [7, 14]]);                        // the blink: closed eye lines '222'
+    // Six single eyes cannot all stand apart on the two row band (five fit with a gap between each), so
+    // the band grows a row: the four stay on row 7 and two more open above them, three a side.
+    const SIX = dark([[5, 7], [5, 13], [7, 6], [7, 8], [7, 12], [7, 14]]);
+    // One big eye: a block 3 wide and 2 tall in the middle of the band with a one cell pupil in amber
+    // (the eye amber, 8: the Fable amber, 6, marks the tip and ear and stays off the band).
+    const BIG = pupil => [...dark([[6, 9], [6, 10], [6, 11], [7, 9], [7, 10], [7, 11]]), [6, pupil, AMBER]];
+    // Braille: each eye a dark 2x3 cell on the grown band (cols 7..8 and 12..13, one visor cell outside
+    // each) with two adjacent lit dots running round its six dots in EYE_SPIN_DOTS order (clockwise from
+    // top left, as echo eye spin); the right cell runs the mirror image, so the two spin opposite ways.
+    // Every dot sits on the cell's rim beside the visor, so the dots are lit in magenta: ping cyan melts
+    // into the visor teal there and the cell reads as a plain square.
+    const braille = (k, lit) => {
+      const cells = [];
+      for (const c0 of [7, 12]) for (let r = 5; r <= 7; r++) cells.push([r, c0, EYE], [r, c0 + 1, EYE]);
+      for (const j of [k, k + 1]) { const [dr, dc] = EYE_SPIN_DOTS[j % 6]; cells.push([5 + dr, 7 + dc, lit], [5 + dr, 13 - dc, lit]); }
+      return cells;
+    };
+    // All at once: the braille cells keep spinning, the dots turn amber and the Fable four come back in
+    // magenta on the middle row, each pair a column wider (its inner eye steps in toward the middle, 8 to
+    // 9 and 12 to 11) so it flanks its braille cell.
+    const ALL = k => [...braille(k, AMBER), ...[6, 9, 11, 14].map(c => [6, c, MAGENTA])];
+    // The colour roll, two cells at a time: the top pair leads and the lower pair follows a step behind.
+    const ROLL = [[MAGENTA, EYE, 90], [MAGENTA, MAGENTA, 170], [AMBER, MAGENTA, 90], [AMBER, AMBER, 170], [RED, AMBER, 90], [RED, RED, 170], [EYE, RED, 90]];
+    const F = (hold, cells, o) => ({hold, grid: face(cells, o)});
+    const GROWN = {grown: true};
+    return {
+      name: 'Fable · eyes', key: 'fable_eyes', fwname: 'fable eyes', category: 'Mode',
+      intent: 'Proposal. The eyes are the show on the Fable creature (amber ear and antenna tip): each blink swaps in a new set on the visor, the normal pair, the Fable sideways four, six eyes on a visor grown a row, one big eye whose amber pupil glances left and right, then a colour roll through magenta, amber and red two cells at a time; both eyes then become dark 2x3 braille cells whose two lit magenta dots spin in mirror for two turns, a third turn in amber brings the four back in magenta, and a blink returns the normal pair with an antenna ping; judge whether every set still reads as eyes at 20 cells and whether the parade stays playful rather than broken.',
+      // 0 transparent, 1 body, 2 eyes, 3 visor, 4 ping (the antenna ping), 5 feet, 6 Fable amber (tip and
+      // ear); eye colours 2 dark, 7 magenta, 8 amber, 9 red (the roll, the pupil, the braille dots, the four)
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#e0b25a', '#ff5fd2', '#ffd166', '#ff4b4b'],
+      frames: [
+        F(1200, PAIR()),                                                                     // rest: the normal pair
+        F(80, SHUT), F(900, SIDE4),                                                          // the Fable sideways four
+        F(80, SHUT), F(850, SIX, GROWN),                                                     // six eyes
+        F(80, SHUT), F(380, BIG(10)), F(240, BIG(9)), F(300, BIG(11)), F(220, BIG(10)),      // one big eye glances left and right
+        F(80, SHUT), ...ROLL.map(([top, low, hold]) => F(hold, PAIR(top, low))), F(240, PAIR()),   // the colour roll
+        F(80, SHUT), F(200, braille(0, MAGENTA), GROWN),                                     // braille cells, lit dots on top
+        ...Array.from({length: 12}, (_, i) => F(90, braille(i + 1, MAGENTA), GROWN)),        // two turns, 90 ms a step
+        ...Array.from({length: 6}, (_, i) => F(i < 5 ? 90 : 240, ALL(i + 13), GROWN)),       // all at once, a third turn
+        F(80, SHUT), F(260, PAIR(), {ping: true}),                                           // the normal pair, antenna ping
+      ],
+    };
+  })();
+
+  // 3x. Portal: the Island's portal jump (the_island dev/clawd-hatch/hatch.js) done by the ECHO creature,
+  // sampled rather than redrawn. hatch.js ran in node (plan(1), 4714 ms) into a context that recorded every
+  // fillRect; each rect was divided by the module's 4 px block into claudepix cells and cut to a 20 x 20 window
+  // on its 100 x 24 stage: rows 3..22 (a standing sprite lands on echoBase's own rows, the floor is row 17) and
+  // one of two fixed shots across, A = stage cols 56..75 (beside the hatch, its right end at the left edge) for
+  // the walk, the heave and the stare, B = cols 36..55 (over the pit, its left end in frame) from the hop on.
+  // The roster body took the ECHO skin through skinFrame; the hatch, the shaft and the floor keep the Island's
+  // colours: 7 #ff5fd2 the shaft by the lip (its three core rows) and the lit lip, 8 #7a2bb0 the rim (the shut
+  // panel and its ticks, the end walls), the throat and the upper shaft, 9 #1b3540 the Island's floor; the pit's
+  // near black void is 0, panel black. The shaft is the one translucent layer there; a row shows while its alpha
+  // is at least 0.12. A sample is kept only while the creature shows both eyes, or has sunk below the lip: the
+  // window's edge cuts the Island's first walk samples (cx 76 and 73) and the hop between the shots (2526, cx 57)
+  // to one eye, so they are left out and the frame before holds; the creature reappears with the family glitch at
+  // its first sample with both eyes and the antenna in frame, 1221 (cx 70). Holds are the Island's own time between
+  // samples; the only time added is the 300 ms glitch return (frame 1 and 240 ms of frame 2) that closes the loop.
+  const echoPortal = {
+    name: 'ECHO · portal', key: 'echo_portal', fwname: 'echo portal', category: 'Mode',
+    intent: "Proposal, the Island's portal jump sampled beat for beat from its hatch.js: the creature glitches back in beside a hatch in the floor, steps up to it, crouches and heaves it open wide eyed as a magenta shaft floods up, hops in (the view cuts to over the pit), sinks feet first with the antenna last, and the hatch irises shut to a seam; judge whether the cut between the two shots reads as one jump and whether the shaft reads as light rather than a wall.",
+    palette: [...echo.palette, '#ff5fd2', '#7a2bb0', '#1b3540'],   // 7 portal (the Island's own #ff5fd2), 8 rim and upper shaft, 9 the Island floor
+    frames: [
+      //  0  582 (keyT walkIn), shot A: the loop seam: the floor and the shut hatch end; the Island walker is off to the right until 1221
+      {hold: 639, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`)},
+      //  1  1221, shot A: the family glitch: back in frame with both eyes (cx 70), visor rows slip right, visor in ping
+      {hold: 60, grid: rows(`
+        00000000000000000001
+        00000000000000000004
+        00000000000000000001
+        00000000000000000001
+        00000000011111111111
+        00000000011111111111
+        00000000001626666626
+        00000000111626666626
+        00000000111111111111
+        00000001111111111111
+        00000001011111111111
+        00000000011111111111
+        00000000011111111111
+        00000000011111111111
+        00000000050050005005
+        00000000050050005005
+        00000000050050005005
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`), glitch: true},
+      //  2  1221, shot A: settles beside the hatch (cx 70)
+      {hold: 348, grid: rows(`
+        00000000000000000001
+        00000000000000000004
+        00000000000000000001
+        00000000000000000001
+        00000000011111111111
+        00000000011111111111
+        00000000013233333231
+        00000001113233333231
+        00000001111111111111
+        00000001111111111111
+        00000001011111111111
+        00000000011111111111
+        00000000011111111111
+        00000000011111111111
+        00000000050050005005
+        00000000050050005005
+        00000000050050005005
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`)},
+      //  3  1329, shot A: steps up to the hatch and braces (cx 68, dy 1)
+      {hold: 95, grid: rows(`
+        00000000000000000000
+        00000000000000000100
+        00000000000000000410
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001323333323100
+        00000111323333323111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        00000001111111111100
+        00000001111111111100
+        00000001111111111100
+        00000005005000500500
+        00000005005000500500
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`)},
+      //  4  1424/1553 (keyT crouch), shot A: crouches (dy 2)
+      {hold: 130, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000040
+        00000000000000000010
+        00000000000000000010
+        00000000111111111110
+        00000000111111111110
+        00000000132333332310
+        00000011132333332311
+        00000011111111111111
+        00000011111111111111
+        00000010111111111110
+        00000000111111111110
+        00000000111111111110
+        00000000111111111110
+        00000000500500050050
+        00000000500500050050
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`)},
+      //  5  1554, shot A: wide eyed (hatch.js plays the surprise frame), hands on the shut hatch
+      {hold: 73, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001222333222100
+        00000111222333222111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        00000001111111111100
+        00000001111111111100
+        00000001111111111100
+        00000005005000500500
+        88888899999999999999
+        99999899999999999999
+        99999999999999999999`)},
+      //  6  1627, shot A: the hatch starts to iris open off to the left: its seam leaves the floor
+      {hold: 207, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001222333222100
+        00000111222333222111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        00000001111111111100
+        00000001111111111100
+        00000001111111111100
+        00000005005000500500
+        99999999999999999999
+        99999999999999999999
+        99999999999999999999`)},
+      //  7  1834, shot A: light at the edge of the pit
+      {hold: 123, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001222333222100
+        00000111222333222111
+        00000111111111111111
+        00000111111111111111
+        88800101111111111101
+        88000001111111111100
+        77000001111111111100
+        77000001111111111100
+        70000005005000500500
+        89999999999999999999
+        89999999999999999999
+        89999999999999999999`)},
+      //  8  1957 (keyT open), shot A: heaved well open, the light spilling up the left side (gap 9, dy 1)
+      {hold: 88, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001222333222100
+        00000111222333222111
+        00000111111111111111
+        88888111111111111111
+        88888101111111111101
+        88888801111111111100
+        88888001111111111100
+        77777001111111111100
+        77777005005000500500
+        77770005005000500500
+        77789999999999999999
+        88889999999999999999
+        88889999999999999999`)},
+      //  9  2045/2264 (keyT stare), shot A: fully open, standing up
+      {hold: 403, grid: rows(`
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001222333222100
+        00000111222333222111
+        00000111111111111111
+        88888111111111111111
+        88888181111111111101
+        88888881111111111100
+        88888881111111111100
+        88888881111111111100
+        77777775005000500500
+        77777775005000500500
+        77777705005000500500
+        77777899999999999999
+        88888899999999999999
+        88888899999999999999`)},
+      // 10  2448, shot A: takes off toward the pit (cx 64, dy -1), held to the cut
+      {hold: 176, grid: rows(`
+        00000000000004000000
+        00000000000001000000
+        00000000000001000000
+        00011111111111000000
+        00011111111111000000
+        00013233333231000000
+        01113233333231110000
+        01111111111111110000
+        01111111111111110000
+        81811111111111010000
+        88811111111111000000
+        88811111111111000000
+        88811111111111000000
+        88858850005005000000
+        77757750005005000000
+        77757750005005000000
+        77777700000000000000
+        77777899999999999999
+        88888899999999999999
+        88888899999999999999`)},
+      // 11  2624, shot B: cut to shot B: over the pit (cx 51, dy -4)
+      {hold: 94, grid: rows(`
+        00000000001111111111
+        00000000001111111111
+        00000000001323333323
+        00000000111323333323
+        00000000111111111111
+        00000000111111111111
+        00000000101111111111
+        00000000001111111111
+        00000000001111111111
+        88888888881111111111
+        08888888885885888588
+        08888888885885888588
+        08888888885885888588
+        00888888888888888888
+        00777777777777777777
+        00777777777777777777
+        00077777777777777777
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 12  2718/2764 (keyT apex), shot B: the top of the hop (cx 48, dy -5)
+      {hold: 138, grid: rows(`
+        00000001111111111100
+        00000001323333323100
+        00000111323333323111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        00000001111111111100
+        00000001111111111100
+        00000001111111111100
+        88888885885888588588
+        08888885885888588588
+        08888885885888588588
+        08888888888888888888
+        00888888888888888888
+        00777777777777777777
+        00777777777777777777
+        00077777777777777777
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 13  2856, shot B: falls (dy -4)
+      {hold: 101, grid: rows(`
+        00000001111111111100
+        00000001111111111100
+        00000001323333323100
+        00000111323333323111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        00000001111111111100
+        00000001111111111100
+        88888881111111111188
+        08888885885888588588
+        08888885885888588588
+        08888885885888588588
+        00888888888888888888
+        00777777777777777777
+        00777777777777777777
+        00077777777777777777
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 14  2957, shot B: falls (dy -2)
+      {hold: 88, grid: rows(`
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001323333323100
+        00000111323333323111
+        00000111111111111111
+        00000111111111111111
+        00000101111111111101
+        88888881111111111188
+        08888881111111111188
+        08888881111111111188
+        08888885885888588588
+        00888885885888588588
+        00777775775777577577
+        00777777777777777777
+        00077777777777777777
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 15  3045, shot B: feet under the lip (dy 1)
+      {hold: 120, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        00000000000000000100
+        00000000000000000100
+        00000001111111111100
+        00000001111111111100
+        00000001323333323100
+        00000111323333323111
+        88888111111111111111
+        08888111111111111111
+        08888181111111111181
+        08888881111111111188
+        00888881111111111188
+        00777771111111111177
+        00777775775777577577
+        00077775775777577577
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 16  3165/3170 (keyT midDrop), shot B: half gone (dy 7)
+      {hold: 63, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000400
+        88888888888888888188
+        08888888888888888188
+        08888881111111111188
+        08888881111111111188
+        00888881323333323188
+        00777111323333323111
+        00777111111111111111
+        00077111111111111111
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 17  3228, shot B: head and antenna last (dy 11)
+      {hold: 68, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        88888888888888888888
+        08888888888888888888
+        08888888888888888888
+        08888888888888888488
+        00888888888888888188
+        00777777777777777177
+        00777771111111111177
+        00077771111111111177
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 18  3296/3494 (keyT gone), shot B: under (dy 16)
+      {hold: 371, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        88888888888888888888
+        08888888888888888888
+        08888888888888888888
+        08888888888888888888
+        00888888888888888888
+        00777777777777777777
+        00777777777777777777
+        00077777777777777777
+        99987777777777777777
+        99988888888888888888
+        99988888888888888888`)},
+      // 19  3667, shot B: the hatch irises shut (gap 10)
+      {hold: 107, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        08888888888888888888
+        00888888888888888888
+        00888888888888888888
+        00888888888888888888
+        00088888888888888888
+        00077777777777777777
+        00077777777777777777
+        00007777777777777777
+        99998777777777777777
+        99998888888888888888
+        99998888888888888888`)},
+      // 20  3774, shot B: gap 8
+      {hold: 69, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00008888888888888888
+        00008888888888888888
+        00000888888888888888
+        00000777777777777777
+        00000777777777777777
+        00000077777777777777
+        99999987777777777777
+        99999988888888888888
+        99999988888888888888`)},
+      // 21  3843/3874 (keyT closing), shot B: gap 6
+      {hold: 142, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000088888888888888
+        00000008888888888888
+        00000007777777777777
+        00000007777777777777
+        00000000777777777777
+        99999999877777777777
+        99999999888888888888
+        99999999888888888888`)},
+      // 22  3985, shot B: a slit of light (gap 2)
+      {hold: 97, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000077777000
+        99999999999987778999
+        99999999999988888999
+        99999999999988888999`)},
+      // 23  4082/4434 (keyT closed), shot B: shut: the panel back in the floor
+      {hold: 1214, grid: rows(`
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        00000000000000000000
+        99988888888888888888
+        99989999999999899999
+        99999999999999999999`)},
+    ],
+  };
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -1269,7 +2196,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoHeadphones, clawdHeadphones, echoSummonHd, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

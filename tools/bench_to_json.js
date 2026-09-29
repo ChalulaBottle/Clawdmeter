@@ -78,6 +78,7 @@ for (const a of BENCH.anims) {
     description: a.intent,
     palette: a.palette,
     size,                      // lattice: frames are size x size cells
+    ...(a.replaces ? { replaces: a.replaces } : {}),   // a stock animation this one takes the place of
     frame_count: a.frames.length,
     frames,
   } });
