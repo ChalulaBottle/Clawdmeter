@@ -1454,9 +1454,13 @@
   }
 
   // 3x. Ultra braille (operator: "a larger braille ascii rotation with rainbow and neon purple colours",
-  // a variation of ultracode). 60 cell lattice. The creature is drawn at 3x, dissolves into a sphere of
+  // a variation of ultracode). 60 cell lattice. The creature is drawn at 3x, breaks up into a sphere of
   // braille dots (about 240 points on a Fibonacci lattice, each dot a 2x2 block) that turns on a tilted
   // axis; front dots are rainbow by longitude band, back dots neon purple and dim; then it reassembles.
+  // The way in and out wears the sphere's colours (operator: "the creature that is turning into the braille
+  // balls needs to have more of those colours also represented in its glitch"): a colour glitch (ubGlitch),
+  // then a braille morph (ubMorph) that tints the body in the sphere's bands and flies it in as dots; the way
+  // back is the same morph played backwards. The creature at rest stays pure ECHO teal.
   const UB = 60;
   const UB_PALETTE = ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c',
                       '#b44dff', '#ff5fd2', '#ff4b4b', '#ffd166'];   // 6 neon purple, 7 magenta, 8 red, 9 amber
@@ -1474,28 +1478,92 @@
     for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rad = Math.sqrt(1 - y * y), t = phi * i; pts.push([Math.cos(t) * rad, y, Math.sin(t) * rad]); }
     return pts;
   })();
-  function ubSphere(angle, radius, tilt) {
-    const b = ubEmpty();
+  // Longitude band 0..4 of an angle, any number of turns: the sphere's banding, shared by the sphere and ubTint.
+  const ubBand = th => { const u = (th + Math.PI) / (2 * Math.PI); return Math.floor((u - Math.floor(u)) * UB_RAINBOW.length) % UB_RAINBOW.length; };
+  // Every dot one sphere frame paints, back first, as {r, c, v, z}: ubSphere paints them, ubMorph flies to them.
+  function ubDots(angle, radius, tilt) {
     const cx = 30, cy = 30, ct = Math.cos(tilt), st = Math.sin(tilt), ca = Math.cos(angle), sa = Math.sin(angle);
     const order = UB_POINTS.map(([x, y, z]) => {
       const x1 = x * ca - z * sa, z1 = x * sa + z * ca;                     // spin about the vertical axis
       const y2 = y * ct - z1 * st, z2 = y * st + z1 * ct;                   // tilt toward the viewer
-      const band = Math.floor(((Math.atan2(z1, x1) + Math.PI) / (2 * Math.PI)) * UB_RAINBOW.length) % UB_RAINBOW.length;
-      return {x: x1, y: y2, z: z2, band};
+      return {x: x1, y: y2, z: z2, band: ubBand(Math.atan2(z1, x1))};
     }).sort((p, q) => p.z - q.z);                                          // back first so the front paints last
+    const dots = [];
     for (const p of order) {
       const r = Math.round(cy + p.y * radius), c = Math.round(cx + p.x * radius);
-      const v = p.z >= 0 ? UB_RAINBOW[p.band] : 6;
       if (p.z < -0.35 && ((r + c) & 1)) continue;                            // the far back thins out
-      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) ubSet(b, r + i, c + j, v);
+      dots.push({r, c, v: p.z >= 0 ? UB_RAINBOW[p.band] : 6, z: p.z});
     }
+    return dots;
+  }
+  const ubDot = (g, r, c, v) => { for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) ubSet(g, r + i, c + j, v); };
+  function ubSphere(angle, radius, tilt) { const b = ubEmpty(); for (const d of ubDots(angle, radius, tilt)) ubDot(b, d.r, d.c, d.v); return b; }
+
+  // Colour glitch at 60 cells. Each slice [top row, rows, shift, colour] slides sideways 2 to 6 cells and takes a
+  // rainbow or neon purple tint, the eyes kept dark; behind the body sit a magenta copy of it `split` cells to the
+  // left and a cyan copy `split` cells to the right, the chromatic split.
+  function ubGlitch(g60, slices, split) {
+    const body = g60.map(r => r.slice());
+    for (const [top, n, dx, v] of slices) for (let r = top; r < top + n; r++) {
+      body[r] = new Array(UB).fill(0);
+      g60[r].forEach((s, c) => { if (s) ubSet(body, r, c + dx, s === 2 ? 2 : v); });
+    }
+    const b = ubEmpty();
+    for (const [dx, v] of [[-split, 7], [split, 4]]) body.forEach((row, r) => row.forEach((s, c) => { if (s) ubSet(b, r, c + dx, v); }));
+    body.forEach((row, r) => row.forEach((s, c) => { if (s) b[r][c] = s; }));
     return b;
   }
-  // dissolve: the 3x creature keeps every k-th cell on a checker as it thins toward the sphere
-  function ubDissolve(g60, k) { const b = ubEmpty(); for (let r = 0; r < UB; r++) for (let c = 0; c < UB; c++) if (g60[r][c] && ((r * 7 + c * 3) % 5) >= k) b[r][c] = g60[r][c]; return b; }
+  // Two takes, slices on the antenna, head, eyes, arms, belly and legs; the closing glitch is take A mirrored.
+  const UB_GLITCH_A = [[7, 3, 4, 9], [14, 4, -5, 6], [21, 2, 3, 8], [30, 3, -6, 7], [38, 3, 2, 9], [46, 2, -3, 6]];
+  const UB_GLITCH_B = [[4, 3, -3, 7], [16, 3, 6, 9], [25, 4, -4, 6], [34, 2, 5, 8], [42, 3, -2, 4]];
+
+  // Tint by column in the sphere's longitude bands: one turn of longitude every 42 columns with the front meridian
+  // (red, the sphere's face) on column 32, so across the creature's 45 columns (9..53) the turn wraps inside the
+  // teal band and teal lands only on the arm tips: teal, cyan, magenta, red, amber, teal left to right, about three
+  // creature columns a band.
+  const ubTint = x => UB_RAINBOW[ubBand(Math.PI / 2 - 2 * Math.PI * (x - 32) / 42)];
+  const ubHash = (r, c) => { let h = Math.imul(r * 374761393 + c * 668265263, 1274126177); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };   // 0..1, well mixed
+  // Braille morph: five frames from the creature (a 20 cell frame) into ubSphere(angle, 10, 0.5), the sphere's
+  // smallest frame; the entry plays them forward, the exit backwards. Every 3x3 body cell of the creature is a
+  // braille dot to be, and the sphere's dots are shared out over the body cells, one or two a cell: both sides cut
+  // into 12 strips by row and matched by column rank inside a strip, so the picture folds in without crossing paths.
+  // The body cells go in four equal batches, outer ones first (distance from the middle of the body plus up to 8
+  // cells of fixed jitter, so the edge crumbles instead of peeling in rings). Frame t tints the batch that goes at
+  // t + 1; a cell that has gone is a 2x2 dot moving evenly in a straight line from its cell to its sphere dot, in
+  // its tint for the first half of the way and in its sphere colour (rainbow band, or neon purple for the back) for
+  // the second, so it lands in the sphere's own colours. The four eye cells never break away: they stay dark in
+  // every morph frame, painted over the flying dots, so the face holds while the body crumbles around it and looks
+  // out of the dot cloud; they close only when the sphere forms, and on the way back they open first.
+  function ubMorph(g20, angle) {
+    const cells = [], eyes = [];
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g20[r][c]) (g20[r][c] === 2 ? eyes : cells).push({r: r * 3, c: c * 3, v: g20[r][c], tint: ubTint(c * 3 + 1.5)});
+    const out = p => Math.hypot(p.r + 1.5 - 31.5, p.c + 1.5 - 31.5) + 8 * ubHash(p.r, p.c);   // 31.5: head top to feet, and across the torso
+    cells.slice().sort((p, q) => out(q) - out(p)).forEach((p, i, all) => { p.go = 2 + Math.floor(i * 4 / all.length); });   // the frame it breaks away, 2..5
+    const byRow = (p, q) => p.r - q.r || p.c - q.c, byCol = (p, q) => p.c - q.c || p.r - q.r;
+    const cs = cells.slice().sort(byRow), ds = ubDots(angle, 10, 0.5).sort(byRow), fly = [];
+    for (let k = 0; k < 12; k++) {
+      const ck = cs.slice(Math.floor(k * cs.length / 12), Math.floor((k + 1) * cs.length / 12)).sort(byCol);
+      const dk = ds.slice(Math.floor(k * ds.length / 12), Math.floor((k + 1) * ds.length / 12)).sort(byCol);
+      dk.forEach((d, j) => fly.push({from: ck[Math.floor(j * ck.length / dk.length)], to: d}));
+    }
+    fly.sort((p, q) => p.to.z - q.to.z);                                     // back first, as the sphere paints
+    const block = (g, p, v) => { for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) g[p.r + i][p.c + j] = v; };
+    const frames = [];
+    for (let t = 1; t <= 5; t++) {
+      const g = ubEmpty();
+      for (const p of cells) if (p.go > t) block(g, p, p.go === t + 1 ? p.tint : p.v);
+      for (const {from, to} of fly) if (from.go <= t) {
+        const s = (t - from.go) / (6 - from.go);                               // 0 at its cell, 1 in the sphere frame
+        ubDot(g, Math.round(from.r + (to.r - from.r) * s), Math.round(from.c + (to.c - from.c) * s), s < 0.5 ? from.tint : to.v);
+      }
+      for (const p of eyes) block(g, p, 2);                                    // the face holds, over the dots
+      frames.push(g);
+    }
+    return frames;
+  }
   const ultraBraille = {
     name: 'ECHO · ultra braille', key: 'ultra_braille', fwname: 'ultra braille', category: 'Mode', size: UB,
-    intent: 'Proposal, 60 cells. Ultracode as a large rotating sphere of braille dots: the creature dissolves into it, it turns on a tilted axis in rainbow bands with the back side neon purple, then pulls itself back together; judge the rotation read and whether 60 cells earn their keep.',
+    intent: 'Proposal, 60 cells. Ultracode as a large rotating sphere of braille dots, and the creature wears the colours of the sphere on the way in and out: a colour glitch (rainbow and neon purple slices sliding sideways over a magenta and cyan split), then the body tints by column in the longitude bands of the sphere and crumbles into 2x2 braille dots that fly into it while the eyes hold to the last; it turns on a tilted axis in rainbow bands with the back side neon purple, then plays the way in backwards, the dots landing tinted and settling to pure teal; judge whether glitch, body and sphere now read as one colour story.',
     palette: UB_PALETTE,
     frames: [],
   };
@@ -1503,14 +1571,15 @@
     const f = ultraBraille.frames;
     const base = ubUp(echoPing(false)), ping = ubUp(echoPing(true));
     f.push({hold: 900, grid: base});
-    f.push({hold: 60, grid: ubUp(echoGlitch()), glitch: true});
-    for (let k = 1; k <= 4; k++) f.push({hold: 80, grid: ubDissolve(base, k)});
+    f.push({hold: 60, grid: ubGlitch(ping, UB_GLITCH_A, 2), glitch: true});                                 // the colour glitch, two takes
+    f.push({hold: 60, grid: ubGlitch(ping, UB_GLITCH_B, 3), glitch: true});
+    for (const g of ubMorph(echoPing(false), 0)) f.push({hold: 80, grid: g});                              // tints, crumbles, flies in
     for (let k = 0; k < 8; k++) f.push({hold: 70, grid: ubSphere(k * Math.PI / 12, 10 + k * 2, 0.5)});      // the sphere grows in
     for (let k = 0; k < 24; k++) f.push({hold: 90, grid: ubSphere(Math.PI * 2 / 3 + k * Math.PI / 12, 26, 0.5 + Math.sin(k / 4) * 0.25)});   // two full turns, tilt breathing
     for (let k = 7; k >= 0; k--) f.push({hold: 70, grid: ubSphere(Math.PI * 8 / 3 + k * Math.PI / 12, 10 + k * 2, 0.5)});  // shrinks
-    for (let k = 4; k >= 1; k--) f.push({hold: 80, grid: ubDissolve(base, k)});
+    for (const g of ubMorph(echoPing(false), Math.PI * 8 / 3).reverse()) f.push({hold: 80, grid: g});      // the mirror: flies out, lands tinted, settles teal
     f.push({hold: 1000, grid: ping});
-    f.push({hold: 60, grid: ubUp(echoGlitch()), glitch: true});
+    f.push({hold: 60, grid: ubGlitch(ping, UB_GLITCH_A.map(([top, n, dx, v]) => [top, n, -dx, v]), 2), glitch: true});
     f.push({hold: 700, grid: base});
   }
 
@@ -2189,6 +2258,154 @@
     ],
   };
 
+  // 3d. Token burner, running (operator, 2026-09-28: "the fire token burner, let's animate it as well, can we make it
+  // run and show fireballs out of its hands"). The torso of every frame is still fireFrame(k), the old burner's four
+  // flame phases, so the head flames, the burning antenna tip and the alert visor are the same cells as before. It runs
+  // in place: a 15 cell body on a 20 cell lattice would spend most of a real wrap cut in half, visor and flames with it,
+  // so a ground line of embers scrolls one column a frame toward the back instead. Four phase run cycle: on each contact
+  // one pair of legs (the back two or the front two) is planted and pushing off behind while the other pair lifts its
+  // knees, on each flight the torso and legs rise a row and every foot clears the ground. The torso leans one column
+  // ahead of its legs. Every twelve frames a hand catches fire, the arm thrusts with the fist white hot and a fireball
+  // (2 x 2 amber core, a red trail of three cells) flies off the edge: twice forward out of the right hand from the back
+  // of the lattice, then a four column surge and the left hand throws one backward, an ease back, and one more forward
+  // to close the loop. 48 frames, 6.1 s.
+  const tokenBurnerRun = {
+    name: 'ECHO · token burner', key: 'token_burner', fwname: 'token burner', category: 'Active',
+    intent: 'Proposal. Past 500k tokens the creature is on fire and running: the same head flames and alert visor, the back pair and the front pair of legs taking turns in a four phase run cycle with a one row bob, the body leaning a column forward over a ground line of embers that scrolls toward the back; every 1.5 s a hand catches fire, the arm thrusts with the fist white hot and a fireball flies off the edge, three forward from the right hand and one backward from the left after a four column surge; judge whether it reads as running and not as marching in place.',
+    palette: [...FIRE_PALETTE, '#7a3324'],   // 8 ground ember, dim so the flames and the fireballs stay the loud part
+    frames: [],
+  };
+  {
+    const N = 48, BACK = -2, FRONT = 2, HOLD = 120, LAUNCH = 200;
+    // The old burner's four flame phases, each twice and never twice running. Phase 2 has the one lick on row 0, so it
+    // only lands on contact frames: in the old order it also fell on a flight frame, where that lick bobbed off the top.
+    const FLICKER = [0, 1, 2, 3, 0, 3, 2, 1];
+    // Legs: echoBase's four (cols 5, 8, 12, 15) one column behind the torso, which is the lean. Shapes are [row, col]
+    // steps down from the hip cell (row 14): PUSH planted with the foot behind, KNEE lifted with the knee forward,
+    // TUCK and HANG for the flight phases, when the whole creature is a row up and every foot clears the ground.
+    // Every leg goes PUSH, TUCK, KNEE, HANG; the pairs are the back two and the front two. Alternate legs as pairs put
+    // each pushing foot on the corner of the lifted knee behind it on every other contact (those hips are only two and
+    // three columns apart) and the two legs read as one V, the four launch frames among them. Back and front, the only
+    // neighbours that ever face each other are the middle two, four columns apart, and they clear.
+    const LEG_COLS = [4, 7, 11, 14];
+    const PUSH = [[0, 0], [1, 0], [2, -1]], KNEE = [[0, 0], [1, 1]], TUCK = [[0, 0], [1, 0]], HANG = [[0, 0], [1, 0], [2, 0]];
+    const STRIDE = [[PUSH, PUSH, KNEE, KNEE], [TUCK, TUCK, HANG, HANG], [KNEE, KNEE, PUSH, PUSH], [HANG, HANG, TUCK, TUCK]];
+    const rear = sh => sh.map(([r, c], i) => [r, i === 0 ? c + 1 : c]);   // the back leg hangs from the hip corner
+    // Arms, painted on fireFrame(k) before it is placed. hot: the hand (the cell under the arm) burns amber. level: as in
+    // thumbsUp the shoulder column stays and the outer column moves, the arm swings up off its hand onto rows 8 and 9.
+    // out: level and thrust one column past rest, the fist white hot (flash) on the launch frame.
+    const ARM = {R: {outer: 17, reach: [16, 17, 18], fist: 18}, L: {outer: 3, reach: [2, 3, 4], fist: 2}};
+    const pose = (b, side, how) => {
+      const a = ARM[side];
+      if (how === 'hot') { set(b, 10, a.outer, 6); return b; }
+      set(b, 7, a.outer, 0); set(b, 10, a.outer, 0);
+      if (how === 'out') for (const r of [8, 9]) { for (const c of a.reach) set(b, r, c, 1); set(b, r, a.fist, 7); }
+      return b;
+    };
+    // Where the torso sits: at the back for the forward throws, a surge of one column a frame to the front for the
+    // backward throw (the left arm needs room behind it), eased back one column every two frames.
+    const TX = t => t < 24 ? BACK : t < 28 ? BACK + (t - 23) : t < 34 ? FRONT : t < 42 ? FRONT - Math.floor((t - 32) / 2) : BACK;
+    // Throws on contact frames: the hand burns for the two frames before, the arm is out on the launch (held longer, a
+    // hit stop), level on the next and hanging again after, so the whole trail shows the frame after the launch. The
+    // forward ball moves a column a frame, the backward one two (at one it would ride along with the ground and read
+    // as dropped, not thrown). Each is off the edge before the next launch, and before frame 0 comes round.
+    const THROWS = [{t0: 6, side: 'R'}, {t0: 18, side: 'R'}, {t0: 30, side: 'L'}, {t0: 42, side: 'R'}];
+    // Fireball: 2 x 2 amber core; the red trail is the two cells behind it plus one more behind those on a row that
+    // alternates every frame, so the tail flickers. The trail only lands on empty cells: at launch the fist hides it.
+    const fireball = (g, r, c, dir, age) => {
+      for (const dr of [0, 1]) for (const dc of [0, 1]) set(g, r + dr, c + dc, 6);
+      const back = dir > 0 ? c - 1 : c + 2;
+      for (const [tr, tc] of [[r, back], [r + 1, back], [r + age % 2, back - dir]]) if (g[tr] && g[tr][tc] === 0) set(g, tr, tc, 3);
+    };
+    // Ground: one row under the feet, a 12 column ember pattern (divides the 48 frames) moving a column a frame to the
+    // left, so the creature runs to the right while it stays put. Mostly dim ember, two live coals.
+    const GROUND = [8, 8, 0, 8, 8, 6, 0, 8, 0, 8, 3, 0];
+    for (let t = 0; t < N; t++) {
+      const tx = TX(t), dy = t % 2 ? -1 : 0, src = fireFrame(FLICKER[t % FLICKER.length]);
+      for (const th of THROWS) { const a = t - th.t0; if (a >= -2 && a <= 1) pose(src, th.side, a < 0 ? 'hot' : a ? 'level' : 'out'); }
+      const g = empty();
+      for (let r = 0; r <= 13; r++) for (let c = 0; c < G; c++) if (src[r][c]) set(g, r + dy, c + tx, src[r][c]);
+      STRIDE[t % 4].forEach((sh, i) => { for (const [dr, dc] of (i ? sh : rear(sh))) set(g, 14 + dy + dr, LEG_COLS[i] + tx + dc, 5); });
+      for (let c = 0; c < G; c++) { const v = GROUND[(c + t) % GROUND.length]; if (v) set(g, 17, c, v); }
+      for (const th of THROWS) {
+        const age = t - th.t0; if (age < 0) continue;
+        const dir = th.side === 'R' ? 1 : -1, from = TX(th.t0);
+        const c = th.side === 'R' ? 19 + from + age : from - 2 * age;   // core's left column; born next to the fist
+        if (c - 2 <= G - 1 && c + 3 >= 0) fireball(g, 8, c, dir, age);    // rows 8 and 9: the fist's rows on a contact frame
+      }
+      tokenBurnerRun.frames.push({hold: THROWS.some(th => th.t0 === t) ? LAUNCH : HOLD, grid: g});
+    }
+  }
+
+  // 3y. Echo build, the boot creature (operator, 2026-09-28: after a reset it should load pixel by pixel in
+  // a braille pattern building itself, blink really fast, then glitch back and forth through the models).
+  // Build: the lattice's interior, rows and columns 1 to 18, is cut into 54 braille cells of 2 x 3, six bands
+  // of three rows by nine column pairs (1 and 2, 3 and 4, and so on); the one cell margin stays empty. Every
+  // cell lights its six dots in braille order, dots 1 2 3 down the left column and then 4 5 6 down the right,
+  // one dot a frame, and each band starts LAG frames after the band above, so the creature fills from the
+  // antenna down: 14 frames at 70 ms. A dot shows ping (4) on the frame it appears and its own colour from
+  // the next. The eyes straddle a band boundary: the upper eye cell (row 6) is dot 3 of its braille cell and
+  // the lower (row 7) is dot 1 of the cell below, and with LAG 2 one band's dot 3 and the next band's dot 1
+  // fall due on the same frame, so both eye cells and the first visor dots arrive together and both eyes
+  // come in whole with the visor in plain braille order. The four eye cells skip the ping and arrive dark,
+  // so both eyes are there from the moment the visor is; at() keeps that true for any LAG by bringing them
+  // in with the first visor dot. LAG 0 puts every cell in step, the six frame build; give the rest 1100 ms
+  // then, or the cycle drops under 4 s.
+  // Blink: six fast blinks in the echo skin (shut paints the eye cells visor teal), 50 ms shut, 50 ms open.
+  // Glitch: eight 90 ms cuts through the tiers of anims_models.js, haiku sonnet opus fable twice, each
+  // repainting only the body (index 1); eyes and visor keep their ECHO indices. Haiku, sonnet and fable all
+  // share ECHO's body #17836f, so each tier takes the colour that marks it: haiku its light visor #6fe9ff
+  // (ECHO's ping, 4), sonnet, which runs on ECHO's own palette, the house visor teal #35e0c0 (3), opus its
+  // brighter body #1fa88c (7), fable its amber #e0b25a (8). Every other cut (sonnet, fable) also takes
+  // echoGlitch's split: rows 6..8 slip right one cell and the visor paints ping. That parity is load bearing:
+  // an unsplit sonnet cut loses its visor into the teal body, a split haiku cut loses its ping visor into
+  // the ping body. Then ECHO again, one antenna ping and a rest.
+  // No frame carries glitch: true. Frame 0 is empty, so the bench toggle would blank the creature there.
+  const echoBuild = (() => {
+    const LAG = 2;                                                        // frames between one band of braille cells and the next
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, SPLIT_VISOR = 6;
+    const TIER_BODY = [PING, VISOR, 7, 8];                                // haiku, sonnet, opus, fable
+    const EYES = [[6, 7], [7, 7], [6, 13], [7, 13]];
+    const isEye = (r, c) => EYES.some(([er, ec]) => er === r && ec === c);
+    const rest = echoPing(false);                                         // the pose it builds into, antenna tip dark
+    // Braille dot of a lattice cell, 0..5 for dots 1..6, on the interior tiling: rows 1, 2 and 3 of a band are
+    // its top, middle and bottom, odd columns are the left of their pair and even columns the right.
+    const band = r => Math.floor((r - 1) / 3);
+    const dot = (r, c) => 3 * ((c + 1) % 2) + (r - 1 - 3 * band(r));
+    const lit = [];
+    for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (rest[r][c]) lit.push([r, c]);
+    const firstAt = (r, c) => LAG * band(r) + dot(r, c);
+    const visorFirst = Math.min(...lit.filter(([r, c]) => r >= 6 && r <= 7 && c >= 6 && c <= 14).map(([r, c]) => firstAt(r, c)));
+    const at = (r, c) => (isEye(r, c) ? visorFirst : firstAt(r, c));    // at LAG 2 this is the eyes' own braille step
+    const from = Math.min(...lit.map(([r, c]) => at(r, c))), to = Math.max(...lit.map(([r, c]) => at(r, c)));
+    function build(k) {                                                   // frame k of the build: cells due before k in colour, due at k in ping
+      const b = empty();
+      for (const [r, c] of lit) { const t = at(r, c); if (t < k) b[r][c] = rest[r][c]; else if (t === k) b[r][c] = isEye(r, c) ? EYE : PING; }
+      return b;
+    }
+    const shutEyes = () => { const b = clone(rest); for (const [r, c] of EYES) b[r][c] = VISOR; return b; };
+    // echoGlitch's split on this pose (echoGlitch itself only splits echoBase, antenna tip lit).
+    function split(g) {
+      const b = clone(g);
+      for (const r of [6, 7, 8]) { const row = b[r].slice(); for (let c = G - 1; c > 0; c--) b[r][c] = row[c - 1]; b[r][0] = 0; }
+      for (const r of [6, 7]) for (let c = 0; c < G; c++) if (b[r][c] === VISOR) b[r][c] = SPLIT_VISOR;
+      return b;
+    }
+    const cut = i => (i % 2 ? split(rest) : clone(rest)).map(row => row.map(v => (v === BODY ? TIER_BODY[i % 4] : v)));
+    const frames = [{hold: 300, grid: empty()}];                          // black, the loop anchor
+    for (let k = from; k <= to; k++) frames.push({hold: 70, grid: build(k)});
+    frames.push({hold: 250, grid: build(to + 1)});                        // whole
+    for (let i = 0; i < 6; i++) frames.push({hold: 50, grid: shutEyes()}, {hold: i < 5 ? 50 : 200, grid: clone(rest)});
+    for (let i = 0; i < 8; i++) frames.push({hold: 90, grid: cut(i)});
+    frames.push({hold: 400, grid: clone(rest)}, {hold: 140, grid: echoPing(true)}, {hold: 1000, grid: clone(rest)});
+    return {
+      name: 'ECHO · build', key: 'echo_build', fwname: 'echo build', category: 'Mode',
+      intent: 'Proposal. The boot creature: out of black it builds itself in braille, every 2x3 cell lighting its six dots in braille order one a frame, a band of cells every two frames from the antenna down, each new dot flashing ping before it takes its colour; whole, it blinks six times fast, glitches back and forth through the model tiers (haiku cyan, sonnet teal, opus bright, fable amber, twice, every other cut split) and snaps back to ECHO for one antenna ping and a rest; judge whether the build reads as braille filling in and not as a wipe.',
+      palette: [...echo.palette, '#1fa88c', '#e0b25a'],                  // 7 opus body, 8 fable amber
+      frames,
+    };
+  })();
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -2196,7 +2413,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurner, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

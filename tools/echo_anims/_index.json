@@ -66,8 +66,8 @@
     "filename": "token_burner.html",
     "name": "token burner",
     "category": "Active",
-    "frame_count": 8,
-    "palette_size": 8
+    "frame_count": 48,
+    "palette_size": 9
   },
   {
     "filename": "ultramode.html",
@@ -206,7 +206,7 @@
     "filename": "ultra_braille.html",
     "name": "ultra braille",
     "category": "Mode",
-    "frame_count": 53,
+    "frame_count": 56,
     "palette_size": 10
   },
   {
@@ -229,6 +229,13 @@
     "category": "Mode",
     "frame_count": 24,
     "palette_size": 10
+  },
+  {
+    "filename": "echo_build.html",
+    "name": "echo build",
+    "category": "Mode",
+    "frame_count": 39,
+    "palette_size": 9
   },
   {
     "filename": "echo_breathe.html",
@@ -287,6 +294,13 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_door.html",
+    "name": "echo door",
+    "category": "Mode",
+    "frame_count": 35,
+    "palette_size": 10
+  },
+  {
     "filename": "model_haiku.html",
     "name": "model haiku",
     "category": "Model",
@@ -339,7 +353,7 @@
     "filename": "mode_ultracode_work.html",
     "name": "ultracode work",
     "category": "Mode",
-    "frame_count": 9,
+    "frame_count": 48,
     "palette_size": 9
   },
   {
@@ -357,11 +371,88 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_cartwheel.html",
+    "name": "echo cartwheel",
+    "category": "Active",
+    "frame_count": 25,
+    "palette_size": 8
+  },
+  {
     "filename": "echo_dj.html",
     "name": "echo dj",
     "category": "Active",
     "frame_count": 32,
     "palette_size": 10
+  },
+  {
+    "filename": "echo_blink.html",
+    "name": "echo blink",
+    "category": "Idle",
+    "frame_count": 14,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_breath.html",
+    "name": "echo breath",
+    "category": "Idle",
+    "frame_count": 5,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_glance.html",
+    "name": "echo glance",
+    "category": "Idle",
+    "frame_count": 10,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_startle.html",
+    "name": "echo startle",
+    "category": "Active",
+    "frame_count": 9,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_doze.html",
+    "name": "echo doze",
+    "category": "Idle",
+    "frame_count": 9,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_hop.html",
+    "name": "echo hop",
+    "category": "Active",
+    "frame_count": 16,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_sway_2.html",
+    "name": "echo swing",
+    "category": "Active",
+    "frame_count": 7,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_done.html",
+    "name": "echo done",
+    "category": "Idle",
+    "frame_count": 11,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_high_five.html",
+    "name": "echo high five",
+    "category": "Active",
+    "frame_count": 13,
+    "palette_size": 9
+  },
+  {
+    "filename": "echo_catch.html",
+    "name": "echo catch",
+    "category": "Active",
+    "frame_count": 18,
+    "palette_size": 9
   },
   {
     "filename": "echo_think_spin.html",
@@ -397,5 +488,26 @@
     "category": "Active",
     "frame_count": 10,
     "palette_size": 6
+  },
+  {
+    "filename": "ultra_fable.html",
+    "name": "fable ultra",
+    "category": "Mode",
+    "frame_count": 55,
+    "palette_size": 10
+  },
+  {
+    "filename": "ultra_opus.html",
+    "name": "opus ultra",
+    "category": "Mode",
+    "frame_count": 58,
+    "palette_size": 10
+  },
+  {
+    "filename": "ultra_sonnet.html",
+    "name": "sonnet ultra",
+    "category": "Mode",
+    "frame_count": 56,
+    "palette_size": 10
   }
 ]

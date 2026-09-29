@@ -286,6 +286,10 @@ void setup() {
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
     ui_update_battery(power_hal_battery_pct(), power_hal_is_charging());
     ui_show_screen(SCREEN_SPLASH);
+    // Boot sequence: the creature builds itself in braille order, blinks, glitches through the model
+    // tiers and settles (the "echo build" animation, 4.5 s). loop() hands control back after BOOT_ANIM_MS
+    // unless the host has named something by then.
+    splash_set_anim("echo build");
 
     Serial.printf("Dashboard ready (%s, %dx%d), waiting for data on BLE...\n",
         board_caps().name, W, H);
@@ -339,7 +343,15 @@ static void pair_tick(void) {
     }
 }
 
+#define BOOT_ANIM_MS 4600
 void loop() {
+    {   // end of the boot sequence: release the creature to the device's own choice
+        static bool boot_done = false;
+        if (!boot_done && millis() >= BOOT_ANIM_MS) {
+            boot_done = true;
+            if (!ble_has_data()) splash_set_anim("");
+        }
+    }
     idle_tick();
     lv_timer_handler();
     ui_tick_anim();
