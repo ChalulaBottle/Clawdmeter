@@ -15,7 +15,10 @@
   "#ff5fd2"
  ],
  "size": 20,
- "replaces": "dance bounce",
+ "replaces": [
+  "dance bounce",
+  "echo bounce"
+ ],
  "frame_count": 16,
  "frames": [
   {

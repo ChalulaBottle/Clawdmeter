@@ -121,7 +121,7 @@
   // legs stay put, the visor brightens at the top, then it all settles.
   const inhale = eyes(torso(B0, -1), OPEN.map(([r, c]) => [r - 1, c]));
   const echoBreath = {
-    name: 'ECHO · breath', key: 'echo_breath', fwname: 'echo breath', category: 'Idle', replaces: 'idle breathe',
+    name: 'ECHO · breath', key: 'echo_breath', fwname: 'echo breath', category: 'Idle', replaces: ['idle breathe', 'echo breathe'],
     intent: 'Replaces the stock idle breathe: the torso rises a row on the in breath over planted legs and the visor lifts to ping at the top, then settles; judge the pace.',
     palette: RP,
     frames: [
@@ -135,7 +135,7 @@
   // echo glance (replaces "idle look around"): the eyes slide left, back, right, up, down; the antenna
   // follows with a ping when the eyes stop on something.
   const echoGlance = {
-    name: 'ECHO · glance', key: 'echo_glance', fwname: 'echo glance', category: 'Idle', replaces: 'idle look around',
+    name: 'ECHO · glance', key: 'echo_glance', fwname: 'echo glance', category: 'Idle', replaces: ['idle look around', 'echo look around'],
     intent: 'Replaces the stock look around: the eyes slide left and hold, back, right and hold, then a look down and a ping as they settle; judge whether the eyes alone carry it.',
     palette: RP,
     frames: [
@@ -149,7 +149,7 @@
   const wide = g => eyes(g, [[6, 7], [7, 7], [6, 8], [7, 8], [6, 12], [7, 12], [6, 13], [7, 13]]);
   const bang = g => { const b = clone(g); for (const r of [0, 1, 3]) if (b[r][11] === 0) set(b, r, 11, W); return b; };
   const echoStartle = {
-    name: 'ECHO · startle', key: 'echo_startle', fwname: 'echo startle', category: 'Active', replaces: 'expression surprise',
+    name: 'ECHO · startle', key: 'echo_startle', fwname: 'echo startle', category: 'Active', replaces: ['expression surprise', 'echo surprise'],
     intent: 'Replaces the stock surprise: a two row jump with wide 2x2 eyes, an exclamation mark and a flash on the antenna, then a wobbly landing and a blink; judge the snap.',
     palette: RP,
     frames: [
@@ -164,7 +164,7 @@
   const z = (g, k) => { const b = clone(g); const pts = [[3, 17], [2, 18], [1, 19]]; pts.slice(0, k).forEach(([r, c], i) => set(b, r - (k - 1 - i), c, W)); return b; };
   const sleepy = torso(eyes(B0, LINE), 1);
   const echoDoze = {
-    name: 'ECHO · doze', key: 'echo_doze', fwname: 'echo doze', category: 'Idle', replaces: 'expression sleep',
+    name: 'ECHO · doze', key: 'echo_doze', fwname: 'echo doze', category: 'Idle', replaces: ['expression sleep', 'echo sleep'],
     intent: 'Replaces the stock sleep: eyes close to lines, the torso sinks a row onto the legs, z cells rise off the antenna one by one with a slow snore bob, then a drowsy half open and back under; judge whether it reads as asleep.',
     palette: RP,
     frames: [
@@ -177,7 +177,7 @@
   // echo hop (replaces "dance bounce"): hops on the beat with both arms up on the air frames.
   const armsUp = g => { const b = clone(g); for (let r = 7; r <= 10; r++) { set(b, r, 3, 0); set(b, r, 17, 0); } for (let r = 3; r <= 6; r++) { set(b, r, 3, BODY); set(b, r, 17, BODY); } set(b, 7, 4, BODY); set(b, 7, 16, BODY); return b; };
   const echoHop = {
-    name: 'ECHO · hop', key: 'echo_hop', fwname: 'echo hop', category: 'Active', replaces: 'dance bounce',
+    name: 'ECHO · hop', key: 'echo_hop', fwname: 'echo hop', category: 'Active', replaces: ['dance bounce', 'echo bounce'],
     intent: 'Replaces the stock dance bounce: hops on the beat, arms up on every air frame, happy squint on the fourth hop; judge the bounce.',
     palette: RP,
     frames: [0, 1, 2, 3, 4, 5, 6, 7].flatMap(i => [
@@ -189,7 +189,7 @@
   // echo sway (replaces "dance sway"): the torso sways a column left and right over planted legs,
   // eyes leading the sway, antenna ping at each end.
   const echoSway2 = {
-    name: 'ECHO · sway', key: 'echo_sway_2', fwname: 'echo swing', category: 'Active', replaces: 'dance sway',
+    name: 'ECHO · sway', key: 'echo_sway_2', fwname: 'echo swing', category: 'Active', replaces: ['dance sway', 'echo sway'],
     intent: 'Replaces the stock dance sway: the torso swings a column left and right over planted legs, the eyes leading each swing and the antenna pinging at each end; judge whether it grooves.',
     palette: RP,
     frames: [
@@ -349,7 +349,7 @@
   const winkR = g => eyes(g, [[6, 7], [7, 7], [7, 12], [7, 13], [7, 14]]);
   const star = (g, k) => paintEmpty(g, k === 0 ? [[5, 18]] : [[5, 18], [4, 18], [6, 18], [5, 17], [5, 19]], k === 1 ? W : MAG);
   const echoWinky = {
-    name: 'ECHO · winky', key: 'echo_winky', fwname: 'echo winky', category: 'Idle', replaces: 'expression wink',
+    name: 'ECHO · winky', key: 'echo_winky', fwname: 'echo winky', category: 'Idle', replaces: ['expression wink', 'echo wink'],
     intent: 'Replaces the stock wink: the right eye closes to a line and a small star sparkles off it, the antenna pings; judge the timing of the sparkle.',
     palette: RP,
     frames: [F(1600, B0), F(80, eyes(B0, [[6, 7], [7, 7], [7, 13]])), F(160, winkR(B0)), F(120, star(winkR(B0), 0)), F(200, star(winkR(B0), 1)), F(260, star(tip(winkR(B0), PING), 2)), F(300, winkR(B0)), F(80, eyes(B0, [[6, 7], [7, 7], [7, 13]])), F(1400, B0)],
@@ -361,7 +361,7 @@
   const bubble = (g, n, bulb) => { let b = paintEmpty(g, BUB.slice(0, n), W); if (bulb) b = paint(b, [[1, 17], [1, 18]], X); return b; };
   const thinking = lookUp(B0);
   const echoBubble = {
-    name: 'ECHO · bubble', key: 'echo_bubble', fwname: 'echo bubble', category: 'Thinking', replaces: 'think',
+    name: 'ECHO · bubble', key: 'echo_bubble', fwname: 'echo bubble', category: 'Thinking', replaces: ['think', 'echo think'],
     intent: 'Replaces the stock think: eyes up, a thought bubble puffs out beside the antenna in three steps and a little amber bulb lights inside it; judge whether the bulb reads at 20 cells.',
     palette: P9('#ffd166'),
     frames: [F(700, B0), F(300, thinking), F(260, bubble(thinking, 1)), F(260, bubble(thinking, 2)), F(260, bubble(thinking, 4)), F(300, bubble(thinking, 13)),

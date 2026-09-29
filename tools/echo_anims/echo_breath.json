@@ -15,7 +15,10 @@
   "#ff5fd2"
  ],
  "size": 20,
- "replaces": "idle breathe",
+ "replaces": [
+  "idle breathe",
+  "echo breathe"
+ ],
  "frame_count": 5,
  "frames": [
   {

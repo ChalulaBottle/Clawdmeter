@@ -16,7 +16,10 @@
   "#ffd166"
  ],
  "size": 20,
- "replaces": "think",
+ "replaces": [
+  "think",
+  "echo think"
+ ],
  "frame_count": 11,
  "frames": [
   {

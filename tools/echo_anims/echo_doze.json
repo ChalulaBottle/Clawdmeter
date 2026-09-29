@@ -15,7 +15,10 @@
   "#ff5fd2"
  ],
  "size": 20,
- "replaces": "expression sleep",
+ "replaces": [
+  "expression sleep",
+  "echo sleep"
+ ],
  "frame_count": 9,
  "frames": [
   {

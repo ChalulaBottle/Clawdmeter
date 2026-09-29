@@ -15,7 +15,10 @@
   "#ff5fd2"
  ],
  "size": 20,
- "replaces": "idle look around",
+ "replaces": [
+  "idle look around",
+  "echo look around"
+ ],
  "frame_count": 10,
  "frames": [
   {

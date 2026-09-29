@@ -15,7 +15,10 @@
   "#ff5fd2"
  ],
  "size": 20,
- "replaces": "dance sway",
+ "replaces": [
+  "dance sway",
+  "echo sway"
+ ],
  "frame_count": 7,
  "frames": [
   {

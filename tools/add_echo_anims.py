@@ -140,7 +140,9 @@ def main() -> int:
         return 1
     # An animation that another one replaces leaves the build, whether it is a stock row (dropped from
     # the kept rows below) or one of ours (dropped here, e.g. the orange Clawd coffee).
-    replaced_names = {d["replaces"] for _, _, d in anims if d.get("replaces")}
+    def _as_list(v):
+        return [v] if isinstance(v, str) else list(v or [])
+    replaced_names = {n for _, _, d in anims for n in _as_list(d.get("replaces"))}
     dropped = [n for n, _, _ in anims if n in replaced_names]
     anims = [a for a in anims if a[0] not in replaced_names]
     if dropped:
@@ -172,7 +174,7 @@ def main() -> int:
     names = {n for n, _, _ in anims}
     # stock rows an ECHO animation replaces (the "replaces" field, docs/bench/anims_replace.js) leave
     # the table; their data arrays stay in the header but nothing references them, so the linker drops them
-    replaced = {d["replaces"] for _, _, d in anims if d.get("replaces")}
+    replaced = replaced_names
     keep = []
     sized = 0
     for ln in rows:
