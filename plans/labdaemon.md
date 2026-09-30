@@ -7,12 +7,30 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
-- **Status:** BUILDING (ultracode phase 2 launched 2026-09-29 ~21:40). Phase 1 (understand) done:
-  workflow wf_0d1fbc33-2f9, 7 agents, journal in the session's subagents/workflows dir.
-- **Exact next action:** when the build workflow returns: read its report, flash lcd_4 (COM11) and the
-  second board (identify it first from its boot banner "Dashboard ready (<BOARD_NAME>, WxH)"; last seen
-  as COM12, USB serial D4:05:92:B7:8B:E0; both boards are VID_303A PID_1001 so PnP cannot tell them
-  apart), restart the tray, run `labdaemon notify "hello"` and capture the panel.
+- **Status:** INCREMENT 1 ON THE 4 INCH BOARD (2026-09-29 ~23:30). Build workflow wf_e25c290c-f9d
+  (13 agents: 4 lanes, 4 reviews, 3 fix rounds, 1 integration, GO). Board side b3955a7, engine 65c6473 +
+  3b40eea (p3 = track length only). Flashed lcd_4 with `PLATFORMIO_OFFLINE=1`; tray restarted on the new
+  daemon; engine served (`pythonw labdaemon_engine\__main__.py serve`, loopback 8976, lab.token issued).
+  **Proven on the panel:** serial `msg Build done|...` (docs/media/lcd4/notify-device.png), serial
+  `page Spotify|Hoppipolla|Sigur Ros|Desk speaker|42|echo headphones` (page-spotify-device.png: title,
+  headphones creature, three lines, 42 % bar), and the full engine path `python -m labdaemon_engine notify`
+  → notify.json → tray `{"nt","nb","nx"}` → overlay (engine-notify-device.png). Daemon 472 tests, engine 372.
+- **Not yet proven:** the btn TX message (needs a press on the board while a page is up: expect
+  `BLE: btn pwr on page` on serial, `events/<ns>.json` in the relay dir, one "routed" or "dropped" line in
+  engine.log); Spotify login (needs the operator's client id in `spotify.client`); the second board
+  (never enumerated tonight: charge-only cable or board off; last seen COM12, USB serial
+  D4:05:92:B7:8B:E0; both boards are VID_303A PID_1001 so identify by the boot banner); engine autostart
+  (`autostart.py enable`, not run); the MCP entry (`~/.claude.json`, operator gated).
+- **Exact next action:** operator presses PWR with the serial page up, then plugs the second board in
+  with a data cable: read its banner, build its env, flash with `--upload-port`, pair it, restart the
+  tray (multi-board mode is picked per discovery round). Then Spotify login and a real track on the card.
+- **Gotchas from the build:** the shared PlatformIO penv lost charset_normalizer during an automatic
+  upgrade (repaired with `pip install --ignore-installed --no-deps charset-normalizer==3.5.1`; if pio
+  fails in seconds with "Failed to install Python dependencies", set `$env:PLATFORMIO_OFFLINE = "1"`).
+  amoled_216 is at 98.3 % flash (58 KB left): the stock Clawdmeter env needs the 16 MB partition layout
+  before it gains anything. Panel fonts draw ASCII only; the engine folds every relay field. A page
+  message must stay under MTU minus 3 (253 bytes assumed); the daemon cuts fields to fit. The engine
+  loop is single-threaded: a slow controller poll delays the others (isolate later).
 - **Decisions (operator, 2026-09-29 ~20:30):** Spotify **Premium**. PC side = **LabDaemon Engine**, own
   private repo `ChalulaBottle/labdaemon-engine`, local `Downloads\Temp LabDaemon Engine`. Board and
   everything public renamed **ECHO_LabDaemon** (done, 7225102; old URL redirects; no re-pair needed).
