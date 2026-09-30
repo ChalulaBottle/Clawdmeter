@@ -7,6 +7,11 @@ various agents", "button #1 to bring up the stats", "the number of agents that a
 
 ## RESUME STATE
 
+- **2026-09-29 correction:** the creature hooks (`clawdmeter_hooks.py`, all 11 events) ARE installed in
+  `~/.claude/settings.json` and proven live on the panel (ultracode work + agents badge during workflow
+  wf_0d1fbc33-2f9). Lines below saying "hook NOT installed" refer only to the PermissionRequest approve
+  hook, which is still operator gated. The project is now ECHO_LabDaemon; host side = LabDaemon Engine
+  (`plans/labdaemon.md`).
 - **Status:** 34 ECHO EDITION CREATURES ON DEVICE (2026-09-28 ~02:10), SPLASH_ANIM_COUNT 52, flash
   25.3%. Families: coffee ×4 (coffee, coffee morning, echo coffee, echo double coffee), echo idle/float,
   eight skinned stock movements, thinking set (think spin, think deep, work, write, read), modes (opus
