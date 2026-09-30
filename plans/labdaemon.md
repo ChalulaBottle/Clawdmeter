@@ -180,6 +180,21 @@ has no room for Wi-Fi):**
 **Increment 2 order:** buttons + dance + daemon relay + engine mapping (all boards) → Wi-Fi + art
 (lcd_4) → flash, captures (card with art, dance rotation GIF), plan, README.
 
+## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
+
+Operator: "I dont like beeps, they hurt animals ear drums." Nothing in this project ever drives the
+buzzer; strike "buzzer as an output" from the hub direction. Urgent = visual only.
+- Priorities: normal (8 s, quiet) and urgent (accent title, slow brightness pulse, stays until
+  dismissed). Quiet hours (configurable, default 23:00 to 07:00: urgent shows without the pulse,
+  normal is held for the history page). Per-source on/off and duration in the engine config.
+- History page: the last five notifications as a page in the PWR cycle.
+- Sources, one engine controller each, in this order: Claude Code events via the existing hooks (job
+  done, needs permission, error, session ended), Google Calendar (meeting in 10 min), one chat
+  (Slack first, the fleet workspace is already connected; Discord after), THE DOCK / fleet host down.
+  Windows toast forwarding last (packaged-app restriction makes it unreliable).
+- Housekeeping: tray waits for the board's `wf` answer before deleting wifi.json; art download off
+  the engine's main loop.
+
 ## Increments (each ends flashed, captured, committed, pushed)
 
 1. **Firmware:** notify overlay + generic page + button TX + tightened parse_json, all boards, plus serial
