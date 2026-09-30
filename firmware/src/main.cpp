@@ -3,6 +3,7 @@
 #include <lvgl.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <strings.h>
 
 #include "data.h"
 #include "ui.h"
@@ -13,6 +14,10 @@
 #include "idle.h"
 #include "idle_cfg.h"
 #include "brightness.h"
+#ifdef FEATURE_PICTURE
+#include "wifi_link.h"
+#include "art.h"
+#endif
 
 #include "hal/board_caps.h"
 #include "hal/display_hal.h"
@@ -147,14 +152,56 @@ static bool handle_notify_msg(const char* json) {
     return true;
 }
 
+#ifdef FEATURE_PICTURE
+// ble.cpp, beside ble_send_ack: the answer to a credentials message. Declared
+// here because only the handler below sends it, and only on boards with Wi-Fi.
+void ble_send_wifi_reply(bool stored);
+
+// Wi-Fi credentials from the host, for the album art (wifi_link.h). Its own
+// message, like notify:
+//   {"wf":"<ssid>","wp":"<password>"}   store in NVS, then join
+//   {"wf":""}                            forget them and leave the network
+// Returns true when the message was one of these, and has answered it then, in
+// place of the plain ack or nack: {"ack":true,"wf":"ok"} stored or forgotten,
+// {"err":true,"wf":"no"} not stored, because the board refused them (an SSID
+// over 32 bytes, or a password that is not empty, 8 to 63 characters or 64 hex
+// digits) or NVS failed; wifi_link_set says which on serial. A board without
+// Wi-Fi answers the plain nack instead, so a host keeps the credentials until
+// a board that can use them has answered with "wf". The password is never
+// printed.
+static bool handle_wifi_msg(const char* json) {
+    if (!strstr(json, "\"wf\"")) return false;   // cheap gate: only credentials carry "wf"
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["wf"].is<const char*>() || !doc["s"].isNull()) return false;
+    const char* ssid = doc["wf"] | "";
+    if (!*ssid) {
+        wifi_link_forget();
+        ble_send_wifi_reply(true);
+        return true;
+    }
+    ble_send_wifi_reply(wifi_link_set(ssid, doc["wp"] | ""));
+    return true;
+}
+#else
+// No Wi-Fi on this board: a credentials message ends at parse_json and its
+// plain nack, which tells a host that this board cannot use them.
+static bool handle_wifi_msg(const char* json) {
+    (void)json;
+    return false;
+}
+#endif
+
 // True while the page on the panel came from the host; a serial poke's page has
 // no host behind it (see host_page_tick).
 static bool page_from_host = false;
 
 // Page from the host: a card it keeps up while something is going on.
-//   {"pg":"spotify","pt":"Now playing","p1":"...","p2":"...","p3":"...","pp":42,"pa":"echo headphones"}
+//   {"pg":"spotify","pt":"Now playing","p1":"...","p2":"...","p3":"...","pp":42,"pa":"echo headphones","pi":"3f9a0c1d2e4b"}
 //   {"pg":""}                                                           clear
-// pp = progress 0..100 or -1 (no bar), pa = creature name or "" (none).
+// pp = progress 0..100 or -1 (no bar), pa = creature name, "dance" (a changing
+// dance, see ui.cpp) or "" (none), pi = album art id or absent (only boards
+// built with FEATURE_PICTURE show it; the others ignore it).
 // Returns true when the message was one of these.
 static bool handle_page_msg(const char* json) {
     if (!strstr(json, "\"pg\"")) return false;   // cheap gate: only a page carries "pg"
@@ -168,19 +215,20 @@ static bool handle_page_msg(const char* json) {
     }
     const float pp = doc["pp"] | -1.0f;    // any number; absent = no bar
     ui_page_show(pg, doc["pt"] | "", doc["p1"] | "", doc["p2"] | "", doc["p3"] | "",
-                 pp < 0 ? -1 : pp > 100 ? 100 : (int)(pp + 0.5f), doc["pa"] | "");
+                 pp < 0 ? -1 : pp > 100 ? 100 : (int)(pp + 0.5f), doc["pa"] | "", doc["pi"] | "");
     page_from_host = true;
     return true;
 }
 
-// A page from the host goes when the host does. On a live link the host writes
-// at least once a usage poll, so nothing from it for BLE_HOST_QUIET_MS means a
-// tray that quit, a PC asleep or a board out of range, and its page would
-// otherwise stay up with nobody to take it down (lcd_4 has no working touch
-// either). A tray that links again sends its page again. Not straight away on
-// a lost link: a short drop and reconnect would make the page blink.
+// A page from the host goes when the host does, in sight or left out of sight
+// by the screen cycle (it would come back stale on the next cycle). On a live
+// link the host writes at least once a usage poll, so nothing from it for
+// BLE_HOST_QUIET_MS means a tray that quit, a PC asleep or a board out of
+// range, and its page would otherwise stay up with nobody to take it down. A
+// tray that links again sends its page again. Not straight away on a lost
+// link: a short drop and reconnect would make the page blink.
 static void host_page_tick(void) {
-    if (!page_from_host || !ui_page_visible()) return;
+    if (!page_from_host || !ui_page_live()) return;
     const uint32_t quiet = ble_ms_since_host_write();
     if (quiet < BLE_HOST_QUIET_MS) return;
     if (quiet == UINT32_MAX) Serial.println("page: the host has written nothing, page left");
@@ -227,7 +275,8 @@ static bool parse_json(const char* json, UsageData* out) {
 }
 
 // ---- Serial command buffer ----
-// 200 so a whole `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>` poke fits.
+// 200 so a whole `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>|<pi>` poke fits
+// (196 characters with every field at its protocol limit).
 #define CMD_BUF_SIZE 200
 static char cmd_buf[CMD_BUF_SIZE];
 static int cmd_pos = 0;
@@ -255,17 +304,42 @@ static void serial_msg(char* args) {
     else       ui_notify_show("", f[0], 0);
 }
 
-// `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>`: a page without a host, named
-// "serial". Trailing fields may be left off; an empty or missing pp is no bar.
-// No host stands behind it, so it never lapses (host_page_tick); pageclr, a tap,
-// or a PWR or aux press with no host listening takes it down.
+// `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>|<pi>`: a page without a host, named
+// "serial". Trailing fields may be left off; an empty or missing pp is no bar;
+// anim "dance" is the dancing daemon; pi is an album art id (boards built with
+// FEATURE_PICTURE fetch it, art.h). No host stands behind it, so it never
+// lapses (host_page_tick); pageclr takes it down, the screen cycle or a tap
+// puts it out of sight.
 static void serial_page(char* args) {
-    char* f[6];
-    const int n = split_fields(args, f, 6);
+    char* f[7];
+    const int n = split_fields(args, f, 7);
     const int pp = (n > 4 && *f[4]) ? atoi(f[4]) : -1;
     ui_page_show("serial", f[0], n > 1 ? f[1] : "", n > 2 ? f[2] : "", n > 3 ? f[3] : "",
-                 pp < 0 ? -1 : pp > 100 ? 100 : pp, n > 5 ? f[5] : "");
+                 pp < 0 ? -1 : pp > 100 ? 100 : pp, n > 5 ? f[5] : "", n > 6 ? f[6] : "");
     page_from_host = false;
+}
+
+// Taps the `btn` poke queues; the button code in loop() takes one a pass, as if
+// the button had been pressed.
+static uint8_t pwr_taps_queued = 0;
+static uint8_t aux_taps_queued = 0;
+
+// `btn pwr`, `btn pwr2`, `btn aux`, `btn aux2`: one tap, or two in quick
+// succession, down the same path as the buttons (wake swallow, double tap, TX).
+static void serial_btn(const char* b) {
+    uint8_t* q = strncmp(b, "pwr", 3) == 0 ? &pwr_taps_queued
+               : strncmp(b, "aux", 3) == 0 ? &aux_taps_queued : nullptr;
+    if (!q || (b[3] && strcmp(b + 3, "2") != 0)) {
+        Serial.println("usage: btn pwr|pwr2|aux|aux2");
+        return;
+    }
+    *q += b[3] ? 2 : 1;
+}
+
+static bool take_tap(uint8_t* q) {
+    if (!*q) return false;
+    (*q)--;
+    return true;
 }
 
 static void send_screenshot() {
@@ -317,6 +391,31 @@ extern "C" __attribute__((weak)) bool board_serial_command(const char* cmd) {
     return false;
 }
 
+// A line that starts like the wifi poke, in any case and after any blanks, but
+// did not reach it: any wifi line on a board without Wi-Fi, "Wifi home|...",
+// " wifi ...", "wifi:home|...". It may hold a password, so it gets a fixed
+// answer, never an echo, and is wiped from the line buffer. False for any
+// other line.
+static bool serial_wifi_other(char* line, int len) {
+    const char* p = line;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strncasecmp(p, "wifi", 4) != 0) return false;
+#ifdef FEATURE_PICTURE
+    Serial.println("usage: wifi <ssid>|<password>, wifi off, wifi status");
+#else
+    Serial.println("wifi: this board is built without Wi-Fi");
+#endif
+    memset(line, 0, len);
+    return true;
+}
+
+// An unknown line is echoed by its first word only, and never past a '|' (where
+// a poke's password would start), so a mistyped line cannot print one back.
+static void serial_unknown(const char* line) {
+    while (*line == ' ' || *line == '\t') line++;
+    Serial.printf("unknown command: %.*s\n", (int)strcspn(line, " \t|"), line);
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
@@ -345,8 +444,20 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "msgclr") == 0)    ui_notify_clear();
             else if (strncmp(cmd_buf, "page ", 5) == 0) serial_page(cmd_buf + 5);
             else if (strcmp(cmd_buf, "pageclr") == 0)   ui_page_clear();
-            else if (cmd_pos > 0 && !board_serial_command(cmd_buf))
-                Serial.printf("unknown command: %s\n", cmd_buf);
+            // PWR and aux taps from the bench, down the button path (serial_btn).
+            else if (strncmp(cmd_buf, "btn ", 4) == 0)  serial_btn(cmd_buf + 4);
+#ifdef FEATURE_PICTURE
+            // Wi-Fi and the album art: `wifi <ssid>|<password>`, `wifi off`,
+            // `wifi status`, `art <base url>`, `art status` (wifi_link.h, art.h).
+            else if (strncmp(cmd_buf, "wifi ", 5) == 0) wifi_link_serial(cmd_buf + 5);
+            else if (strncmp(cmd_buf, "art ", 4) == 0)  art_serial(cmd_buf + 4);
+#endif
+            // Any other line that starts like `wifi` may hold a password: a fixed
+            // answer, never an echo, and never handed to the board's own commands
+            // (serial_wifi_other). The rest is the board's, or unknown.
+            else if (cmd_pos > 0 && !serial_wifi_other(cmd_buf, cmd_pos) &&
+                     !board_serial_command(cmd_buf))
+                serial_unknown(cmd_buf);
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {
             cmd_buf[cmd_pos++] = c;
@@ -400,6 +511,12 @@ void setup() {
 
     ble_init();
     input_hal_init();
+#ifdef FEATURE_PICTURE
+    // Wi-Fi for the album art: its own task joins from the stored credentials,
+    // BLE untouched. Before ui_init, which starts the art fetcher (art_init)
+    // with the size of the card's square.
+    wifi_link_init();
+#endif
 
     ui_init();
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
@@ -462,6 +579,83 @@ static void pair_tick(void) {
     }
 }
 
+// ---- PWR and aux taps (plans/labdaemon.md, "Increment 2") ----
+// On the page (ui_screen_name "page": in sight, nothing over it) a tap waits
+// TAP_DOUBLE_MS for a second one: two make a double, one alone acts as a single
+// once the time is up, so a single there comes TAP_DOUBLE_MS late. Everywhere
+// else a tap acts at once, as it always did, and never pairs with the next. A
+// waiting tap stays the page's whatever comes up before it resolves: a prompt
+// or a notification that lands mid window is left for the next press.
+// A tap that reaches the page within TAP_DOUBLE_MS of one that acted at once
+// off it (the tap that cycled to the page, say) acts at once as the page's
+// single: taps in a steady run step through the page instead of pairing on it.
+#define TAP_DOUBLE_MS 400
+
+enum tap_t { TAP_SINGLE, TAP_PAGE_SINGLE, TAP_PAGE_DOUBLE };
+
+struct TapState {
+    bool     pending;   // a tap on the page, waiting for a second one
+    uint32_t at;        // millis() when it came
+    bool     acted;     // a tap acted at once off the page (TAP_SINGLE)
+    uint32_t acted_at;  // millis() when it did; one step through the page uses it up
+};
+
+// Feed one button's tap (already past the wake swallow) and act on what it
+// makes. The window closing is checked first, so a second tap that comes just
+// too late is a tap of its own, not a double.
+static void tap_feed(TapState& s, bool tapped, void (*act)(tap_t)) {
+    const uint32_t now = millis();
+    if (s.pending && now - s.at >= TAP_DOUBLE_MS) {
+        s.pending = false;
+        act(TAP_PAGE_SINGLE);
+    }
+    if (!tapped) return;
+    if (s.pending) {
+        s.pending = false;
+        act(TAP_PAGE_DOUBLE);
+    } else if (strcmp(ui_screen_name(), "page") != 0) {
+        s.acted    = true;
+        s.acted_at = now;
+        act(TAP_SINGLE);
+    } else if (s.acted && now - s.acted_at < TAP_DOUBLE_MS) {
+        s.acted = false;
+        act(TAP_PAGE_SINGLE);
+    } else {
+        s.pending = true;
+        s.at      = now;
+    }
+}
+
+// PWR. On the page a single is the screen cycle's step from it (nothing sent)
+// and a double is {"btn":"pwr2","scr":"page"}. Elsewhere it goes to the host as
+// "pwr" with scr read before it acts here, then answers a prompt, else clears a
+// notification, else steps the screen cycle, on every board (the next creature
+// and brightness are aux's).
+static void pwr_act(tap_t t) {
+    if (t == TAP_PAGE_DOUBLE) { ble_send_button("pwr2", "page"); return; }
+    if (t == TAP_PAGE_SINGLE) { ui_page_leave(); return; }
+    ble_send_button("pwr", ui_screen_name());
+    if (ui_approve_visible())     ui_approve_accept();
+    else if (ui_notify_visible()) ui_notify_clear();
+    else                          ui_cycle_screens();
+}
+
+// aux, the second key (BOOT on lcd_4). On the page a single is "aux" and a
+// double "aux2", both scr "page", for the host alone. Elsewhere it goes to the
+// host as "aux", then answers a prompt, else clears a notification, else is the
+// next creature on the splash and brightness on usage.
+static void aux_act(tap_t t) {
+    if (t != TAP_SINGLE) {
+        ble_send_button(t == TAP_PAGE_DOUBLE ? "aux2" : "aux", "page");
+        return;
+    }
+    ble_send_button("aux", ui_screen_name());
+    if (ui_approve_visible())                          ui_approve_accept();
+    else if (ui_notify_visible())                      ui_notify_clear();
+    else if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
+    else                                               brightness_cycle();
+}
+
 #define BOOT_ANIM_MS 4600
 void loop() {
     {   // end of the boot sequence: release the creature to the device's own choice
@@ -476,6 +670,9 @@ void loop() {
     ui_tick_anim();
     ble_tick();
     host_page_tick();
+#ifdef FEATURE_PICTURE
+    wifi_link_tick();   // what the Wi-Fi and art tasks logged, printed here between screenshots
+#endif
     power_hal_tick();
     imu_hal_tick();
     sound_hal_tick();
@@ -488,8 +685,8 @@ void loop() {
     // ---- Physical buttons ----
     //   PRIMARY   → HID Space  (Claude Code voice-mode PTT)
     //   SECONDARY → HID Shift+Tab  (mode toggle; only if the board has one)
-    //   PWR       → on splash: cycle animations; on usage: cycle brightness;
-    //               hold ~3s + release: pairing mode
+    //   PWR       see pwr_act (the screen cycle; a double tap on the page);
+    //             hold ~3s + release: pairing mode
     // First press from sleep is consumed as a wake-only event by
     // idle_consume_wake_press(); the normal action fires from the second
     // press. Activity bookkeeping happens inside idle_consume_wake_press
@@ -525,52 +722,16 @@ void loop() {
             }
         }
 
-        // PWR and aux also go to the host as {"btn","scr"}, scr read before the
-        // press does anything here (plans/labdaemon.md, "Protocol"). A press
-        // swallowed as a wake sends nothing. Here, in order: answer a prompt,
-        // else clear a notification, else on a page nothing (the host decides)
-        // unless no host is there to hear it, then the press leaves the page,
-        // else what the button always did.
-        if (power_hal_pwr_pressed()) {
-            if (!idle_consume_wake_press()) {
-                const bool heard = ble_send_button("pwr", ui_screen_name());
-                if (ui_approve_visible()) {
-                    // A prompt is up: the press answers it (or, too soon after
-                    // it appeared, does nothing). It never reaches the screen
-                    // toggle underneath.
-                    ui_approve_accept();
-                } else if (ui_notify_visible()) {
-                    ui_notify_clear();
-                } else if (ui_page_visible()) {
-                    // The host acts on it (the btn just sent). With no host
-                    // listening the press leaves the page, so a page is never
-                    // stuck on the panel (a host that comes back sends it again).
-                    if (!heard) ui_page_clear();
-                } else if (board_caps().pwr_toggles_stats) {
-                    // One-button boards: the press is the only way to the numbers.
-                    ui_toggle_splash();
-                } else if (ui_get_current_screen() == SCREEN_SPLASH) {
-                    // On splash: cycle animations. On the usage view: cycle
-                    // screen brightness (single non-splash view, no more screens).
-                    splash_next();
-                } else {
-                    brightness_cycle();
-                }
-            }
-        }
-
-        // Boards with a second physical key report its short press here:
-        // next creature on splash, brightness on usage, an answer to a prompt
-        // that is up, a clear for a notification, nothing on a page (the host
-        // acts on it) unless no host is listening, then it leaves the page.
-        if (board_aux_pressed() && !idle_consume_wake_press()) {
-            const bool heard = ble_send_button("aux", ui_screen_name());
-            if (ui_approve_visible())                          ui_approve_accept();
-            else if (ui_notify_visible())                      ui_notify_clear();
-            else if (ui_page_visible())                        { if (!heard) ui_page_clear(); }
-            else if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
-            else                                               brightness_cycle();
-        }
+        // PWR and aux (the second key: BOOT on lcd_4, no other board has one),
+        // taps through the double tap detection above (pwr_act, aux_act), a
+        // `btn` poke's among them. A press swallowed as a wake is no tap and
+        // sends nothing. A prompt that is up takes the press (or, too soon after
+        // it appeared, lets it do nothing); it never reaches what lies underneath.
+        static TapState pwr_taps = {}, aux_taps = {};
+        const bool pwr_hit = power_hal_pwr_pressed() || take_tap(&pwr_taps_queued);
+        tap_feed(pwr_taps, pwr_hit && !idle_consume_wake_press(), pwr_act);
+        const bool aux_hit = board_aux_pressed() || take_tap(&aux_taps_queued);
+        tap_feed(aux_taps, aux_hit && !idle_consume_wake_press(), aux_act);
 
         pair_tick();
     }
@@ -654,8 +815,15 @@ void loop() {
     if (ble_has_data()) {
         const char* raw = ble_get_data();
         // Dispatch order is the contract (plans/labdaemon.md, "Protocol"): each
-        // host message is its own, and only one carrying "s" is usage.
-        if (handle_approve_msg(raw) || handle_notify_msg(raw) || handle_page_msg(raw)) {
+        // host message is its own, and only one carrying "s" is usage. Wi-Fi
+        // credentials ("wf") sit beside notify and answer for themselves
+        // (handle_wifi_msg); a board without Wi-Fi leaves them to parse_json,
+        // which nacks them.
+        if (handle_approve_msg(raw) || handle_notify_msg(raw)) {
+            ble_send_ack();
+        } else if (handle_wifi_msg(raw)) {
+            // answered already, with the "wf" reply
+        } else if (handle_page_msg(raw)) {
             ble_send_ack();
         } else if (parse_json(raw, &usage)) {
             int g_before = usage_rate_group();

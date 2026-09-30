@@ -478,6 +478,22 @@ void ble_send_nack(void) {
     }
 }
 
+#ifdef FEATURE_PICTURE
+// The answer to Wi-Fi credentials (main.cpp, handle_wifi_msg, which declares
+// it), in place of the plain ack or nack: {"ack":true,"wf":"ok"} stored, or
+// forgotten for an empty "wf"; {"err":true,"wf":"no"} not stored (refused, or
+// NVS failed; the serial log says which).
+// Only a board built with Wi-Fi ever answers with "wf". One without answers
+// credentials with the plain nack, so a host can keep them until a board that
+// can use them has said so.
+void ble_send_wifi_reply(bool stored) {
+    if (state == BLE_STATE_CONNECTED && tx_char) {
+        tx_char->setValue(stored ? "{\"ack\":true,\"wf\":\"ok\"}" : "{\"err\":true,\"wf\":\"no\"}");
+        tx_char->notify();
+    }
+}
+#endif
+
 void ble_send_approve(const char* id) {
     if (state != BLE_STATE_CONNECTED || !tx_char || !id || !*id) return;
     char msg[48];

@@ -235,7 +235,8 @@ so when several are due in the same second the daemon sends them a quarter secon
 | File | Written by | Holds | The board gets |
 |------|------------|-------|----------------|
 | `notify.json` | the engine | `{"title", "body", "secs", "expires"}` | `{"nt", "nb", "nx"}` |
-| `page.json` | the engine | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "expires"}` | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa"}` |
+| `page.json` | the engine | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi", "expires"}` | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi"}` |
+| `wifi.json` | the engine's `wifi set` and `wifi clear`, or you | `{"ssid", "pass"}` | `{"wf", "wp"}`, once, and the file is deleted |
 | `events\<ns>.json` | the daemon | `{"btn", "scr", "addr", "ts"}` | nothing: it is for the engine |
 | `daemon.pages` | the daemon | `{"boards"}`, the boards it last sent a page to | nothing: it is the daemon's own note |
 
@@ -251,8 +252,11 @@ past `expires`. A notification already on disk when a board links is not shown; 
 
 **Pages.** The page name keeps at most 15 bytes, the title 23 and each of the three lines 40.
 `pp` is progress as a whole number from 0 to 100, or `-1` for no bar, and `pa` is a creature
-animation name or an empty string. A board that links gets the current page at once. The
-board keeps no timer for a page, so the daemon clears it itself when its `expires` passes.
+animation name or an empty string. `pi` is the album art id, up to 16 characters, each a
+lowercase letter or a digit. It goes to the board unchanged and is never cut to fit; an id of
+any other shape is left off, and the page goes without it. A board that links gets the current
+page at once. The board keeps no timer for a page, so the daemon clears it itself when its
+`expires` passes.
 Rewriting the same page with a later `expires` keeps it up without sending anything again,
 and a change to the progress alone is sent without a log line.
 
@@ -274,11 +278,34 @@ then the tool name of a prompt. One that still does not fit is logged and not se
 payload always goes out whole.
 
 **Button presses.** A press the board hands to the host lands as `events\<ns>.json`: the
-button (`pwr` or `aux`), the screen it was pressed on (`splash`, `usage`, `approve`, `notify`
-or `page`), the Bluetooth address of the board, and the time. Names are nanosecond times that
-only ever grow, so reading them in name order replays the presses in order. Read only names
-that end in `.json`; a name that starts with a dot is a file still being written. The daemon
-only ever adds files to `events`; it never deletes them.
+button (`pwr` or `aux`, or `pwr2` and `aux2` for a double tap), the screen it was pressed on
+(`splash`, `usage`, `approve`, `notify` or `page`), the Bluetooth address of the board, and
+the time. Names are nanosecond times that only ever grow, so reading them in name order
+replays the presses in order. Read only names that end in `.json`; a name that starts with a
+dot is a file still being written. The daemon only ever adds files to `events`; it never
+deletes them.
+
+**Wi-Fi.** To put the boards on your Wi-Fi (the 4 inch board fetches album art over it; a board
+built without Wi-Fi ignores this), use the LabDaemon Engine. In its folder:
+
+```powershell
+.venv\Scripts\python.exe -m labdaemon_engine wifi set "Home Net"
+.venv\Scripts\python.exe -m labdaemon_engine wifi clear
+```
+
+`wifi set` asks for the password without showing it and writes `wifi.json` whole, in one step.
+`wifi clear` writes `{"ssid": ""}`, which sends `{"wf": ""}`, and the boards forget the network.
+Without the engine, write the file yourself, whole as above, as `{"ssid": "...", "pass": "..."}`:
+the `ssid` at most 32 bytes of `UTF-8`, the `pass` 8 to 63 bytes or a raw key of exactly 64
+hex digits, and an empty `pass` for an open network. The daemon sends it once, as
+`{"wf", "wp"}`, to every board linked at that moment, waiting for a link if there is none, and
+then deletes the file. Its log says how many boards took it and never shows the password.
+Taking the write is not keeping it: a board built without Wi-Fi takes it and drops it, so write
+the file while the 4 inch board shows Connected. A file it cannot use is logged without its
+content and left for you to fix. A file it cannot open yet, because another program has it
+open, is logged once and read again every second until it opens. Each board keeps the
+credentials in its own flash, so the file is needed once, not at every start. A board that
+links after the file is gone does not get it: write the file again for that board.
 
 **Several boards.** The daemon links every board bonded to this PC whose Bluetooth name is
 ECHO_LabDaemon or one of its older names (ECHO_MiniDaemon, Clawdmeter). Each board gets its

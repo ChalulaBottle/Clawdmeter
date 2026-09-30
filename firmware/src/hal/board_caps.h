@@ -18,10 +18,10 @@ struct BoardCaps {
     bool    has_rotation;    // IMU-driven CPU rotation in the flush callback
     bool    has_battery;     // AXP2101 battery measurement is meaningful
     bool    has_imu;         // QMI8658 (or compatible) is populated
-    // A short press of the PWR-role button toggles splash <-> stats instead of
-    // cycling animations / brightness. For boards whose only button is also
-    // their only way to reach the numbers (no touch, no second button).
-    // Trailing so boards that leave it out get false.
+    // A short press of the PWR-role button steps the screen cycle (creature,
+    // usage, the live page; ui_cycle_screens) instead of the next creature and
+    // brightness. For boards whose button is their only way to the numbers
+    // (no working touch). Trailing so boards that leave it out get false.
     bool    pwr_toggles_stats;
 };
 

@@ -72,12 +72,17 @@ WATCH_TICK = 1.0           # state / approve file checks; TICK stays the poll ca
 # LabDaemon relay (plans/labdaemon.md, Protocol). The engine drops notify.json and
 # page.json here the same atomic way the hook drops approve.json; the daemon puts
 # each change on the boards as its own message, never merged into usage:
-#   notify.json {"title", "body", "secs", "expires"}                   sent as {"nt", "nb", "nx"}
-#   page.json   {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "expires"}  sent as {"pg", "pt", "p1", "p2", "p3", "pp", "pa"}
+#   notify.json {"title", "body", "secs", "expires"}                         sent as {"nt", "nb", "nx"}
+#   page.json   {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi", "expires"}  sent as {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi"}
 # A button press on a board comes back as events/<ns>.json {"btn", "scr", "addr", "ts"}.
+# wifi.json {"ssid", "pass"} is the operator's (the engine's `wifi set` writes it), for the boards
+# built with Wi-Fi: it goes ONCE to every linked board as {"wf": ssid, "wp": pass} ({"wf": ""} for
+# an empty ssid: forget the network) and is removed once a board took it. Nothing of it ever
+# reaches the log.
 NOTIFY_FILE = CONFIG_FILE.parent / "notify.json"
 PAGE_FILE = CONFIG_FILE.parent / "page.json"
 EVENT_DIR = CONFIG_FILE.parent / "events"
+WIFI_FILE = CONFIG_FILE.parent / "wifi.json"
 NOTIFY_TITLE_MAX = 23
 NOTIFY_BODY_MAX = 96
 NOTIFY_SECS_DEFAULT = 8    # seconds on screen when "secs" is left out
@@ -86,7 +91,12 @@ PAGE_NAME_MAX = 15
 PAGE_TITLE_MAX = 23
 PAGE_LINE_MAX = 40         # p1, p2 and p3 each
 PAGE_ANIM_MAX = ANIM_MAX   # "pa" names a creature animation: the same char[24] as "a"
-EVENT_FIELD_MAX = 15       # "btn" and "scr" are short words ("pwr", "notify")
+PAGE_ART_ID = re.compile(r"[a-z0-9]{0,16}")   # "pi", the album art id: relayed unchanged in this shape
+EVENT_FIELD_MAX = 15       # "btn" and "scr" are short words ("pwr2", "notify")
+WIFI_SSID_MAX = 32         # ssid, in bytes of UTF-8: the 802.11 limit, and the board takes no more
+WIFI_PASS_MIN = 8          # pass, in bytes of UTF-8: empty (an open network), or a WPA passphrase
+WIFI_PASS_MAX = 63         # of 8 to 63 characters, the rule of the board and the engine's wifi set,
+WIFI_PSK = re.compile(r"[0-9A-Fa-f]{64}")   # or pass is a raw key: exactly 64 hex digits, no more
 # The board holds ONE incoming message until its loop reads it (firmware ble.cpp
 # rx_buf), so a second write landing first overwrites the first. Writes to one board
 # keep this many seconds apart; in practice only a same-tick burst (state resend,
@@ -446,6 +456,9 @@ def read_page_msg() -> tuple[dict, float] | None:
     A live page gives ({"pg", "pt", "p1", "p2", "p3", "pp", "pa"}, its "expires"). The
     page message has no timer field, so the caller clears the page itself once that
     time passes. "pp" is progress 0 to 100, or -1 for no bar.
+    "pi", the album art id, rides along unchanged when the file has one of 0 to 16
+    characters, each a to z or 0 to 9; any other value leaves the field off, never the
+    page. It is in the message before any cut to fit, and never cut itself (_SHRINK_ORDER).
     No file, an empty "pg", or one past its "expires" (or without one) gives
     ({"pg": ""}, 0.0) (clear).
     Unreadable or malformed (no "pg" text): None after a log line; the caller sends nothing.
@@ -464,7 +477,7 @@ def read_page_msg() -> tuple[dict, float] | None:
         return {"pg": ""}, 0.0
     progress = data.get("pp")
     progress = max(-1, min(100, round(progress))) if _finite_number(progress) else -1
-    return {
+    msg = {
         "pg": _text(name, PAGE_NAME_MAX),
         "pt": _text(data.get("pt"), PAGE_TITLE_MAX),
         "p1": _text(data.get("p1"), PAGE_LINE_MAX),
@@ -472,7 +485,11 @@ def read_page_msg() -> tuple[dict, float] | None:
         "p3": _text(data.get("p3"), PAGE_LINE_MAX),
         "pp": progress,
         "pa": _text(data.get("pa"), PAGE_ANIM_MAX),
-    }, float(expires)
+    }
+    art = data.get("pi")
+    if isinstance(art, str) and PAGE_ART_ID.fullmatch(art):
+        msg["pi"] = art
+    return msg, float(expires)
 
 
 def _page_sans_progress(msg: dict) -> dict:
@@ -552,10 +569,12 @@ _last_event_ns = 0  # the newest events/ file name so far, shared by every board
 def write_event(btn, scr, addr: str) -> None:
     """events/<ns>.json for the engine: one button press on a board.
 
-    {"btn": "pwr" or "aux", "scr": the screen it was pressed on, "addr": the board's
-    address, "ts"}. The name is a nanosecond time that only ever grows, even inside
-    one clock step (time.time() moves in coarse steps on Windows), so two quick
-    presses never share a file and sorting the names replays them in order.
+    {"btn": "pwr", "aux", or the double taps "pwr2" and "aux2", "scr": the screen it was
+    pressed on, "addr": the board's address, "ts"}. The name check is by shape (letters,
+    digits, - or _, up to EVENT_FIELD_MAX), so it takes every name the protocol has and
+    leaves the meaning to the engine. The file name is a nanosecond time that only ever
+    grows, even inside one clock step (time.time() moves in coarse steps on Windows), so
+    two quick presses never share a file and sorting the names replays them in order.
     """
     global _last_event_ns
     if not _token_ok(btn, EVENT_FIELD_MAX):
@@ -571,6 +590,77 @@ def write_event(btn, scr, addr: str) -> None:
                            {"btn": btn, "scr": scr, "addr": addr, "ts": time.time()})
     except OSError as e:
         log(f"Event write failed: {e}")
+
+
+def wifi_stamp() -> tuple | None:
+    """Change stamp of the Wi-Fi file (same idea as state_stamp)."""
+    return _file_stamp(WIFI_FILE)
+
+
+def _wifi_text_ok(value, limit: int) -> bool:
+    """Text of at most `limit` bytes of UTF-8. A lone surrogate, which json.loads lets
+    through, has no UTF-8 form, so it is not text here."""
+    if not isinstance(value, str):
+        return False
+    try:
+        return len(value.encode("utf-8")) <= limit
+    except UnicodeEncodeError:
+        return False
+
+
+def _wifi_pass_ok(value) -> bool:
+    """A pass the board can take: empty (an open network), a passphrase of WIFI_PASS_MIN to
+    WIFI_PASS_MAX bytes of UTF-8, or a raw key of exactly 64 hex digits (what the engine's
+    `wifi set` writes for one). The board refuses anything else (firmware wifi_link.cpp,
+    pass_ok), so a file with it is kept for the operator to fix instead of being sent, refused
+    and deleted. Nothing else of 64 bytes or more: the board reads a 64 byte pass as a raw key
+    and refuses one that is not hex."""
+    if isinstance(value, str) and (value == "" or WIFI_PSK.fullmatch(value)):
+        return True
+    return _wifi_text_ok(value, WIFI_PASS_MAX) and len(value.encode("utf-8")) >= WIFI_PASS_MIN
+
+
+def read_wifi_msg() -> dict | None:
+    """The board message for the Wi-Fi file: {"wf": ssid, "wp": pass}, or {"wf": ""} when
+    ssid is empty (the boards forget the network; pass does not matter then). ssid is text
+    of at most WIFI_SSID_MAX bytes of UTF-8, pass as _wifi_pass_ok says. An open network
+    is an empty pass, but pass must be there: a missing one is more likely a typo.
+
+    No file: None. Malformed: None after a log line. A file that is there but cannot be
+    read right now (another program holding it, say) raises the OSError: it is not
+    malformed, and the caller reads it again. Nothing from the file reaches the log, not
+    even inside an error message (a decode error quotes a byte).
+    """
+    try:
+        raw = WIFI_FILE.read_bytes()
+    except FileNotFoundError:
+        return None
+    try:
+        data = json.loads(raw)  # from bytes, so a BOM or UTF-16 (PowerShell Out-File) still parses
+    except ValueError:
+        data = None
+    ssid = data.get("ssid") if isinstance(data, dict) else None
+    if ssid == "":
+        return {"wf": ""}
+    password = data.get("pass") if isinstance(data, dict) else None
+    if not (_wifi_text_ok(ssid, WIFI_SSID_MAX) and _wifi_pass_ok(password)):
+        log(f"Wi-Fi file malformed (needs an ssid of up to {WIFI_SSID_MAX} bytes and a pass that is"
+            f" empty, {WIFI_PASS_MIN} to {WIFI_PASS_MAX} bytes or 64 hex digits), ignoring")
+        return None
+    return {"wf": ssid, "wp": password}
+
+
+def _drop_wifi_file(stamp: tuple) -> str | None:
+    """Remove the Wi-Fi file if it is still the version with that stamp. None once that
+    version is gone, else why it is still there. A version written since is left alone
+    for its own turn."""
+    if wifi_stamp() != stamp:
+        return None
+    try:
+        WIFI_FILE.unlink(missing_ok=True)
+    except OSError as e:
+        return e.strerror or type(e).__name__
+    return None
 
 
 async def poll_api(token: str) -> dict | None:
@@ -831,6 +921,9 @@ class Session:
         self.address = address  # the board's BLE address, stamped on its button events
         self.refresh_requested = asyncio.Event()
         self._last_write = -math.inf  # time.monotonic() of the previous write (WRITE_GAP)
+        # One write at a time on this link, whichever task asks: relay_wifi writes to every
+        # board from one link's task, while a board's own write may be under way.
+        self._turn = asyncio.Lock()
 
     def _on_refresh(self, _char, _data: bytearray) -> None:
         log("Refresh requested by device")
@@ -889,46 +982,54 @@ class Session:
             return min(mtu - 3, WIRE_MAX_BOARD)
         return WIRE_MAX_ASSUMED
 
-    async def write_payload(self, payload: dict, quiet: bool = False) -> bool:
+    async def write_payload(self, payload: dict, quiet: bool = False, secret: bool = False) -> bool:
         """Write one message to the board. quiet leaves out the "Sending:" log line.
 
         A page, notification or prompt too long for the link is cut to fit (_fit), or
         not sent at all (False, after a log line) when cutting is not enough. A usage
         payload always goes out whole.
+
+        secret (Wi-Fi credentials): nothing of the message reaches the log, and a failed
+        write logs only the kind of error, because bleak's WinRT error quotes the bytes it
+        could not write. A secret is never cut: one too long for the link is not sent.
         """
-        data = _encode(payload)
-        limit = self.write_limit()
-        if len(data) > limit and any(kind in payload for kind, _ in _SHRINK_ORDER):
-            fitted = _fit(payload, limit)
-            if fitted is None:
-                log(f"Message of {len(data)} bytes does not fit the link ({limit}), not sent:"
-                    f" {data[:48].decode('utf-8', 'ignore')}")
+        async with self._turn:
+            data = _encode(payload)
+            limit = self.write_limit()
+            if len(data) > limit and secret:
+                log(f"A secret message does not fit the link ({limit}), not sent")
                 return False
-            cut = _encode(fitted)
-            if not quiet:
-                log(f"Message of {len(data)} bytes cut to {len(cut)} to fit the link ({limit})")
-            data = cut
-        # One message at a time: the board keeps a single incoming message until its
-        # loop reads it, so a burst waits WRITE_GAP between writes (see WRITE_GAP).
-        wait = self._last_write + WRITE_GAP - time.monotonic()
-        if wait > 0:
-            await asyncio.sleep(wait)
-        if not quiet:
-            log(f"Sending: {data.decode()}")
-        try:
-            await self.client.write_gatt_char(RX_CHAR_UUID, data, response=False)
-            return True
-        except (BleakError, OSError) as e:
-            # WinRT can raise a raw OSError/WinError (NOT wrapped as BleakError)
-            # when the peer GATT server goes transiently unavailable mid-write —
-            # the same failure class setup_refresh_subscription() guards against.
-            # Returning False trips the zombie-link break -> clean reconnect,
-            # rather than an uncaught exception killing the daemon thread (the
-            # silent-freeze failure mode, SC#2 field report).
-            log(f"Write failed: {e}")
-            return False
-        finally:
-            self._last_write = time.monotonic()
+            if len(data) > limit and any(kind in payload for kind, _ in _SHRINK_ORDER):
+                fitted = _fit(payload, limit)
+                if fitted is None:
+                    log(f"Message of {len(data)} bytes does not fit the link ({limit}), not sent:"
+                        f" {data[:48].decode('utf-8', 'ignore')}")
+                    return False
+                cut = _encode(fitted)
+                if not quiet:
+                    log(f"Message of {len(data)} bytes cut to {len(cut)} to fit the link ({limit})")
+                data = cut
+            # One message at a time: the board keeps a single incoming message until its
+            # loop reads it, so a burst waits WRITE_GAP between writes (see WRITE_GAP).
+            wait = self._last_write + WRITE_GAP - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            if not (quiet or secret):
+                log(f"Sending: {data.decode()}")
+            try:
+                await self.client.write_gatt_char(RX_CHAR_UUID, data, response=False)
+                return True
+            except (BleakError, OSError) as e:
+                # WinRT can raise a raw OSError/WinError (NOT wrapped as BleakError)
+                # when the peer GATT server goes transiently unavailable mid-write —
+                # the same failure class setup_refresh_subscription() guards against.
+                # Returning False trips the zombie-link break -> clean reconnect,
+                # rather than an uncaught exception killing the daemon thread (the
+                # silent-freeze failure mode, SC#2 field report).
+                log(f"Write failed: {type(e).__name__}" if secret else f"Write failed: {e}")
+                return False
+            finally:
+                self._last_write = time.monotonic()
 
 
 def _extract_access_token(blob: str) -> str | None:
@@ -1050,6 +1151,71 @@ async def _wait_first(*events: asyncio.Event, timeout: float) -> None:
 # The sessions whose board link is up right now. With several boards the heartbeat
 # says "connected" and the tray stays Connected while ANY of them is linked.
 _LIVE_LINKS: set = set()
+_WIFI_BUSY = False   # one link is sending the Wi-Fi file to every board right now
+_WIFI_SENT = None    # the stamp of a Wi-Fi file already sent whose removal failed: never sent again
+_WIFI_UNREAD = None  # the stamp of a Wi-Fi file found unreadable, logged once and read again each tick
+
+
+async def relay_wifi(seen):
+    """One link's turn at the Wi-Fi file; returns the file version this link has now dealt with.
+
+    `seen` is the version it dealt with before (_FIRST_TICK on its first tick, so a file
+    that waited for a board goes out as soon as one links). A new version goes out ONCE,
+    as its own message, to every board linked right now, from whichever link comes to it
+    first; the others see it busy and look again next tick. The file is removed as soon
+    as one board took the write. When none did, it waits for the next link. A file that
+    cannot be read right now is not dealt with: the link reads it again next tick, and
+    that is logged once for the version, not on every tick. The credentials live in this
+    call only, and no log line carries any of them.
+    """
+    global _WIFI_BUSY, _WIFI_SENT, _WIFI_UNREAD
+    stamp = wifi_stamp()
+    if stamp is None:
+        return None
+    if stamp == _WIFI_SENT:                  # sent already; only its removal is still owed
+        if _drop_wifi_file(stamp) is None:
+            log("Wi-Fi file removed")
+        return stamp
+    if stamp == seen or _WIFI_BUSY:
+        return seen
+    _WIFI_BUSY = True
+    try:
+        try:
+            msg = read_wifi_msg()
+        except OSError as e:                 # held open by another program for a moment, say
+            if stamp != _WIFI_UNREAD:
+                _WIFI_UNREAD = stamp
+                log(f"Wi-Fi file unreadable, will try again: {e.strerror or type(e).__name__}")
+            return seen                      # not dealt with: this link reads it again next tick
+        _WIFI_UNREAD = None
+        if msg is None:
+            return stamp                     # malformed and logged: waits for a new version
+        forget = not msg["wf"]
+        took = 0
+        for session in list(_LIVE_LINKS):
+            # Each board's own lines carry its own tag, though this runs in another link's task.
+            tag = _LOG_TAG.set(f"[{session.address}] ") if _LOG_TAG.get() else None
+            try:
+                took += await session.write_payload(msg, secret=True)
+            except Exception as e:           # another board's trouble must not end this link
+                log(f"Write failed: {type(e).__name__}")
+            finally:
+                if tag is not None:
+                    _LOG_TAG.reset(tag)
+        del msg
+        if not took:
+            log("Wi-Fi credentials reached no board, the file waits for the next link")
+            return stamp
+        error = _drop_wifi_file(stamp)
+        note = " (empty ssid: the boards forget the network)" if forget else ""
+        if error is None:
+            log(f"Wi-Fi credentials sent to {took} board(s), file removed{note}")
+        else:
+            _WIFI_SENT = stamp
+            log(f"Wi-Fi credentials sent to {took} board(s), file not removed yet{note}: {error}")
+        return stamp
+    finally:
+        _WIFI_BUSY = False
 
 
 async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
@@ -1140,6 +1306,7 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
     last_page = _FIRST_TICK
     page_sent: dict | None = None if address in _paged() else {"pg": ""}
     page_until = 0.0  # when that page lapses: the board keeps no timer for a page, so we clear it
+    last_wifi = _FIRST_TICK  # Wi-Fi credentials wait for a board: the first tick sends any waiting
     try:
         _LIVE_LINKS.add(session)
         while client.is_connected and not stop_event.is_set():
@@ -1203,6 +1370,8 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
                 if await session.write_payload({"pg": ""}):
                     page_sent = {"pg": ""}
                     _note_page(address, False)
+            # Wi-Fi credentials: once to every linked board, then the file goes.
+            last_wifi = await relay_wifi(last_wifi)
             now = time.time()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:

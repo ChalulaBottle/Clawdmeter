@@ -23,9 +23,11 @@ void ble_request_refresh(void);
 // Answer a relayed permission prompt: {"approve":"<id>"} on the TX char. The
 // device only ever says yes; a deny is given in the terminal.
 void ble_send_approve(const char* id);
-// A PWR or aux press for the host to act on: {"btn":"pwr"|"aux","scr":"<on top>"}
-// on the TX char. scr is what was showing before the press did anything on the
-// device (ui_screen_name). Sent whenever a central is subscribed to TX; true only
+// A PWR or aux press for the host to act on: {"btn":"<btn>","scr":"<on top>"}
+// on the TX char, btn "pwr", "aux", or on the page "aux", "pwr2" and "aux2" (the
+// double taps; a single PWR there sends nothing). scr is what was showing before
+// the press did anything on the device (ui_screen_name), "page" for every press
+// on the page. Sent whenever a central is subscribed to TX; true only
 // when a host is there to act on it (ble_host_listening). Logged on Serial
 // either way, saying which.
 bool ble_send_button(const char* btn, const char* scr);

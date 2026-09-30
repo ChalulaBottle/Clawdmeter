@@ -4,9 +4,13 @@
 #include "idle.h"
 #include <lvgl.h>
 #include <time.h>
+#include <esp_random.h>
 #include "logo.h"
 #include "icons.h"
 #include "hal/board_caps.h"
+#ifdef FEATURE_PICTURE
+#include "art.h"
+#endif
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
 LV_FONT_DECLARE(font_tiempos_56);
@@ -710,12 +714,15 @@ static void notify_tick(void) {
 // A card the host keeps up while something is going on (a track playing): a
 // title, three lines, a progress bar and a creature. The first page type after
 // usage. It sits over the screens like an overlay, under a notification and an
-// approve prompt. PWR and aux on a page are the host's (main.cpp sends them and
-// does nothing here unless no host is listening); a tap leaves it until the host
-// sends something other than a new progress for it (see page_click_cb).
+// approve prompt, and is the third stop of the screen cycle (ui_cycle_screens).
+// Left with the cycle or a tap it goes out of sight, still live (page_hidden),
+// until the next cycle or another page. Its buttons are main.cpp's.
 //
 // Fixed slots, top to bottom: the title, a band for the creature, the three
 // lines, the bar along the bottom edge. An empty slot stays empty; nothing moves.
+// Boards built with FEATURE_PICTURE have a second layout for a page with album
+// art (pi): the square beside the title and the lines, the band below them
+// (page_art_init).
 #define PAGE_NAME_MAX   15   // protocol limits, plans/labdaemon.md "Protocol"
 #define PAGE_TITLE_MAX  23
 #define PAGE_LINE_MAX   40
@@ -732,21 +739,170 @@ static char      page_name[PAGE_NAME_MAX + 1] = "";
 static char      page_anim[PAGE_ANIM_MAX + 1] = "";   // what the creature was asked to show; "" = none
 static char      page_txt_title[PAGE_TITLE_MAX + 1] = "";       // the texts last set on the labels
 static char      page_txt_line[3][PAGE_LINE_MAX + 1] = { "", "", "" };
-static bool      page_dismissed = false;   // left by a tap; page_name stays to know its updates
+static bool      page_hidden = false;   // left by the cycle or a tap; page_name stays, the page is live
 
-// A tap leaves the page until the host sends it with something other than a new
-// progress: a playing track moves the bar every second or two, and each of
-// those would otherwise bring the page back and wake the panel. A change of
-// text or creature, another page, or the host's clear ends it (ui_page_show,
-// ui_page_clear).
+// A tap on the page is the cycle's step from it: the creature comes up and the
+// page goes out of sight, live, its updates landing unseen (ui_page_leave).
 static void page_click_cb(lv_event_t* e) {
     (void)e;
-    if (!ui_page_visible()) return;
-    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
-    page_dismissed = true;
-    Serial.printf("page: %s left by a tap\n", page_name);
-    ui_show_screen(current_screen);   // the splash comes back unless a notification or a prompt still covers it
+    ui_page_leave();
 }
+
+// The dancing daemon: pa "dance" puts a random dance from DANCE_NAMES on the
+// band and changes it every 12 to 25 s. One change in four the creature steps
+// off the band for 4 to 8 s first and comes back with another dance. Its clock
+// runs only while the page is on top (ui_tick_anim); names the table lacks are
+// skipped.
+static const char* const DANCE_NAMES[] = {
+    "echo dj", "echo rave", "echo mixer", "echo notes",
+    "echo headphones", "echo hop", "echo swing", "echo cartwheel",
+};
+#define DANCE_COUNT       ((int)(sizeof(DANCE_NAMES) / sizeof(DANCE_NAMES[0])))
+#define DANCE_MIN_MS      12000
+#define DANCE_MAX_MS      25000
+#define DANCE_AWAY_MIN_MS 4000
+#define DANCE_AWAY_MAX_MS 8000
+
+static bool     dance_on   = false;   // pa is "dance"
+static int8_t   dance_cur  = -1;      // the DANCE_NAMES entry on the band; -1 none
+static bool     dance_away = false;   // off the band for a moment
+static uint32_t dance_left = 0;       // page on top ms before the next change
+static uint32_t dance_last = 0;       // lv_tick when that was last counted down
+
+static uint32_t random_ms(uint32_t lo, uint32_t hi) {
+    return lo + esp_random() % (hi - lo + 1);
+}
+
+#ifdef FEATURE_PICTURE
+// ---- Album art (art.h) ----
+// With a picture for the page's pi the card takes its second layout: the art
+// square on the left, the title and the three lines beside it, the creature's
+// band across the whole width under both, the bar where it always is. Without
+// one it keeps the layout above. While a picture is on its way the square
+// stands empty in the panel colour, so a new track moves the text once, not
+// twice; a picture that fails leaves the card without art.
+enum page_art_t : uint8_t { PAGE_ART_NONE, PAGE_ART_COMING, PAGE_ART_SHOWN };
+
+struct PageGeom {            // where the text and the band sit in one layout
+    int16_t text_x, text_w;  // the title and the three lines
+    int16_t line0_y;         // the first line; the other two follow a pitch apart
+    int16_t band_y, band_h;  // the creature's band, the full width
+};
+
+static lv_obj_t*  page_art_box = nullptr;    // the square, with the picture centred in it
+static lv_obj_t*  page_art_img = nullptr;
+static int        page_pitch   = 0;          // line to line
+static PageGeom   page_geom[2];              // [0] without art, [1] with
+static page_art_t page_art     = PAGE_ART_NONE;
+static char       page_pi[ART_ID_MAX + 1]     = "";   // the page's picture; "" none
+static char       page_art_id[ART_ID_MAX + 1] = "";   // the picture on the square now
+static bool       page_pi_warned = false;             // a pi the board will not fetch has been logged
+
+static void page_art_layout(bool art) {
+    const PageGeom& g = page_geom[art ? 1 : 0];
+    lv_obj_set_pos(page_lbl_title, g.text_x, 0);
+    lv_obj_set_width(page_lbl_title, g.text_w);
+    for (int i = 0; i < 3; i++) {
+        lv_obj_set_pos(page_lbl_line[i], g.text_x, g.line0_y + i * page_pitch);
+        lv_obj_set_width(page_lbl_line[i], g.text_w);
+    }
+    lv_obj_set_pos(page_band, 0, g.band_y);
+    lv_obj_set_height(page_band, g.band_h > 0 ? g.band_h : 1);   // the creature is centred in it and follows
+    if (art) lv_obj_clear_flag(page_art_box, LV_OBJ_FLAG_HIDDEN);
+    else     lv_obj_add_flag(page_art_box, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Match the card to its picture: on the square, on its way (the square empty)
+// or none (the layout without art). Every page update and every loop pass; the
+// art_get call is also what takes a finished fetch in. Only the card's children
+// move: a page out of sight stays out of sight.
+static void page_art_sync(void) {
+    if (!page_art_img) return;
+    bool coming = false;
+    const lv_image_dsc_t* pic = art_get(page_pi, &coming);
+    const page_art_t want = pic ? PAGE_ART_SHOWN : coming ? PAGE_ART_COMING : PAGE_ART_NONE;
+    if (want == page_art && (!pic || strcmp(page_art_id, page_pi) == 0)) return;
+    if (pic) {
+        lv_image_set_src(page_art_img, pic);
+        lv_obj_clear_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
+        strlcpy(page_art_id, page_pi, sizeof(page_art_id));
+    } else {
+        lv_obj_add_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
+        page_art_id[0] = '\0';
+    }
+    if ((want == PAGE_ART_NONE) != (page_art == PAGE_ART_NONE)) page_art_layout(want != PAGE_ART_NONE);
+    page_art = want;
+}
+
+// The page's pi: an id art.cpp will fetch, or none. One it will not fetch
+// counts as none and is logged once.
+static void page_art_set(const char* pi) {
+    const bool ok = pi && art_id_ok(pi);
+    if (pi && *pi && !ok) {
+        if (!page_pi_warned) Serial.println("page: pi is not 8 to 16 of a to z and 0 to 9, no art");
+        page_pi_warned = true;
+    } else {
+        page_pi_warned = false;
+    }
+    const char* id = ok ? pi : "";
+    if (strcmp(id, page_pi) != 0) {
+        strlcpy(page_pi, id, sizeof(page_pi));
+        art_want(page_pi);
+    }
+    page_art_sync();
+}
+
+// The layout with art, worked out from the one without (init_page_overlay's
+// numbers) and L. The square, ART_PX, is the creature's size (L.idle_px, 160
+// on the 480 px boards) or half the width beside it when that is less. The
+// title sits level with the square's top and the three lines end level with
+// its bottom; on a square too short for both the lines stack under the title.
+// Makes the square and starts art.cpp at its size. No room for the band under
+// it: no art layout, the card goes without.
+static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y,
+                          int band_y, int band_h, int line0_y) {
+    page_pitch = pitch;
+    page_geom[0] = { 0, L.content_w, (int16_t)line0_y, (int16_t)band_y, (int16_t)band_h };
+
+    const int half    = (L.content_w - gap) / 2;
+    const int px      = L.idle_px < half ? L.idle_px : half;
+    const int text_x  = px + gap;
+    const int lines_h = line_h + 2 * pitch;
+    int a_line0 = px - lines_h;
+    if (a_line0 < title_h + gap) a_line0 = title_h + gap;
+    const int top_h    = a_line0 + lines_h > px ? a_line0 + lines_h : px;
+    const int a_band_y = top_h + gap;
+    const int a_band_h = bar_y - gap - a_band_y;
+    if (px <= 0 || a_band_h <= 0) {
+        Serial.println("page: no room for album art on this layout");
+        return;
+    }
+    page_geom[1] = { (int16_t)text_x, (int16_t)(L.content_w - text_x), (int16_t)a_line0,
+                     (int16_t)a_band_y, (int16_t)a_band_h };
+    // The one mini creature keeps the size it was made at: small enough for both bands.
+    if (a_band_h < page_creature_px) page_creature_px = a_band_h;
+
+    // Panel colour while empty, no border; not clickable, so a tap still lands on the page.
+    page_art_box = lv_obj_create(page_group);
+    lv_obj_set_pos(page_art_box, 0, 0);
+    lv_obj_set_size(page_art_box, px, px);
+    lv_obj_set_style_bg_color(page_art_box, COL_PANEL, 0);
+    lv_obj_set_style_bg_opa(page_art_box, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(page_art_box, 0, 0);
+    lv_obj_set_style_radius(page_art_box, 0, 0);
+    lv_obj_set_style_pad_all(page_art_box, 0, 0);
+    lv_obj_clear_flag(page_art_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(page_art_box, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(page_art_box, LV_OBJ_FLAG_HIDDEN);
+
+    page_art_img = lv_image_create(page_art_box);   // sized to its picture, which is never over px
+    lv_obj_clear_flag(page_art_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_center(page_art_img);
+    lv_obj_add_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
+
+    art_init(px);
+}
+#endif
 
 static void init_page_overlay(lv_obj_t* scr) {
     const int gap       = L.scr_h >= 300 ? 12 : 6;
@@ -811,24 +967,28 @@ static void init_page_overlay(lv_obj_t* scr) {
     lv_obj_set_style_bg_color(page_bar, COL_ACCENT, LV_PART_INDICATOR);
     lv_obj_clear_flag(page_bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
+
+#ifdef FEATURE_PICTURE
+    page_art_init(gap, title_h, line_h, pitch, bar_y, band_y, band_h, line0_y);   // the layout with art
+#endif
 }
 
 bool ui_page_visible(void) {
     return page_group && !lv_obj_has_flag(page_group, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Point the page's creature at `anim` ("" = none). splash_mini_create is one
-// instance for the program's life: made here the first time a page asks for a
-// creature, re-pointed with splash_mini_set_anim after that, never made twice.
-static void page_set_creature(const char* anim) {
-    if (strcmp(anim, page_anim) == 0) return;   // unchanged, including none to none
-    strlcpy(page_anim, anim, sizeof(page_anim));
-    lv_obj_t* c = nullptr;
-    if (*anim && page_creature_px > 0) {
-        if (!page_creature)                  c = page_creature = splash_mini_create(page_band, anim, page_creature_px);
-        else if (splash_mini_set_anim(anim)) c = page_creature;
-        if (!c) Serial.printf("page: no creature '%s'\n", anim);
-    }
+// The one mini creature (splash.cpp) pointed at `anim`: made here the first
+// time a page asks for one, re-pointed with splash_mini_set_anim after that,
+// never made twice. NULL when the table has no such name; the creature then
+// keeps what it had.
+static lv_obj_t* page_creature_at(const char* anim) {
+    if (page_creature_px <= 0) return nullptr;
+    if (!page_creature) return page_creature = splash_mini_create(page_band, anim, page_creature_px);
+    return splash_mini_set_anim(anim) ? page_creature : nullptr;
+}
+
+// Put `c` on the band, or with NULL take the creature off it.
+static void page_place_creature(lv_obj_t* c) {
     if (c) {
         lv_obj_align(c, LV_ALIGN_CENTER, 0, 0);   // its edge follows the animation's lattice
         lv_obj_clear_flag(c, LV_OBJ_FLAG_HIDDEN);
@@ -837,8 +997,68 @@ static void page_set_creature(const char* anim) {
     }
 }
 
+// On to a dance other than the one on the band, picked at random, with the
+// creature back on the band if it was away. When the table has no other dance
+// the one there stays.
+static void dance_next(void) {
+    const bool had = dance_cur >= 0;
+    int k = (int)(esp_random() % (uint32_t)(DANCE_COUNT - (had ? 1 : 0)));
+    if (had && k >= dance_cur) k++;   // even odds for each of the others
+    lv_obj_t* c = nullptr;
+    for (int i = 0; i < DANCE_COUNT && !c; i++) {
+        const int n = (k + i) % DANCE_COUNT;
+        if (n == dance_cur) continue;
+        c = page_creature_at(DANCE_NAMES[n]);
+        if (c) dance_cur = (int8_t)n;
+    }
+    if (!c && had) c = page_creature;
+    dance_away = false;
+    page_place_creature(c);
+    if (c) Serial.printf("page: dance %s\n", DANCE_NAMES[dance_cur]);
+}
+
+// Count the dance clock down by the time the page has been on top since the
+// last call; at zero the creature steps away (one time in four) or dances on.
+static void dance_tick(void) {
+    const uint32_t now = lv_tick_get();
+    const uint32_t dt  = now - dance_last;
+    dance_last = now;
+    if (dt < dance_left) {
+        dance_left -= dt;
+        return;
+    }
+    if (!dance_away && dance_cur >= 0 && esp_random() % 4 == 0) {
+        page_place_creature(nullptr);
+        dance_away = true;
+        dance_left = random_ms(DANCE_AWAY_MIN_MS, DANCE_AWAY_MAX_MS);
+        Serial.printf("page: dancer away %lu ms\n", (unsigned long)dance_left);
+        return;
+    }
+    dance_next();
+    dance_left = random_ms(DANCE_MIN_MS, DANCE_MAX_MS);
+}
+
+// Point the page's creature at `anim`: a creature name (that one, fixed),
+// "dance", or "" for none.
+static void page_set_creature(const char* anim) {
+    if (strcmp(anim, page_anim) == 0) return;   // unchanged, including none to none and a dance going on
+    strlcpy(page_anim, anim, sizeof(page_anim));
+    dance_on   = strcmp(anim, "dance") == 0;
+    dance_cur  = -1;
+    dance_away = false;
+    if (dance_on) {
+        dance_next();
+        dance_left = random_ms(DANCE_MIN_MS, DANCE_MAX_MS);
+        dance_last = lv_tick_get();
+        return;
+    }
+    lv_obj_t* c = *anim ? page_creature_at(anim) : nullptr;
+    if (*anim && !c) Serial.printf("page: no creature '%s'\n", anim);
+    page_place_creature(c);
+}
+
 void ui_page_show(const char* pg, const char* title, const char* l1, const char* l2,
-                  const char* l3, int pp, const char* anim) {
+                  const char* l3, int pp, const char* anim, const char* pi) {
     if (!page_group || !pg || !*pg) return;
     char name[PAGE_NAME_MAX + 1];
     char t[PAGE_TITLE_MAX + 1];
@@ -851,15 +1071,9 @@ void ui_page_show(const char* pg, const char* title, const char* l1, const char*
     copy_text(a, sizeof(a), anim, false);
 
     const bool same_page = strcmp(name, page_name) == 0;
-    if (page_dismissed) {
-        // Left by a tap (page_click_cb): a send that moves only the progress stays out.
-        if (same_page && strcmp(t, page_txt_title) == 0 && strcmp(a, page_anim) == 0 &&
-            strcmp(lines[0], page_txt_line[0]) == 0 && strcmp(lines[1], page_txt_line[1]) == 0 &&
-            strcmp(lines[2], page_txt_line[2]) == 0) {
-            return;
-        }
-        page_dismissed = false;
-    }
+    // Left by the cycle or a tap: the same page's updates, whatever they change,
+    // land out of sight; a page with another pg comes up whole.
+    if (!same_page) page_hidden = false;
     // A new page (or one coming back) is shown whole; the same page again is an
     // update in place: no wake, no bar sweep.
     const bool appearing = !ui_page_visible() || !same_page;
@@ -880,7 +1094,13 @@ void ui_page_show(const char* pg, const char* title, const char* l1, const char*
     }
 
     page_set_creature(a);
+#ifdef FEATURE_PICTURE
+    page_art_set(pi);           // the picture and the layout with it, in sight or not
+#else
+    (void)pi;                   // no Wi-Fi on this board: the card never has art
+#endif
 
+    if (page_hidden) return;    // out of sight: no show, no wake, the panel keeps its own timeout
     if (appearing) {
         lv_obj_clear_flag(page_group, LV_OBJ_FLAG_HIDDEN);
         // Direct-draw boards paint the creature straight onto the panel, over
@@ -894,15 +1114,45 @@ void ui_page_show(const char* pg, const char* title, const char* l1, const char*
 }
 
 void ui_page_clear(void) {
-    page_dismissed = false;   // a clear ends a tap's leave too: the next send shows the page
-    if (!ui_page_visible()) {
-        page_name[0] = '\0';
-        return;
-    }
-    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
-    Serial.printf("page: %s cleared\n", page_name);
+    if (page_name[0]) Serial.printf("page: %s cleared\n", page_name);
     page_name[0] = '\0';
+    page_hidden = false;        // a clear ends a leave too: the next page shows
+    page_set_creature("");      // and starts with no creature and no dance
+#ifdef FEATURE_PICTURE
+    page_art_set("");           // and no picture
+#endif
+    if (!ui_page_visible()) return;
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
     ui_show_screen(current_screen);   // the splash comes back unless a notification or a prompt still covers it
+}
+
+bool ui_page_live(void) {
+    return page_name[0] != '\0';
+}
+
+void ui_page_leave(void) {
+    if (ui_page_visible()) {
+        lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+        page_hidden = true;
+        Serial.printf("page: %s out of sight, still live\n", page_name);
+    }
+    ui_show_screen(SCREEN_SPLASH);   // the creature, unless a notification or a prompt covers it
+}
+
+void ui_cycle_screens(void) {
+    if (ui_page_visible()) {
+        ui_page_leave();
+    } else if (current_screen == SCREEN_SPLASH) {
+        ui_show_screen(SCREEN_USAGE);
+    } else if (ui_page_live()) {
+        // The live page, whole, over the usage screen; its clock and creature carry on.
+        page_hidden = false;
+        lv_obj_clear_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+        splash_hide();
+        Serial.printf("page: show %s\n", page_name);
+    } else {
+        ui_show_screen(SCREEN_SPLASH);
+    }
 }
 
 static void init_battery_icons(void) {
@@ -1278,9 +1528,18 @@ static void update_view_state(void) {
 void ui_tick_anim(void) {
     approve_tick();
     notify_tick();
-    // The page's creature moves only while the page is on top; under a
-    // notification or a prompt it would redraw for nothing.
-    if (ui_page_visible() && !ui_notify_visible() && !ui_approve_visible()) splash_mini_tick();
+#ifdef FEATURE_PICTURE
+    page_art_sync();   // a picture that has come in; the card lays out around it, in sight or not
+#endif
+    // The page's creature moves, and its dance changes, only while the page is
+    // on top; under a notification or a prompt it would redraw for nothing, and
+    // out of sight the dance clock stands still.
+    if (ui_page_visible() && !ui_notify_visible() && !ui_approve_visible()) {
+        if (dance_on) dance_tick();
+        splash_mini_tick();
+    } else {
+        dance_last = lv_tick_get();
+    }
 
     // The usage tag goes stale with its panels (idle / pairing views); the
     // splash badge has no such view behind it, so drop it once the host goes
@@ -1367,10 +1626,11 @@ static void apply_battery_visibility(void) {
     else                                  lv_obj_clear_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
 }
 
+// A tap on the creature or the usage screen: the next screen of the cycle
+// (a tap on the page has its own, page_click_cb, to the same end).
 static void global_click_cb(lv_event_t* e) {
     (void)e;
-    if (current_screen == SCREEN_SPLASH) ui_show_screen(prev_non_splash_screen);
-    else                                  ui_show_screen(SCREEN_SPLASH);
+    ui_cycle_screens();
 }
 
 void ui_show_screen(screen_t screen) {

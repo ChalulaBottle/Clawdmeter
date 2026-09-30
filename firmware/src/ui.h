@@ -41,17 +41,29 @@ bool ui_notify_visible(void);
 
 // Page: a card the host keeps up while something is going on (a track playing).
 // A title, three lines, a progress bar (pp 0..100; hidden when pp < 0) and a
-// creature (anim, a splash animation name; none when ""). Above the screens,
-// below a notification and an approve prompt. Sending the same pg again updates
-// it in place. PWR and aux on a page are for the host (main.cpp; with no host
-// listening they leave it). A tap leaves it until the same pg comes with other
-// text or another creature, or another pg comes; a new progress alone stays
-// out. ui_page_clear takes it down and ends a tap's leave.
+// creature (anim: a splash animation name, "dance" for a changing dance, "" for
+// none). Above the screens, below a notification and an approve prompt. Sending
+// the same pg again updates it in place. Left with the screen cycle or a tap, it
+// goes out of sight but stays live: its updates land unseen, and it comes back
+// on the next cycle or whole when a page with another pg arrives. Buttons on it
+// are main.cpp's. ui_page_clear takes it down, in sight or not.
+// pi names the card's album art, 8 to 16 characters of a to z and 0 to 9, ""
+// for none. A board built with FEATURE_PICTURE fetches it over Wi-Fi (art.h) and
+// lays the card out around it; every other board ignores it.
 void ui_page_show(const char* pg, const char* title, const char* l1, const char* l2,
-                  const char* l3, int pp, const char* anim);
+                  const char* l3, int pp, const char* anim, const char* pi);
 void ui_page_clear(void);
 bool ui_page_visible(void);
+// A page is up, in sight or left out of sight.
+bool ui_page_live(void);
+// Leave the page for the creature; the page stays live, out of sight.
+void ui_page_leave(void);
+
+// The screen cycle: creature, usage, the live page when there is one, creature.
+// PWR on every board, and a tap on every board with touch.
+void ui_cycle_screens(void);
 
 // What is on top right now, the "scr" of a button event: "approve", "notify",
-// "page", or the screen underneath, "splash" or "usage".
+// "page" (only while it is in sight and nothing covers it), or the screen
+// underneath, "splash" or "usage".
 const char* ui_screen_name(void);
