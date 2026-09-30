@@ -28,6 +28,11 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   (timeout is 30 min). Suspect: RGB panel refresh stall under BLE traffic + 5 s page updates (the plan's
   known risk; bounce buffer). The reflash reset cleared it. Operator's answer (solid black vs frozen)
   pending; if it recurs, capture `iox` + `fbshot` first, then look at the bounce-buffer path in display.cpp.
+- **2026-09-30 ~00:20:** MCP wired (`claude mcp add --scope user labdaemon`, status Connected; tools
+  lab_list, lab_state, lab_do, lab_notify appear in new Claude Code sessions). Engine autostart on
+  (HKCU Run `LabDaemonEngine`). Increment 2 (music card v2) building in workflow wf_f62c2d86-d89.
+  `echo mushroom b` is bench-only (benchOnly flag, e46e25e); the 4 inch board still runs the table
+  that includes it (01c60d8) until the next flash.
 - **Not yet proven:** the btn TX message (needs a press on the board while a page is up: expect
   `BLE: btn pwr on page` on serial, `events/<ns>.json` in the relay dir, one "routed" or "dropped" line in
   engine.log); Spotify login (needs the operator's client id in `spotify.client`); the second board
