@@ -11,6 +11,10 @@
 > pio run -d firmware -e waveshare_lcd_4 -t upload --upload-port COM11
 > ```
 >
+> If `pio run` fails within seconds with "Failed to install Python dependencies", set `$env:PLATFORMIO_OFFLINE = "1"` in the same PowerShell before running pio.
+>
+> The board advertises as ECHO_LabDaemon; the Windows tray daemon links every bonded board named ECHO_LabDaemon, ECHO_MiniDaemon or Clawdmeter.
+>
 > **Creatures in the works** (drawn for the ECHO edition, benched at
 > [docs/bench/animations.html](https://chalulabottle.github.io/ECHO_LabDaemon/bench/animations.html),
 > exported with `node tools/bench_to_json.js` into `tools/echo_anims/`):
@@ -312,6 +316,12 @@ Add the hook yourself (nothing in the repo writes to your settings); `settings.j
 ```
 
 The script always answers inside 40 s, under that timeout, so the hook's timeout path (which discards the output) never runs. Try it without Claude Code: `python daemon\clawdmeter_approve.py --test Bash "git push origin main"` puts a sample prompt on the device and prints what the hook would return; `ask` / `ok` / `askclr` over the serial console exercise the overlay with no host at all. The daemon must have been started from this code (restart the tray after updating).
+
+The same serial console pokes the two host cards with no host: `msg <text>` shows a notification with a body only, `msg <title>|<text>` one with a title, and `msgclr` clears it. `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>` shows the generic card page: a title, three lines, progress 0..100 (empty for no bar) and an optional creature name such as `echo headphones`; trailing fields may be left off, and `pageclr` takes it down.
+
+### Notifications, pages and button reports (ECHO edition)
+
+Two more host messages ride the same RX characteristic as approve: a notification `{"nt": title, "nb": body, "nx": seconds}` and a page `{"pg": name, "pt": title, "p1", "p2", "p3": lines, "pp": progress, "pa": creature}`; an empty `nt` and `nb`, or an empty `pg`, clears them. The board reports PWR and aux presses on TX as `{"btn": "pwr"|"aux", "scr": "splash"|"usage"|"approve"|"notify"|"page"}`, with `scr` read before the press acts. A page from the host lapses after 90 s of host silence, so a tray that quit never leaves one stuck. On a page, PWR and aux send the press and do nothing locally while a host is listening; with no host they take the page down. A tap dismisses a page until its text changes. The host side is [LabDaemon Engine](https://github.com/ChalulaBottle/labdaemon-engine) (private), which writes `notify.json` and `page.json` into `%LOCALAPPDATA%\Clawdmeter` for the tray daemon to relay, the same way it relays `approve.json`.
 
 ### Make the creature follow Claude
 
