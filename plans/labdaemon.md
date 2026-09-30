@@ -1,63 +1,90 @@
-# labdaemon: our own control layer behind ECHO_MiniDaemon
+# LabDaemon Engine: our own control layer behind ECHO_LabDaemon
 
 Operator (2026-09-29 ~20:25): "Lets write our own for this entire build, we will add other things this
-labdaemon can control over time." Asked in the same thread: Spotify controller, notifications/messages on
-the panel, PWR as a second button (done, fc81354), connect automatically (done, HKCU Run restored).
+labdaemon can control over time." Same thread: Spotify controller, notifications/messages on the panel,
+PWR as a second button (done, fc81354), connect automatically (done, HKCU Run restored), ultracode it,
+test the hooks, and it must run on the smaller board too (both plugged in, both flashed).
 
 ## RESUME STATE
 
-- **Status:** PLAN ONLY, nothing built. Waiting on operator answers (below).
-- **Exact next action:** operator answers the open decisions; then build increment 1 (core + notify).
-- **Shipped around it:** two buttons fc81354 (PWR GPIO16 short = stats/approve, BOOT short = aux,
-  BOOT hold = pair); plan note 59f15bd; tray autostart re-registered (HKCU Run "Clawdmeter").
-- **Key files today:** `daemon/claude_usage_daemon_windows.py` (owns the BLE link, 60 s tick, 1 s watch
-  tick), `daemon/clawdmeter_approve.py` (the approve round trip this reuses), `firmware/src/main.cpp`
-  (`handle_approve_msg`, button block), `firmware/src/ui.cpp` (`ui_approve_show`).
-- **Decisions (operator, 2026-09-29 ~20:30):** Spotify **Premium** (full control). PC side is named
-  **LabDaemon Engine**, own **private repo** `ChalulaBottle/labdaemon-engine`. The board and everything
-  public is renamed **ECHO_LabDaemon** (repo, Pages, README, Bluetooth name, tray), same scope as the
-  MiniDaemon rename (23c214a); the daemon keeps accepting the older bond names. Order: rename, then
-  engine repo + increment 1.
+- **Status:** BUILDING (ultracode phase 2 launched 2026-09-29 ~21:40). Phase 1 (understand) done:
+  workflow wf_0d1fbc33-2f9, 7 agents, journal in the session's subagents/workflows dir.
+- **Exact next action:** when the build workflow returns: read its report, flash lcd_4 (COM11) and the
+  second board (identify it first from its boot banner "Dashboard ready (<BOARD_NAME>, WxH)"; last seen
+  as COM12, USB serial D4:05:92:B7:8B:E0; both boards are VID_303A PID_1001 so PnP cannot tell them
+  apart), restart the tray, run `labdaemon notify "hello"` and capture the panel.
+- **Decisions (operator, 2026-09-29 ~20:30):** Spotify **Premium**. PC side = **LabDaemon Engine**, own
+  private repo `ChalulaBottle/labdaemon-engine`, local `Downloads\Temp LabDaemon Engine`. Board and
+  everything public renamed **ECHO_LabDaemon** (done, 7225102; old URL redirects; no re-pair needed).
+- **Hooks test:** the creature hooks are ALREADY installed in `~/.claude/settings.json` (all 11 events)
+  and proven live 2026-09-29 21:08 to 21:24: panel showed "ultracode work" with the agents badge while
+  the understand workflow ran (capture in the session scratchpad `ultracode.png`). The only hook not
+  installed is **PermissionRequest** (approve on device); operator gated, asked.
+- **Shipped around it:** two buttons fc81354; rename 7225102; engine repo created (empty until the
+  build lane's first commit).
+- **Gotchas found by the critic:** (1) `parse_json` accepts ANY JSON object, so a notify or page
+  message reaching a board on OLD firmware renders as a zeroed usage screen: flash both boards before
+  the engine sends anything, and tighten `parse_json` to require `"s"`. (2) On every board except lcd_4,
+  BOOT is HID Space (types into the PC) and `board_aux_pressed` is the weak default; dismiss there is
+  PWR or a touch tap. (3) The daemon serves ONE board today (first bonded match, one client, singleton
+  tray, global relay files). (4) The notify overlay must be created BEFORE the approve overlay (z-order)
+  and added to the `ui_show_screen` splash guard. (5) Idle mini creature asks for "expression sleep",
+  which no longer exists; `splash_mini_create` is a single static instance.
 
-## Shape
+## Protocol (settled 2026-09-29 ~21:35; every lane uses these names verbatim)
 
-**One controller registry, three faces.** Every integration is a controller module with the same small
-contract; the board, Claude and the command line all reach the same controllers.
+**Host to board, each its own BLE message, never merged into usage.** Firmware dispatch order:
+`handle_approve_msg || handle_notify_msg || handle_page_msg || parse_json(requires "s")`, then ack.
 
-```
-controllers/<name>.py
-  NAME, TITLE
-  def state() -> dict          # what a page shows (small, flat, board-safe)
-  ACTIONS = {"next": fn, ...}  # named verbs, no free-form code
-  def poll(now) -> bool        # optional; True when state changed
-```
+| Message | Fields | Clear |
+|---|---|---|
+| approve (exists) | `q` id, `qt` tool, `qs` text, `qx` seconds left | `{"q":""}` |
+| notify | `nt` title (≤23), `nb` body (≤96), `nx` seconds (default 8) | `{"nt":"","nb":""}` |
+| page | `pg` page name (≤15), `pt` title (≤23), `p1` `p2` `p3` lines (≤40 each), `pp` progress 0..100 or -1, `pa` creature name or "" | `{"pg":""}` |
 
-- **Core (`labdaemon`)**: loads controllers, runs their polls, keeps the last state, runs actions, and
-  serves a loopback-only HTTP API (`127.0.0.1`, random token in `%LOCALAPPDATA%\Clawdmeter\lab.token`):
-  `GET /controllers`, `GET /state/<name>`, `POST /do/<name>/<action>`, `POST /notify`.
-- **Face 1, the board**: the existing tray daemon keeps the BLE link (no second radio client). It asks the
-  core for the active page each tick and pushes it as its own BLE message (same pattern as approve's
-  `q`): `{"pg":"music","f":{...}}`. Button presses come back on TX as `{"btn":"aux"|"pwr","pg":...}` and
-  the daemon maps them to that page's actions. The board renders, the host decides.
-- **Face 2, Claude**: our own MCP server `labdaemon_mcp.py` (stdio) with three tools, `lab_list`,
-  `lab_state`, `lab_do`, all calling the loopback API. Registered in Claude Code settings only with the
-  operator's yes.
-- **Face 3, CLI**: `python -m labdaemon do spotify next`, `labdaemon notify "text"` (hooks and scripts).
+**Board to host on TX:** existing `{"approve":"<id>"}` plus `{"btn":"pwr"|"aux","scr":"splash"|"usage"|"approve"|"notify"|"page"}`
+(`scr` read BEFORE the local action changes it; wake-swallowed presses send nothing).
+
+**Local button rules (board), in order:** wake swallow → approve accept → notify clear → page: PWR and
+aux do nothing locally (host decides) → existing behaviour (lcd_4: PWR stats toggle, aux next creature /
+brightness; other boards: PWR next creature / brightness, touch tap toggles screens). Touch tap also
+clears notify and leaves a page. A page is a generic card screen (title, three lines, progress bar, a mini
+creature via `splash_mini_create` when `pa` is set); it is the first page-registry entry after usage.
+
+**Host relay (tray daemon), file drops in `%LOCALAPPDATA%\Clawdmeter\`, same atomic pattern as approve.json:**
+`notify.json` `{title, body, secs, expires}`, `page.json` `{pg, pt, p1, p2, p3, pp, pa, expires}`; button
+TX lands as `events/<ns>.json` `{"btn","scr","addr","ts"}`. No HTTP inside the daemon loop.
+
+**Multi-board:** the daemon connects to EVERY bonded board whose FriendlyName is in DEVICE_NAMES (one
+`connect_and_run` per address, gathered), mirrors every message to all of them, accepts decisions and
+button events from any, heartbeat `connected` = any link up. `CLAWDMETER_BLE_ADDRESS` still pins one.
+
+**Engine (`labdaemon_engine`, Python 3.11, its own .venv):**
+- `core.py`: controller registry, 1 s loop (polls, tails `events/`, routes `btn` to the active page's
+  controller), writes notify.json / page.json, loopback HTTP API on `127.0.0.1:8976` with a random
+  token in `%LOCALAPPDATA%\Clawdmeter\lab.token` (`GET /controllers`, `GET /state/<name>`,
+  `POST /do/<name>/<action>`, `POST /notify`, `POST /page/off`).
+- Controller contract: `NAME`, `TITLE`, `state() -> dict`, `ACTIONS = {"verb": fn}`, optional
+  `poll(now) -> bool`, optional `page() -> dict|None` (the card to show while active), optional
+  `on_button(btn, scr)`. Named verbs only; nothing takes code or shell.
+- `controllers/notify.py`: `show(title, body, secs)`.
+- `controllers/spotify.py`: Web API, Authorization Code + PKCE, client id only (operator creates the
+  app; redirect `http://127.0.0.1:8975/callback`, Spotify refuses `localhost`), refresh token
+  DPAPI-encrypted (`ctypes` CryptProtectData) in `%LOCALAPPDATA%\Clawdmeter\spotify.tok`; state = track,
+  artist, playing, device, progress, duration; actions play_pause, next, previous, volume_up,
+  volume_down; page while playing (creature `echo headphones`, progress bar); buttons on the page:
+  aux = play_pause, pwr = next; page clears 30 s after playback stops or on `page/off`.
+- Faces: CLI `python -m labdaemon_engine <serve|notify|do|state|spotify login|page off>`; MCP
+  `labdaemon_mcp.py` (stdio, `mcp` package: `lab_list`, `lab_state`, `lab_do`, `lab_notify`), settings
+  entry operator gated. Autostart: HKCU Run value `LabDaemonEngine` (base pythonw), same helper pattern.
 
 ## Increments (each ends flashed, captured, committed, pushed)
 
-1. **Core + notify controller + board overlay.** `ui_notify_show(title, text, secs)` = `ui_approve_show`
-   without the button, self-expiring, either key dismisses. BLE message `{"nt","nx","ns"}`. Serial poke
-   `msg <text>`. Proof: `labdaemon notify "hello"` shows on the panel, fbshot captured.
-2. **Spotify controller.** Web API, Authorization Code + PKCE, operator creates the app at
-   developer.spotify.com (client id only, no secret), redirect `http://127.0.0.1:8975/callback`
-   (Spotify refuses `localhost`). Refresh token stored DPAPI-encrypted on the PC, never on the board.
-   state = track, artist, is_playing, device name, progress; actions = play_pause, next, previous,
-   volume_up, volume_down. Works on whichever device is active (PC or phone).
-3. **Music page on the board.** Track + artist + progress bar + ECHO headphones creature. Shown while
-   something plays and the operator steps to it; on it BOOT = play/pause, PWR = next (PWR still leaves
-   the page on a double tap or after the page times out; settle on device).
-4. **MCP face.** `labdaemon_mcp.py`, then the settings entry (operator gated).
+1. **Firmware:** notify overlay + generic page + button TX + tightened parse_json, all boards, plus serial
+   pokes `msg <text>`, `msgclr`, `page <title>|<l1>|<l2>|<l3>|<pp>`, `pageclr`, and `btn` logging.
+2. **Daemon:** notify.json / page.json relay, events/ writer, multi-board mirror, tests in conftest.
+3. **Engine:** core + notify + spotify + CLI + MCP + tests + README + runbooks (human and agent) + docs/media.
+4. **On device:** flash both boards, `labdaemon notify "hello"`, Spotify login, a track playing, captures.
 5. **Later controllers (queue, operator orders them):** weather, countdown timers, CTF board, fleet /
    THE DOCK, Home Assistant, buzzer + backlight as outputs. Each is one file in `controllers/`.
 
@@ -66,5 +93,5 @@ controllers/<name>.py
 - Board renders and reports, host decides (waveshare-lcd-4-port.md § Direction).
 - No secrets on the board or in the repo; tokens under `%LOCALAPPDATA%\Clawdmeter\`, DPAPI where possible.
 - API binds loopback only; the MCP talks to it with the token.
-- Actions are named verbs only; nothing takes code or shell from a page, a payload or a tool call.
-- Page registry in firmware arrives with increment 3 (music is the first page after usage), not before.
+- No `#ifdef BOARD_*` in shared firmware; new capability flags are trailing BoardCaps fields.
+- No arrows, no decorative icons, no coloured borders, no slash-dash overkill in any UI or doc.
