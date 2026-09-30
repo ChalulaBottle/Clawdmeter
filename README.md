@@ -1,10 +1,10 @@
-> ### ECHO_MiniDaemon
+> ### ECHO_LabDaemon
 >
 > **Created and designed by Digital Orukami** for **[ECHO Club](https://echoclub.org)**, inspired by
 > [Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter). It runs on
 > the **Waveshare ESP32-S3-Touch-LCD-4** (4 inch, 480×480, RGB parallel,
 > GT911 touch, CH32V003 or TCA9554 expander detected at boot). Landing page:
-> **[chalulabottle.github.io/ECHO_MiniDaemon](https://chalulabottle.github.io/ECHO_MiniDaemon/)**.
+> **[chalulabottle.github.io/ECHO_LabDaemon](https://chalulabottle.github.io/ECHO_LabDaemon/)**.
 > Port plan and state: [`plans/waveshare-lcd-4-port.md`](plans/waveshare-lcd-4-port.md).
 >
 > ```
@@ -12,7 +12,7 @@
 > ```
 >
 > **Creatures in the works** (drawn for the ECHO edition, benched at
-> [docs/bench/animations.html](https://chalulabottle.github.io/ECHO_MiniDaemon/bench/animations.html),
+> [docs/bench/animations.html](https://chalulabottle.github.io/ECHO_LabDaemon/bench/animations.html),
 > exported with `node tools/bench_to_json.js` into `tools/echo_anims/`):
 >
 > | Stock Clawd · idle blink | Clawd · coffee (on device) | ECHO creature · idle (on device) |
@@ -59,7 +59,7 @@
 > modes (opus enter, opus work, ultracode enter, ultracode work, agents split, agents join).
 > 52 animations in the firmware table as of 2026-09-28; every one plays by name from the host (`a` field).
 >
-> Full progress board with states: [chalulabottle.github.io/ECHO_MiniDaemon#creatures](https://chalulabottle.github.io/ECHO_MiniDaemon/#creatures).
+> Full progress board with states: [chalulabottle.github.io/ECHO_LabDaemon#creatures](https://chalulabottle.github.io/ECHO_LabDaemon/#creatures).
 >
 > The Clawdmeter itself — the device, the firmware, the board ports, the LVGL
 > work, the BLE service, the animation engine — is

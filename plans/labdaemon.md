@@ -13,11 +13,11 @@ the panel, PWR as a second button (done, fc81354), connect automatically (done, 
 - **Key files today:** `daemon/claude_usage_daemon_windows.py` (owns the BLE link, 60 s tick, 1 s watch
   tick), `daemon/clawdmeter_approve.py` (the approve round trip this reuses), `firmware/src/main.cpp`
   (`handle_approve_msg`, button block), `firmware/src/ui.cpp` (`ui_approve_show`).
-- **Open decisions (operator):**
-  1. Spotify Premium? (control endpoints need it; now playing works on free)
-  2. Where labdaemon lives: its own private repo `ChalulaBottle/labdaemon` (every piece gets a repo)
-     or a `labdaemon/` folder inside ECHO_MiniDaemon.
-  3. Name check: "labdaemon" for the host side, "ECHO_MiniDaemon" stays the board.
+- **Decisions (operator, 2026-09-29 ~20:30):** Spotify **Premium** (full control). PC side is named
+  **LabDaemon Engine**, own **private repo** `ChalulaBottle/labdaemon-engine`. The board and everything
+  public is renamed **ECHO_LabDaemon** (repo, Pages, README, Bluetooth name, tray), same scope as the
+  MiniDaemon rename (23c214a); the daemon keeps accepting the older bond names. Order: rename, then
+  engine repo + increment 1.
 
 ## Shape
 

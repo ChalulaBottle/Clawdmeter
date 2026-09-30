@@ -26,10 +26,10 @@ from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 
-DEVICE_NAME = "ECHO_MiniDaemon"
-# The name the board advertised before the rename; a Windows bond made then keeps it as the
-# FriendlyName until the next pairing, so the bonded lookup accepts both.
-DEVICE_NAMES = (DEVICE_NAME, "Clawdmeter")
+DEVICE_NAME = "ECHO_LabDaemon"
+# The names the board advertised before the renames; a Windows bond made then keeps that one as
+# the FriendlyName until the next pairing, so the bonded lookup accepts all of them.
+DEVICE_NAMES = (DEVICE_NAME, "ECHO_MiniDaemon", "Clawdmeter")
 SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
 RX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000002"
 TX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000003"   # device -> host: ack/nack, approve answers

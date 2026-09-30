@@ -22,7 +22,7 @@
   next animation, on usage = brightness. Splash<->usage = tap (global_click_cb) or the automatic
   peek (usage for 60 s every 5 min). With touch dead, the peek is the only route to the numbers.
   Upstream's HID Space (BOOT) is disabled on this board while BOOT plays PWR; revisit when touch works.
-- **Sites, 2026-09-27 ~23:25:** fork landing LIVE at https://chalulabottle.github.io/ECHO_MiniDaemon/
+- **Sites, 2026-09-27 ~23:25:** fork landing LIVE at https://chalulabottle.github.io/ECHO_LabDaemon/
   (GitHub Pages, branch `port/waveshare-lcd-4`, path `/docs`; repo description + homepage set;
   README opens with the Digital Orukami fork box). ECHO site: `site/clawdmeter.html` + `.pj` card
   + build-status row committed as 43dfa6b on ECHOCLUB_Site `main`, **NOT pushed** (deploy gate;
@@ -84,10 +84,10 @@
 
 Waveshare's own V4 factory firmware says `Touch not found` and crash-loops, beeping on every boot
 (evidence: `docs/hardware/factory-firmware-touch-not-found.log`). The operator unplugged it mid way
-through re-flashing ECHO_MiniDaemon, so the upload failed. **Next action:** hold BOOT while plugging
+through re-flashing ECHO_LabDaemon, so the upload failed. **Next action:** hold BOOT while plugging
 in USB (download mode: the factory app does not run, no beeping), then from `firmware/`:
 `pio run -e waveshare_lcd_4 -t upload`. The factory image wrote the whole flash from 0x0 including NVS,
-so the Bluetooth bond is gone: remove "ECHO_MiniDaemon"/"Clawdmeter" in Windows Bluetooth settings and
+so the Bluetooth bond is gone: remove "ECHO_LabDaemon"/"Clawdmeter" in Windows Bluetooth settings and
 pair again, then restart the tray. A research agent was looking for similar GT911 failures when the
 session paused; its answer does not change the verdict (vendor firmware fails too) but may list a
 last trick to try.

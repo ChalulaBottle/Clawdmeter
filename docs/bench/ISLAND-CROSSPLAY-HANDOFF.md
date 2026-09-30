@@ -5,7 +5,7 @@ reuse everything below as is. Copy the JS modules, do not fork them; they are de
 where randomness matters (no `Math.random`), and one source feeds the device, the site and the GIFs.
 This note only says what exists and where. Nothing here touches your code.
 
-## The creature system (repo `ChalulaBottle/ECHO_MiniDaemon`, branch `port/waveshare-lcd-4`, local `Temp Clawdmeter`)
+## The creature system (repo `ChalulaBottle/ECHO_LabDaemon`, branch `port/waveshare-lcd-4`, local `Temp Clawdmeter`)
 
 Same lattice as yours: 20x20 claudepix cells, integer scaled, `image-rendering: pixelated`. Values are
 palette indices, 0 = transparent, at most 10 colours per animation, frames carry a hold in ms. An
@@ -26,7 +26,7 @@ frames are then size x size. Read the lattice from `size` (absent means 20), nev
 - `docs/bench/stock_anims.js`: the stock claudepix movements embedded as data (three colour), so the
   file works over `file://`.
 - `docs/bench/animations.html`: the live bench, every creature side by side, one master clock.
-  Open it to see any animation at speed: https://chalulabottle.github.io/ECHO_MiniDaemon/bench/animations.html
+  Open it to see any animation at speed: https://chalulabottle.github.io/ECHO_LabDaemon/bench/animations.html
 
 **The ECHO creature** (`echoBase` in anims.js): Clawd's silhouette in ECHO's tokens. Palette
 `['transparent', '#17836f' body, '#06090b' eyes, '#35e0c0' visor, '#6fe9ff' ping, '#0f5a4c' feet,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>What can attach</title>
-<meta name="description" content="Everything that can attach to the ECHO_MiniDaemon hub (Waveshare ESP32-S3-Touch-LCD-4 V4): every physical path, 76 parts and satellites with difficulty and the real catch, passive scanning from the hub, and how other projects compile in as modules.">
+<meta name="description" content="Everything that can attach to the ECHO_LabDaemon hub (Waveshare ESP32-S3-Touch-LCD-4 V4): every physical path, 76 parts and satellites with difficulty and the real catch, passive scanning from the hub, and how other projects compile in as modules.">
 <style>
 :root{
   --echo:#35e0c0;--echo-deep:#17836f;--ping:#6fe9ff;--warn:#e0b25a;--alert:#e0665a;
@@ -105,12 +105,12 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
 
 <section class="band dark hero">
   <main>
-    <p class="kick">ECHO · ECHO_MiniDaemon · The hub</p>
+    <p class="kick">ECHO · ECHO_LabDaemon · The hub</p>
     <h1>What can attach to this device</h1>
     <p class="lede">The Waveshare ESP32-S3-Touch-LCD-4, revision V4, has no free ESP32 GPIO: the RGB panel, the buses and the octal PSRAM take every pin. New hardware arrives through the 10 way H4 terminal (VIN, RS485, CAN and a level shifted I2C header), the TF slot, USB-C, the battery connectors or the 2.4 GHz radio. Most sensors plug into the I2C header; UART parts, audio, IR and sub GHz radios live on a satellite or the LAN host, which keeps to the project rule that the board renders and reports and the host decides. Difficulty means: plug in (wire it and use a stock library), driver (firmware or build work on the hub), satellite (it runs on another board or the host and the hub shows the result), not on this board (a stock V4 cannot carry it; the note says what would change that). Board facts were checked against the V4.0 schematic and Waveshare's V4 code, and several wiki claims turned out to describe V1 to V3. Before wiring anything or inserting a card, read the first six caveats.</p>
     <div class="erow">
       <a class="btn primary cdk cdk-flash" href="index.html">Back to the project</a>
-      <a class="btn cdk cdk-flash" href="https://github.com/ChalulaBottle/ECHO_MiniDaemon" target="_blank" rel="noopener noreferrer">On GitHub</a>
+      <a class="btn cdk cdk-flash" href="https://github.com/ChalulaBottle/ECHO_LabDaemon" target="_blank" rel="noopener noreferrer">On GitHub</a>
     </div>
     <div class="strip">
       <div class="count"><div class="fig">11</div><div class="cap">ways in: headers, slots, radio</div></div>
@@ -1161,7 +1161,7 @@ const Module* const kModules[] = {
 <footer>
   <main>
     <p class="kick">Credit</p>
-    <p>ECHO_MiniDaemon is created and designed by Digital Orukami, inspired by Clawdmeter by Hermann Björgvin. Board documentation, schematic and reference code from Waveshare; no licence is granted beyond what upstream grants. Research compiled 2026-09-29 by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
+    <p>ECHO_LabDaemon is created and designed by Digital Orukami, inspired by Clawdmeter by Hermann Björgvin. Board documentation, schematic and reference code from Waveshare; no licence is granted beyond what upstream grants. Research compiled 2026-09-29 by Digital Orukami with Claude; derived figures are marked as such in the text and are not bench measurements.</p>
   </main>
 </footer>
 </body>
