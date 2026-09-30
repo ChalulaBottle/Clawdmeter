@@ -124,12 +124,85 @@ static bool handle_approve_msg(const char* json) {
     return true;
 }
 
+// Notification from the host (LabDaemon Engine, relayed by the tray). Its own
+// message, like approve (plans/labdaemon.md, "Protocol"):
+//   {"nt":"Build finished","nb":"fox-drama: 3 files changed","nx":8}   show (nx = seconds, default 8)
+//   {"nt":"","nb":""}                                                   clear
+// Returns true when the message was one of these.
+static bool handle_notify_msg(const char* json) {
+    if (!strstr(json, "\"nt\"")) return false;   // cheap gate: only a notification carries "nt"
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["nt"].is<const char*>() || !doc["s"].isNull()) return false;
+    const char* title = doc["nt"] | "";
+    const char* text  = doc["nb"] | "";
+    if (!*title && !*text) {
+        ui_notify_clear();
+        return true;
+    }
+    // Any number; absent or 0 = the default. Clamped before the cast (a float
+    // beyond int range has no defined conversion); a day is more than enough.
+    const float secs = doc["nx"] | 0.0f;
+    ui_notify_show(title, text, secs <= 0 ? 0 : secs >= 86400.0f ? 86400 : (int)(secs + 0.5f));
+    return true;
+}
+
+// True while the page on the panel came from the host; a serial poke's page has
+// no host behind it (see host_page_tick).
+static bool page_from_host = false;
+
+// Page from the host: a card it keeps up while something is going on.
+//   {"pg":"spotify","pt":"Now playing","p1":"...","p2":"...","p3":"...","pp":42,"pa":"echo headphones"}
+//   {"pg":""}                                                           clear
+// pp = progress 0..100 or -1 (no bar), pa = creature name or "" (none).
+// Returns true when the message was one of these.
+static bool handle_page_msg(const char* json) {
+    if (!strstr(json, "\"pg\"")) return false;   // cheap gate: only a page carries "pg"
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["pg"].is<const char*>() || !doc["s"].isNull()) return false;
+    const char* pg = doc["pg"] | "";
+    if (!*pg) {
+        ui_page_clear();
+        return true;
+    }
+    const float pp = doc["pp"] | -1.0f;    // any number; absent = no bar
+    ui_page_show(pg, doc["pt"] | "", doc["p1"] | "", doc["p2"] | "", doc["p3"] | "",
+                 pp < 0 ? -1 : pp > 100 ? 100 : (int)(pp + 0.5f), doc["pa"] | "");
+    page_from_host = true;
+    return true;
+}
+
+// A page from the host goes when the host does. On a live link the host writes
+// at least once a usage poll, so nothing from it for BLE_HOST_QUIET_MS means a
+// tray that quit, a PC asleep or a board out of range, and its page would
+// otherwise stay up with nobody to take it down (lcd_4 has no working touch
+// either). A tray that links again sends its page again. Not straight away on
+// a lost link: a short drop and reconnect would make the page blink.
+static void host_page_tick(void) {
+    if (!page_from_host || !ui_page_visible()) return;
+    const uint32_t quiet = ble_ms_since_host_write();
+    if (quiet < BLE_HOST_QUIET_MS) return;
+    if (quiet == UINT32_MAX) Serial.println("page: the host has written nothing, page left");
+    else Serial.printf("page: the host has been quiet %lu s, page left\n", (unsigned long)(quiet / 1000));
+    page_from_host = false;
+    ui_page_clear();
+}
+
 // Parse a JSON line into UsageData.
 static bool parse_json(const char* json, UsageData* out) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json);
     if (err) {
-        Serial.printf("JSON parse error: %s\n", err.c_str());
+        // The length tells a cut write apart from a bad one: IncompleteInput at
+        // the link's write limit (MTU less 3) is a message too long for one write.
+        Serial.printf("JSON parse error: %s (%u bytes)\n", err.c_str(), (unsigned)strlen(json));
+        return false;
+    }
+    // Only a usage payload carries "s". Anything else (a message this firmware
+    // has no handler for) must not land here as a zeroed usage screen.
+    if (doc["s"].isNull()) {
+        Serial.println("message without \"s\" and no handler for it, ignored");
         return false;
     }
 
@@ -154,9 +227,46 @@ static bool parse_json(const char* json, UsageData* out) {
 }
 
 // ---- Serial command buffer ----
-#define CMD_BUF_SIZE 64
+// 200 so a whole `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>` poke fits.
+#define CMD_BUF_SIZE 200
 static char cmd_buf[CMD_BUF_SIZE];
 static int cmd_pos = 0;
+
+// Split `s` in place on '|' into at most `max` fields, keeping empty ones
+// ("a||b" is three fields; strtok would make it two). Returns the count.
+static int split_fields(char* s, char** out, int max) {
+    int n = 0;
+    out[n++] = s;
+    for (char* p = s; *p && n < max; p++) {
+        if (*p == '|') {
+            *p = '\0';
+            out[n++] = p + 1;
+        }
+    }
+    return n;
+}
+
+// `msg <text>` or `msg <title>|<text>`: a notification without a host. A single
+// field is the text; a title needs the '|' form (a '|' after it stays in the text).
+static void serial_msg(char* args) {
+    char* f[2];
+    const int n = split_fields(args, f, 2);
+    if (n > 1) ui_notify_show(f[0], f[1], 0);
+    else       ui_notify_show("", f[0], 0);
+}
+
+// `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>`: a page without a host, named
+// "serial". Trailing fields may be left off; an empty or missing pp is no bar.
+// No host stands behind it, so it never lapses (host_page_tick); pageclr, a tap,
+// or a PWR or aux press with no host listening takes it down.
+static void serial_page(char* args) {
+    char* f[6];
+    const int n = split_fields(args, f, 6);
+    const int pp = (n > 4 && *f[4]) ? atoi(f[4]) : -1;
+    ui_page_show("serial", f[0], n > 1 ? f[1] : "", n > 2 ? f[2] : "", n > 3 ? f[3] : "",
+                 pp < 0 ? -1 : pp > 100 ? 100 : pp, n > 5 ? f[5] : "");
+    page_from_host = false;
+}
 
 static void send_screenshot() {
 #ifndef BOARD_HAS_PSRAM
@@ -229,6 +339,12 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "ok") == 0)       ui_approve_accept();
             // The stats toggle, from the bench (screenshots of the usage screen).
             else if (strcmp(cmd_buf, "stats") == 0)    ui_toggle_splash();
+            // A notification and a page without a host (see serial_msg and
+            // serial_page for the fields), and their clears.
+            else if (strncmp(cmd_buf, "msg ", 4) == 0)  serial_msg(cmd_buf + 4);
+            else if (strcmp(cmd_buf, "msgclr") == 0)    ui_notify_clear();
+            else if (strncmp(cmd_buf, "page ", 5) == 0) serial_page(cmd_buf + 5);
+            else if (strcmp(cmd_buf, "pageclr") == 0)   ui_page_clear();
             else if (cmd_pos > 0 && !board_serial_command(cmd_buf))
                 Serial.printf("unknown command: %s\n", cmd_buf);
             cmd_pos = 0;
@@ -359,6 +475,7 @@ void loop() {
     lv_timer_handler();
     ui_tick_anim();
     ble_tick();
+    host_page_tick();
     power_hal_tick();
     imu_hal_tick();
     sound_hal_tick();
@@ -408,13 +525,27 @@ void loop() {
             }
         }
 
+        // PWR and aux also go to the host as {"btn","scr"}, scr read before the
+        // press does anything here (plans/labdaemon.md, "Protocol"). A press
+        // swallowed as a wake sends nothing. Here, in order: answer a prompt,
+        // else clear a notification, else on a page nothing (the host decides)
+        // unless no host is there to hear it, then the press leaves the page,
+        // else what the button always did.
         if (power_hal_pwr_pressed()) {
             if (!idle_consume_wake_press()) {
+                const bool heard = ble_send_button("pwr", ui_screen_name());
                 if (ui_approve_visible()) {
                     // A prompt is up: the press answers it (or, too soon after
                     // it appeared, does nothing). It never reaches the screen
                     // toggle underneath.
                     ui_approve_accept();
+                } else if (ui_notify_visible()) {
+                    ui_notify_clear();
+                } else if (ui_page_visible()) {
+                    // The host acts on it (the btn just sent). With no host
+                    // listening the press leaves the page, so a page is never
+                    // stuck on the panel (a host that comes back sends it again).
+                    if (!heard) ui_page_clear();
                 } else if (board_caps().pwr_toggles_stats) {
                     // One-button boards: the press is the only way to the numbers.
                     ui_toggle_splash();
@@ -429,10 +560,14 @@ void loop() {
         }
 
         // Boards with a second physical key report its short press here:
-        // next creature on splash, brightness on usage, or an answer to a
-        // prompt that is up.
+        // next creature on splash, brightness on usage, an answer to a prompt
+        // that is up, a clear for a notification, nothing on a page (the host
+        // acts on it) unless no host is listening, then it leaves the page.
         if (board_aux_pressed() && !idle_consume_wake_press()) {
+            const bool heard = ble_send_button("aux", ui_screen_name());
             if (ui_approve_visible())                          ui_approve_accept();
+            else if (ui_notify_visible())                      ui_notify_clear();
+            else if (ui_page_visible())                        { if (!heard) ui_page_clear(); }
             else if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
             else                                               brightness_cycle();
         }
@@ -518,7 +653,9 @@ void loop() {
 
     if (ble_has_data()) {
         const char* raw = ble_get_data();
-        if (handle_approve_msg(raw)) {
+        // Dispatch order is the contract (plans/labdaemon.md, "Protocol"): each
+        // host message is its own, and only one carrying "s" is usage.
+        if (handle_approve_msg(raw) || handle_notify_msg(raw) || handle_page_msg(raw)) {
             ble_send_ack();
         } else if (parse_json(raw, &usage)) {
             int g_before = usage_rate_group();

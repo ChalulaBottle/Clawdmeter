@@ -406,9 +406,13 @@ static void render_frame(const splash_anim_def_t *a, uint16_t frame) {
 
 // ---- Mini creature: a small animated creature for embedding in other screens
 //      (e.g. the idle "sleeping" indicator). Self-contained — its own canvas and
-//      buffer, independent of the full-screen splash above. ----
+//      buffer, independent of the full-screen splash above. There is exactly one
+//      for the program's life: made by the first splash_mini_create, re-pointed
+//      at other animations after that, never allocated twice. ----
 static lv_obj_t  *mini_canvas = NULL;
+static lv_obj_t  *mini_parent = NULL;   // where the one mini creature lives
 static uint16_t  *mini_buf = NULL;
+static int        mini_px = 0;          // the size asked for when it was made
 static int        mini_cell = 0;
 static int        mini_w = 0;
 static const splash_anim_def_t *mini_anim = NULL;
@@ -432,33 +436,84 @@ static void mini_render(void) {
     if (mini_canvas) lv_obj_invalidate(mini_canvas);
 }
 
-lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
-    mini_anim = NULL;
+// Edge in px of `a` drawn as a mini creature of about `px`: whole cells, any
+// lattice (a finer one gets smaller cells), and never under 1 px a cell.
+static int mini_side(const splash_anim_def_t *a, int px) {
+    const int s = anim_size(a);
+    const int cell = px / s;
+    return s * (cell < 1 ? 1 : cell);
+}
+
+static const splash_anim_def_t* anim_named(const char *name) {
+    if (!name) return NULL;
     for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
-        if (strcmp(splash_anims[i].name, anim_name) == 0) { mini_anim = &splash_anims[i]; break; }
+        if (strcmp(splash_anims[i].name, name) == 0) return &splash_anims[i];
     }
-    if (!mini_anim) return NULL;
-    const int s = anim_size(mini_anim);   // any lattice: a finer one gets smaller cells
-    mini_cell = px / s;
-    if (mini_cell < 1) mini_cell = 1;
-    mini_w = s * mini_cell;
+    return NULL;
+}
+
+// Show `a` from its first frame. The canvas takes the edge this animation needs
+// at mini_px; the buffer was made for the largest one, so it always fits.
+static void mini_point_at(const splash_anim_def_t *a) {
+    mini_anim  = a;
+    mini_w     = mini_side(a, mini_px);
+    mini_cell  = mini_w / anim_size(a);
+    mini_frame = 0;
+    mini_started = millis();
+    lv_canvas_set_buffer(mini_canvas, mini_buf, mini_w, mini_w, LV_COLOR_FORMAT_RGB565);
+    mini_render();
+}
+
+lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
+    const splash_anim_def_t *a = anim_named(anim_name);
+    if (!a) return NULL;                  // unknown name: whatever exists keeps running
+    if (mini_canvas) {
+        // Already made. The same owner asking again gets it re-pointed; another
+        // owner would take it away from the first, so that is refused.
+        if (parent != mini_parent) {
+            Serial.printf("splash: mini creature already in use, '%s' not shown\n", anim_name);
+            return NULL;
+        }
+        if (a != mini_anim) mini_point_at(a);
+        return mini_canvas;
+    }
+    // One buffer for the largest art any table row needs at this px (at px 160
+    // a 20 cell lattice is 160 px and a 60 cell one 120 px), so re-pointing it
+    // later never allocates.
+    int cap = 0;
+    for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
+        const int side = mini_side(&splash_anims[i], px);
+        if (side > cap) cap = side;
+    }
 #ifdef BOARD_HAS_PSRAM
     const uint32_t caps = MALLOC_CAP_SPIRAM;
 #else
     const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
 #endif
-    mini_buf = (uint16_t*)heap_caps_malloc(mini_w * mini_w * 2, caps);
-    if (!mini_buf) return NULL;
+    mini_buf = (uint16_t*)heap_caps_malloc((size_t)cap * cap * 2, caps);
+    if (!mini_buf) {
+        Serial.printf("splash: mini creature buffer (%d px) alloc failed\n", cap);
+        return NULL;
+    }
+    mini_px = px;
     mini_canvas = lv_canvas_create(parent);
-    lv_canvas_set_buffer(mini_canvas, mini_buf, mini_w, mini_w, LV_COLOR_FORMAT_RGB565);
-    mini_frame = 0;
-    mini_started = millis();
-    mini_render();
+    mini_parent = parent;
+    mini_point_at(a);
     return mini_canvas;
+}
+
+bool splash_mini_set_anim(const char *anim_name) {
+    if (!mini_canvas) return false;
+    const splash_anim_def_t *a = anim_named(anim_name);
+    if (!a) return false;
+    if (a != mini_anim) mini_point_at(a);
+    return true;
 }
 
 void splash_mini_tick(void) {
     if (!mini_buf || !mini_anim || mini_anim->frame_count == 0) return;
+    // Hidden (its screen is not up): nothing to animate, skip the repaint.
+    if (mini_canvas && !lv_obj_is_visible(mini_canvas)) return;
     if (millis() - mini_started < mini_anim->holds[mini_frame]) return;
     mini_started = millis();
     mini_frame = (mini_frame + 1) % mini_anim->frame_count;

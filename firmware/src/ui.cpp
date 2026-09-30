@@ -558,6 +558,351 @@ static void approve_tick(void) {
     idle_note_activity();   // the panel stays lit while a prompt is waiting
 }
 
+// Host text into `dst` (n bytes): control characters become spaces (a newline
+// stays when keep_newline), and a cut never leaves half a UTF-8 character. The
+// fonts only carry printable ASCII; anything else shows as a gap.
+static void copy_text(char* dst, size_t n, const char* src, bool keep_newline) {
+    if (!n) return;
+    if (!src) src = "";
+    size_t i = 0;
+    for (; src[i] && i + 1 < n; i++) {
+        const unsigned char c = (unsigned char)src[i];
+        dst[i] = (c < 0x20 && !(keep_newline && c == '\n')) ? ' ' : (char)c;
+    }
+    dst[i] = '\0';
+    if (((unsigned char)src[i] & 0xC0) == 0x80) {   // the cut landed inside a character
+        while (i > 0 && ((unsigned char)dst[i - 1] & 0xC0) == 0x80) i--;
+        if (i > 0) i--;                              // and its lead byte
+        dst[i] = '\0';
+    }
+}
+
+// A page is re-sent as it changes (a track's progress every second or so);
+// leave the labels whose text did not change alone instead of redrawing them.
+// Compared against `shadow` (n bytes), the text last set: a label cut with an
+// ellipsis keeps the dots in its own buffer, so its text never matches again.
+static void set_text_if_changed(lv_obj_t* lbl, char* shadow, size_t n, const char* text) {
+    if (strcmp(shadow, text) == 0) return;
+    strlcpy(shadow, text, n);
+    lv_label_set_text(lbl, text);
+}
+
+// ======== Notify overlay ========
+// A short message from the host (LabDaemon Engine, relayed by the tray as its
+// own BLE message). Built like the approve overlay without the button: it
+// covers the screens and a page, an approve prompt covers it, and it goes by
+// itself after its seconds, on a PWR or aux press (main.cpp), or on a tap.
+#define NOTIFY_DEFAULT_S   8
+#define NOTIFY_MAX_S       86400   // keeps seconds * 1000 far from overflowing
+#define NOTIFY_TITLE_MAX   23      // protocol limits, plans/labdaemon.md "Protocol"
+#define NOTIFY_TEXT_MAX    96
+#define NOTIFY_TITLE_LINES 2
+
+static lv_obj_t* notify_group     = nullptr;
+static lv_obj_t* notify_lbl_title = nullptr;
+static lv_obj_t* notify_lbl_text  = nullptr;
+static uint32_t  notify_until_ms  = 0;
+
+static void notify_click_cb(lv_event_t* e) {
+    (void)e;
+    Serial.println("notify: tap");
+    ui_notify_clear();
+}
+
+static void init_notify_overlay(lv_obj_t* scr) {
+    notify_group = lv_obj_create(scr);
+    lv_obj_set_pos(notify_group, 0, 0);
+    lv_obj_set_size(notify_group, L.scr_w, L.scr_h);
+    lv_obj_set_style_bg_color(notify_group, COL_BG, 0);
+    lv_obj_set_style_bg_opa(notify_group, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(notify_group, 0, 0);
+    lv_obj_set_style_radius(notify_group, 0, 0);
+    lv_obj_set_style_pad_all(notify_group, L.margin, 0);
+    lv_obj_clear_flag(notify_group, LV_OBJ_FLAG_SCROLLABLE);
+    // Clickable so a tap ends here (and clears it); none reach the splash toggle underneath.
+    lv_obj_add_flag(notify_group, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(notify_group, notify_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(notify_group, LV_OBJ_FLAG_HIDDEN);
+
+    // The title, wrapped to at most two lines; its height is set per message.
+    notify_lbl_title = lv_label_create(notify_group);
+    lv_label_set_text(notify_lbl_title, "");
+    lv_obj_set_style_text_font(notify_lbl_title, L.title_font, 0);
+    lv_obj_set_style_text_color(notify_lbl_title, COL_TEXT, 0);
+    lv_obj_set_width(notify_lbl_title, L.content_w);
+    lv_label_set_long_mode(notify_lbl_title, LV_LABEL_LONG_DOT);
+    lv_obj_align(notify_lbl_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    // The text under it, in the approve prompt's type, wrapped; what doesn't
+    // fit ends in an ellipsis.
+    notify_lbl_text = lv_label_create(notify_group);
+    lv_label_set_text(notify_lbl_text, "");
+    lv_obj_set_style_text_font(notify_lbl_text, &font_mono_18, 0);
+    lv_obj_set_style_text_color(notify_lbl_text, COL_TEXT, 0);
+    lv_obj_set_width(notify_lbl_text, L.content_w);
+    lv_label_set_long_mode(notify_lbl_text, LV_LABEL_LONG_DOT);
+}
+
+bool ui_notify_visible(void) {
+    return notify_group && !lv_obj_has_flag(notify_group, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_notify_show(const char* title, const char* text, int expire_s) {
+    if (!notify_group) return;
+    char t[NOTIFY_TITLE_MAX + 1];
+    char b[NOTIFY_TEXT_MAX + 1];
+    copy_text(t, sizeof(t), title, false);
+    copy_text(b, sizeof(b), text, true);
+    if (!t[0] && !b[0]) {
+        ui_notify_clear();
+        return;
+    }
+    if (expire_s <= 0) expire_s = NOTIFY_DEFAULT_S;
+    if (expire_s > NOTIFY_MAX_S) expire_s = NOTIFY_MAX_S;
+
+    const int gap     = L.scr_h >= 300 ? 12 : 6;
+    const int inner_h = L.scr_h - 2 * L.margin;
+    int title_h = 0;
+    if (t[0]) {
+        lv_point_t sz;
+        lv_text_get_size(&sz, t, L.title_font, 0, 0, L.content_w, LV_TEXT_FLAG_NONE);
+        const int max_h = NOTIFY_TITLE_LINES * L.title_font->line_height;
+        title_h = sz.y < max_h ? sz.y : max_h;
+        lv_label_set_text(notify_lbl_title, t);
+        lv_obj_set_height(notify_lbl_title, title_h);
+        lv_obj_clear_flag(notify_lbl_title, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(notify_lbl_title, LV_OBJ_FLAG_HIDDEN);   // text only: it starts at the top
+    }
+    const int text_y = title_h ? title_h + gap : 0;
+    const int text_h = inner_h - text_y;
+    lv_label_set_text(notify_lbl_text, b);
+    lv_obj_set_height(notify_lbl_text, text_h > font_mono_18.line_height ? text_h : font_mono_18.line_height);
+    lv_obj_align(notify_lbl_text, LV_ALIGN_TOP_LEFT, 0, text_y);
+
+    notify_until_ms = lv_tick_get() + (uint32_t)expire_s * 1000;
+    lv_obj_clear_flag(notify_group, LV_OBJ_FLAG_HIDDEN);
+    // Direct-draw boards paint the creature straight onto the panel, over
+    // anything LVGL has there; stop it while the notification is up.
+    splash_hide();
+    idle_note_activity();   // a dark panel lights up for it
+    Serial.printf("notify: show \"%s\" (%d s)\n", t, expire_s);
+}
+
+void ui_notify_clear(void) {
+    if (!ui_notify_visible()) return;
+    lv_obj_add_flag(notify_group, LV_OBJ_FLAG_HIDDEN);
+    Serial.println("notify: cleared");
+    ui_show_screen(current_screen);   // the splash comes back unless a page or a prompt still covers it
+}
+
+static void notify_tick(void) {
+    if (!ui_notify_visible()) return;
+    if ((int32_t)(lv_tick_get() - notify_until_ms) >= 0) {
+        Serial.println("notify: expired");
+        ui_notify_clear();
+        return;
+    }
+    idle_note_activity();   // the panel stays lit while it is up
+}
+
+// ======== Page ========
+// A card the host keeps up while something is going on (a track playing): a
+// title, three lines, a progress bar and a creature. The first page type after
+// usage. It sits over the screens like an overlay, under a notification and an
+// approve prompt. PWR and aux on a page are the host's (main.cpp sends them and
+// does nothing here unless no host is listening); a tap leaves it until the host
+// sends something other than a new progress for it (see page_click_cb).
+//
+// Fixed slots, top to bottom: the title, a band for the creature, the three
+// lines, the bar along the bottom edge. An empty slot stays empty; nothing moves.
+#define PAGE_NAME_MAX   15   // protocol limits, plans/labdaemon.md "Protocol"
+#define PAGE_TITLE_MAX  23
+#define PAGE_LINE_MAX   40
+#define PAGE_ANIM_MAX   23
+
+static lv_obj_t* page_group       = nullptr;
+static lv_obj_t* page_lbl_title   = nullptr;
+static lv_obj_t* page_lbl_line[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t* page_bar         = nullptr;
+static lv_obj_t* page_band        = nullptr;   // holds the creature, centred
+static lv_obj_t* page_creature    = nullptr;   // the one mini creature (splash.cpp), made on first use
+static int       page_creature_px = 0;
+static char      page_name[PAGE_NAME_MAX + 1] = "";
+static char      page_anim[PAGE_ANIM_MAX + 1] = "";   // what the creature was asked to show; "" = none
+static char      page_txt_title[PAGE_TITLE_MAX + 1] = "";       // the texts last set on the labels
+static char      page_txt_line[3][PAGE_LINE_MAX + 1] = { "", "", "" };
+static bool      page_dismissed = false;   // left by a tap; page_name stays to know its updates
+
+// A tap leaves the page until the host sends it with something other than a new
+// progress: a playing track moves the bar every second or two, and each of
+// those would otherwise bring the page back and wake the panel. A change of
+// text or creature, another page, or the host's clear ends it (ui_page_show,
+// ui_page_clear).
+static void page_click_cb(lv_event_t* e) {
+    (void)e;
+    if (!ui_page_visible()) return;
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+    page_dismissed = true;
+    Serial.printf("page: %s left by a tap\n", page_name);
+    ui_show_screen(current_screen);   // the splash comes back unless a notification or a prompt still covers it
+}
+
+static void init_page_overlay(lv_obj_t* scr) {
+    const int gap       = L.scr_h >= 300 ? 12 : 6;
+    const int inner_h   = L.scr_h - 2 * L.margin;
+    const lv_font_t* line_font = &font_mono_18;
+    const int line_h    = line_font->line_height;
+    const int pitch     = line_h + (L.scr_h >= 300 ? 6 : 2);
+    const int title_h   = L.title_font->line_height;
+    const int bar_y     = inner_h - L.bar_h;
+    const int line0_y   = bar_y - gap - line_h - 2 * pitch;
+    const int band_y    = title_h + gap;
+    const int band_h    = line0_y - gap - band_y;
+
+    page_group = lv_obj_create(scr);
+    lv_obj_set_pos(page_group, 0, 0);
+    lv_obj_set_size(page_group, L.scr_w, L.scr_h);
+    lv_obj_set_style_bg_color(page_group, COL_BG, 0);
+    lv_obj_set_style_bg_opa(page_group, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(page_group, 0, 0);
+    lv_obj_set_style_radius(page_group, 0, 0);
+    lv_obj_set_style_pad_all(page_group, L.margin, 0);
+    lv_obj_clear_flag(page_group, LV_OBJ_FLAG_SCROLLABLE);
+    // Clickable so a tap ends here (and leaves the page); none reach the splash toggle underneath.
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(page_group, page_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+
+    // One line; what doesn't fit ends in an ellipsis.
+    page_lbl_title = lv_label_create(page_group);
+    lv_label_set_text(page_lbl_title, "");
+    lv_obj_set_style_text_font(page_lbl_title, L.title_font, 0);
+    lv_obj_set_style_text_color(page_lbl_title, COL_TEXT, 0);
+    lv_obj_set_size(page_lbl_title, L.content_w, title_h);
+    lv_label_set_long_mode(page_lbl_title, LV_LABEL_LONG_DOT);
+    lv_obj_align(page_lbl_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    // The creature's band. Not clickable, so a tap on the creature still lands on the page.
+    page_band = lv_obj_create(page_group);
+    lv_obj_set_pos(page_band, 0, band_y);
+    lv_obj_set_size(page_band, L.content_w, band_h > 0 ? band_h : 1);
+    lv_obj_set_style_bg_opa(page_band, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(page_band, 0, 0);
+    lv_obj_set_style_pad_all(page_band, 0, 0);
+    lv_obj_clear_flag(page_band, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(page_band, LV_OBJ_FLAG_CLICKABLE);
+    page_creature_px = band_h < L.idle_px ? band_h : L.idle_px;
+
+    // Three lines, one line each, the first in full text colour and the other
+    // two dimmed; what doesn't fit ends in an ellipsis.
+    for (int i = 0; i < 3; i++) {
+        page_lbl_line[i] = lv_label_create(page_group);
+        lv_label_set_text(page_lbl_line[i], "");
+        lv_obj_set_style_text_font(page_lbl_line[i], line_font, 0);
+        lv_obj_set_style_text_color(page_lbl_line[i], i == 0 ? COL_TEXT : COL_DIM, 0);
+        lv_obj_set_size(page_lbl_line[i], L.content_w, line_h);
+        lv_label_set_long_mode(page_lbl_line[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(page_lbl_line[i], 0, line0_y + i * pitch);
+    }
+
+    // Progress along the bottom edge. Bars take taps by default; this one hands them to the page.
+    page_bar = make_bar(page_group, 0, bar_y, L.content_w, L.bar_h);
+    lv_obj_set_style_bg_color(page_bar, COL_ACCENT, LV_PART_INDICATOR);
+    lv_obj_clear_flag(page_bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
+}
+
+bool ui_page_visible(void) {
+    return page_group && !lv_obj_has_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Point the page's creature at `anim` ("" = none). splash_mini_create is one
+// instance for the program's life: made here the first time a page asks for a
+// creature, re-pointed with splash_mini_set_anim after that, never made twice.
+static void page_set_creature(const char* anim) {
+    if (strcmp(anim, page_anim) == 0) return;   // unchanged, including none to none
+    strlcpy(page_anim, anim, sizeof(page_anim));
+    lv_obj_t* c = nullptr;
+    if (*anim && page_creature_px > 0) {
+        if (!page_creature)                  c = page_creature = splash_mini_create(page_band, anim, page_creature_px);
+        else if (splash_mini_set_anim(anim)) c = page_creature;
+        if (!c) Serial.printf("page: no creature '%s'\n", anim);
+    }
+    if (c) {
+        lv_obj_align(c, LV_ALIGN_CENTER, 0, 0);   // its edge follows the animation's lattice
+        lv_obj_clear_flag(c, LV_OBJ_FLAG_HIDDEN);
+    } else if (page_creature) {
+        lv_obj_add_flag(page_creature, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void ui_page_show(const char* pg, const char* title, const char* l1, const char* l2,
+                  const char* l3, int pp, const char* anim) {
+    if (!page_group || !pg || !*pg) return;
+    char name[PAGE_NAME_MAX + 1];
+    char t[PAGE_TITLE_MAX + 1];
+    char lines[3][PAGE_LINE_MAX + 1];
+    char a[PAGE_ANIM_MAX + 1];
+    const char* src[3] = { l1, l2, l3 };
+    copy_text(name, sizeof(name), pg, false);
+    copy_text(t, sizeof(t), title, false);
+    for (int i = 0; i < 3; i++) copy_text(lines[i], sizeof(lines[i]), src[i], false);
+    copy_text(a, sizeof(a), anim, false);
+
+    const bool same_page = strcmp(name, page_name) == 0;
+    if (page_dismissed) {
+        // Left by a tap (page_click_cb): a send that moves only the progress stays out.
+        if (same_page && strcmp(t, page_txt_title) == 0 && strcmp(a, page_anim) == 0 &&
+            strcmp(lines[0], page_txt_line[0]) == 0 && strcmp(lines[1], page_txt_line[1]) == 0 &&
+            strcmp(lines[2], page_txt_line[2]) == 0) {
+            return;
+        }
+        page_dismissed = false;
+    }
+    // A new page (or one coming back) is shown whole; the same page again is an
+    // update in place: no wake, no bar sweep.
+    const bool appearing = !ui_page_visible() || !same_page;
+    strlcpy(page_name, name, sizeof(page_name));
+
+    set_text_if_changed(page_lbl_title, page_txt_title, sizeof(page_txt_title), t);
+    for (int i = 0; i < 3; i++) {
+        set_text_if_changed(page_lbl_line[i], page_txt_line[i], sizeof(page_txt_line[i]), lines[i]);
+    }
+
+    if (pp < 0) {
+        lv_obj_add_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        const bool bar_hidden = lv_obj_has_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_bar_set_value(page_bar, pp > 100 ? 100 : pp,
+                         (appearing || bar_hidden) ? LV_ANIM_OFF : LV_ANIM_ON);
+        lv_obj_clear_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    page_set_creature(a);
+
+    if (appearing) {
+        lv_obj_clear_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+        // Direct-draw boards paint the creature straight onto the panel, over
+        // anything LVGL has there; stop it while the page is up.
+        splash_hide();
+        idle_note_activity();   // a dark panel lights up for a new page, never for its updates
+        Serial.printf("page: show %s\n", page_name);
+    }
+}
+
+void ui_page_clear(void) {
+    page_dismissed = false;   // a clear ends a tap's leave too: the next send shows the page
+    if (!ui_page_visible()) {
+        page_name[0] = '\0';
+        return;
+    }
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+    Serial.printf("page: %s cleared\n", page_name);
+    page_name[0] = '\0';
+    ui_show_screen(current_screen);   // the splash comes back unless a notification or a prompt still covers it
+}
+
 static void init_battery_icons(void) {
     if (L.small_icons) {
         init_icon_dsc_rgb565a8(&battery_dscs[0], ICON_BATTERY_SMALL_W, ICON_BATTERY_SMALL_H, icon_battery_small_data);
@@ -651,6 +996,10 @@ static void build_idle_group(lv_obj_t* parent) {
     // A shrunk-down sleeping creature (reused claudepix "expression sleep" art)
     // sits between the header and the status line; the animated "Listening…"
     // status line carries the words, so no extra text is needed here.
+    // Note: the table no longer has "expression sleep", so this returns NULL and
+    // the one mini creature (splash_mini_create) is left to the page. Naming a
+    // live animation here would make the idle screen its owner, and the page
+    // would then have to borrow it and hand it back.
     lv_obj_t* creature = splash_mini_create(idle_group, "expression sleep", L.idle_px);
     if (creature) lv_obj_align(creature, LV_ALIGN_CENTER, 0, -20);
 
@@ -787,7 +1136,10 @@ void ui_init(void) {
         battery_img = nullptr;
     }
 
-    // Above the screens, below the charge overlay.
+    // Above the screens, below the charge overlay. Created bottom to top: a page,
+    // then a notification over it, then an approve prompt over everything.
+    init_page_overlay(scr);
+    init_notify_overlay(scr);
     init_approve_overlay(scr);
 
     // Last, so the charge overlay covers everything else when it plays.
@@ -923,6 +1275,10 @@ static void update_view_state(void) {
 
 void ui_tick_anim(void) {
     approve_tick();
+    notify_tick();
+    // The page's creature moves only while the page is on top; under a
+    // notification or a prompt it would redraw for nothing.
+    if (ui_page_visible() && !ui_notify_visible() && !ui_approve_visible()) splash_mini_tick();
 
     // The usage tag goes stale with its panels (idle / pairing views); the
     // splash badge has no such view behind it, so drop it once the host goes
@@ -934,7 +1290,10 @@ void ui_tick_anim(void) {
 
     if (current_screen != SCREEN_USAGE) return;
     update_view_state();
-    if (view_state == 1) splash_mini_tick();   // animate the sleeping creature on the idle screen
+    // The sleeping creature on the idle screen, were it there (build_idle_group).
+    // Not while a page is up: the one mini creature is then the page's, ticked
+    // above only while nothing covers it.
+    if (view_state == 1 && !ui_page_visible()) splash_mini_tick();
 
     uint32_t now = lv_tick_get();
 
@@ -1017,9 +1376,11 @@ void ui_show_screen(screen_t screen) {
     splash_hide();
 
     switch (screen) {
-    // While a prompt is up the splash stays hidden (see ui_approve_show);
-    // ui_approve_clear re-runs this to bring it back.
-    case SCREEN_SPLASH:  if (!ui_approve_visible()) splash_show(); break;
+    // While a prompt, a notification or a page is up the splash stays hidden
+    // (see ui_approve_show); each one's clear re-runs this to bring it back.
+    case SCREEN_SPLASH:
+        if (!ui_approve_visible() && !ui_notify_visible() && !ui_page_visible()) splash_show();
+        break;
     case SCREEN_USAGE:   lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
@@ -1041,6 +1402,13 @@ void ui_toggle_splash(void) {
 
 screen_t ui_get_current_screen(void) {
     return current_screen;
+}
+
+const char* ui_screen_name(void) {
+    if (ui_approve_visible()) return "approve";
+    if (ui_notify_visible())  return "notify";
+    if (ui_page_visible())    return "page";
+    return current_screen == SCREEN_SPLASH ? "splash" : "usage";
 }
 
 void ui_update_ble_status(ble_state_t state, const char* name, const char* mac) {

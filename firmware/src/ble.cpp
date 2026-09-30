@@ -75,7 +75,32 @@ static volatile uint16_t param_fix_spent  = CONN_HANDLE_NONE;  // one per connec
 static char rx_buf[BLE_BUF_SIZE];
 static volatile bool data_ready = false;
 static volatile bool has_received_data = false;
+static volatile uint32_t last_host_write_ms = 0;   // millis() of the last write taken; valid once has_received_data
 static char mac_str[18];
+
+// Centrals subscribed to TX, by connection handle; CONN_HANDLE_NONE marks a free
+// slot. Written by NimBLE host-task callbacks, read on the loop task; each slot
+// is one 16-bit store.
+static volatile uint16_t tx_subs[CONFIG_BT_NIMBLE_MAX_CONNECTIONS];
+
+static void tx_sub_set(uint16_t handle, bool subscribed) {
+    int free_slot = -1;
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (tx_subs[i] == handle) {
+            if (!subscribed) tx_subs[i] = CONN_HANDLE_NONE;
+            return;
+        }
+        if (free_slot < 0 && tx_subs[i] == CONN_HANDLE_NONE) free_slot = i;
+    }
+    if (subscribed && free_slot >= 0) tx_subs[free_slot] = handle;
+}
+
+static bool tx_subscribed(void) {
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        if (tx_subs[i] != CONN_HANDLE_NONE) return true;
+    }
+    return false;
+}
 
 // --- Single-owner lock -----------------------------------------------------
 //
@@ -206,6 +231,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         // reuses conn handles, so stale state would leak onto the next link.
         if (param_fix_handle == info.getConnHandle()) param_fix_handle = CONN_HANDLE_NONE;
         if (param_fix_spent  == info.getConnHandle()) param_fix_spent  = CONN_HANDLE_NONE;
+        // NimBLE reports a TX unsubscribe for a broken link before this, except
+        // on its reconnect-attempt path; drop the handle here either way.
+        tx_sub_set(info.getConnHandle(), false);
         Serial.printf("BLE: disconnected (reason=%d, remaining=%u)\n",
             reason, (unsigned)s->getConnectedCount());
     }
@@ -281,8 +309,23 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
         size_t len = std::min(val.length(), (size_t)(BLE_BUF_SIZE - 1));
         memcpy(rx_buf, val.c_str(), len);
         rx_buf[len] = '\0';
+        // Only the owner's writes count as the host being there (ble_host_listening),
+        // so another central in range can never keep a page up.
+        last_host_write_ms = millis();
         data_ready = true;
         has_received_data = true;
+    }
+};
+
+// Who can hear a button event: a central that has turned on TX notifications.
+// NimBLE calls this for a CCCD write, for a bonded peer's subscription restored
+// on reconnect, and (with subValue 0) for a link that broke.
+class TxCallbacks : public NimBLECharacteristicCallbacks {
+    void onSubscribe(NimBLECharacteristic* chr, NimBLEConnInfo& info, uint16_t subValue) override {
+        (void)chr;
+        tx_sub_set(info.getConnHandle(), subValue != 0);
+        Serial.printf("BLE: tx_char onSubscribe subValue=%u handle=%u\n",
+            subValue, (unsigned)info.getConnHandle());
     }
 };
 
@@ -350,6 +393,9 @@ void ble_init(void) {
         TX_CHAR_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) tx_subs[i] = CONN_HANDLE_NONE;
+    static TxCallbacks txCb;
+    tx_char->setCallbacks(&txCb);
 
     req_char = svc->createCharacteristic(
         REQ_CHAR_UUID,
@@ -439,6 +485,43 @@ void ble_send_approve(const char* id) {
     tx_char->setValue(msg);
     tx_char->notify();
     Serial.printf("BLE: approve %s\n", id);
+}
+
+uint32_t ble_ms_since_host_write(void) {
+    if (!has_received_data) return UINT32_MAX;
+    return millis() - last_host_write_ms;
+}
+
+bool ble_host_listening(void) {
+    return state == BLE_STATE_CONNECTED && tx_char && tx_subscribed() &&
+           ble_ms_since_host_write() < BLE_HOST_QUIET_MS;
+}
+
+bool ble_send_button(const char* btn, const char* scr) {
+    if (!btn || !*btn) return false;
+    if (!scr) scr = "";
+    if (state != BLE_STATE_CONNECTED || !tx_char || !tx_subscribed()) {
+        Serial.printf("BLE: btn %s on %s not sent, no host subscribed\n", btn, scr);
+        return false;
+    }
+    char msg[64];
+    snprintf(msg, sizeof(msg), "{\"btn\":\"%s\",\"scr\":\"%s\"}", btn, scr);
+    tx_char->setValue(msg);
+    tx_char->notify();   // its result says nothing about a reader: it is true with no subscriber too
+    if (ble_host_listening()) {
+        Serial.printf("BLE: btn %s on %s\n", btn, scr);
+        return true;
+    }
+    // Subscribed yet silent: the subscription may have outlived the tray that
+    // made it, so nobody may be reading this.
+    const uint32_t quiet = ble_ms_since_host_write();
+    if (quiet == UINT32_MAX) {
+        Serial.printf("BLE: btn %s on %s sent, but the host has written nothing yet\n", btn, scr);
+    } else {
+        Serial.printf("BLE: btn %s on %s sent, but the host has been quiet %lu s\n",
+            btn, scr, (unsigned long)(quiet / 1000));
+    }
+    return false;
 }
 
 void ble_set_battery_level(int pct) {

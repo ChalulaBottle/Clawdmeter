@@ -8,10 +8,13 @@ later plans.
 
 import asyncio
 import calendar
+import contextlib
+import contextvars
 import datetime
 import json
 import logging
 import logging.handlers
+import math
 import os
 import re
 import signal
@@ -66,6 +69,37 @@ APPROVE_ID_MAX = 23        # firmware keeps the id in char[24]
 APPROVE_TOOL_MAX = 23
 APPROVE_TEXT_MAX = 96      # what fits on the panel; the terminal has the whole thing
 WATCH_TICK = 1.0           # state / approve file checks; TICK stays the poll cadence
+# LabDaemon relay (plans/labdaemon.md, Protocol). The engine drops notify.json and
+# page.json here the same atomic way the hook drops approve.json; the daemon puts
+# each change on the boards as its own message, never merged into usage:
+#   notify.json {"title", "body", "secs", "expires"}                   sent as {"nt", "nb", "nx"}
+#   page.json   {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "expires"}  sent as {"pg", "pt", "p1", "p2", "p3", "pp", "pa"}
+# A button press on a board comes back as events/<ns>.json {"btn", "scr", "addr", "ts"}.
+NOTIFY_FILE = CONFIG_FILE.parent / "notify.json"
+PAGE_FILE = CONFIG_FILE.parent / "page.json"
+EVENT_DIR = CONFIG_FILE.parent / "events"
+NOTIFY_TITLE_MAX = 23
+NOTIFY_BODY_MAX = 96
+NOTIFY_SECS_DEFAULT = 8    # seconds on screen when "secs" is left out
+NOTIFY_SECS_MAX = 3600     # a runaway "secs" still leaves a sane number on the board
+PAGE_NAME_MAX = 15
+PAGE_TITLE_MAX = 23
+PAGE_LINE_MAX = 40         # p1, p2 and p3 each
+PAGE_ANIM_MAX = ANIM_MAX   # "pa" names a creature animation: the same char[24] as "a"
+EVENT_FIELD_MAX = 15       # "btn" and "scr" are short words ("pwr", "notify")
+# The board holds ONE incoming message until its loop reads it (firmware ble.cpp
+# rx_buf), so a second write landing first overwrites the first. Writes to one board
+# keep this many seconds apart; in practice only a same-tick burst (state resend,
+# prompt, notification, page) ever waits.
+WRITE_GAP = 0.25
+# One message on the wire: a write without response carries at most the ATT MTU less
+# 3 bytes, and the board keeps at most 511 bytes of it (rx_buf). The boards ask for an
+# MTU of 256 (their NimBLE build config), so 253 is assumed until the link reports one.
+WIRE_MAX_ASSUMED = 253
+WIRE_MAX_BOARD = 511
+# The boards the daemon last sent a live page to, kept past the link and the tray, so a
+# board that links again after page.json went away is told to drop the page it shows.
+PAGE_BOARDS_FILE = CONFIG_FILE.parent / "daemon.pages"   # {"boards": [address, ...]}
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -113,8 +147,13 @@ def _build_file_logger() -> logging.Logger | None:
 
 _FILE_LOGGER = _build_file_logger()
 
+# With several boards, each board's link tags its log lines with the board address so
+# one daemon.log still tells them apart. Empty (no tag at all) with a single board.
+_LOG_TAG: contextvars.ContextVar[str] = contextvars.ContextVar("log_tag", default="")
+
 
 def log(msg: str) -> None:
+    msg = _LOG_TAG.get() + msg
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
     # Under pythonw sys.stdout is None and print() would raise — guard it so a
     # missing console can never crash the daemon thread (the silent-freeze mode).
@@ -312,6 +351,172 @@ def read_approve_msg() -> dict | None:
     }
 
 
+def _finite_number(value) -> bool:
+    """A usable JSON number: not a bool, not NaN or Infinity (json.loads takes both), and
+    not an integer too long for a float (over about 309 digits), on which math.isfinite
+    and any sum with a float raise OverflowError."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _seconds_left(expires) -> float:
+    """Seconds until an "expires" Unix time; 0 when it is missing or not a usable number."""
+    return expires - time.time() if _finite_number(expires) else 0.0
+
+
+_CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f]")   # control characters, the newline left out
+
+
+def _text(value, limit: int) -> str:
+    """A text field as the board keeps it: at most `limit` bytes of UTF-8, never cut inside
+    a character (the board's caps are bytes too), and control characters other than a
+    newline as spaces, which is how the board shows them. Anything that is not text is
+    empty. A lone surrogate, which json.loads lets through, becomes "?"."""
+    if not isinstance(value, str):
+        return ""
+    raw = _CONTROL.sub(" ", value).encode("utf-8", "replace")
+    return raw[:limit].decode("utf-8", "ignore")
+
+
+def _read_relay_object(path: Path, label: str) -> dict | None:
+    """The JSON object in a relay file, or {} when there is no file.
+
+    Unreadable or malformed: None after a log line; the caller sends nothing.
+    """
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        log(f"{label} file unreadable, ignoring: {e}")
+        return None
+    try:
+        # From bytes so a BOM or UTF-16 (PowerShell Out-File) still parses.
+        data = json.loads(raw)
+    except ValueError as e:  # JSONDecodeError and UnicodeDecodeError alike
+        log(f"{label} file malformed, ignoring: {e}")
+        return None
+    if not isinstance(data, dict):
+        log(f"{label} file malformed (not a JSON object), ignoring")
+        return None
+    return data
+
+
+def notify_stamp() -> tuple | None:
+    """Change stamp of the notify file (same idea as state_stamp)."""
+    return _file_stamp(NOTIFY_FILE)
+
+
+def read_notify_msg() -> dict | None:
+    """The device message for the notify file.
+
+    A live notification gives {"nt": title, "nb": body, "nx": seconds on screen}; nx is
+    "secs" (NOTIFY_SECS_DEFAULT when left out) cut to the time left before "expires",
+    so a late relay never overstays.
+    No file, one past its "expires" (or without one), or one with neither a title nor a
+    body gives {"nt": "", "nb": ""} (clear).
+    Unreadable or malformed: None after a log line; the caller sends nothing.
+    """
+    data = _read_relay_object(NOTIFY_FILE, "Notify")
+    if data is None:
+        return None
+    left = _seconds_left(data.get("expires"))
+    title = _text(data.get("title"), NOTIFY_TITLE_MAX)
+    body = _text(data.get("body"), NOTIFY_BODY_MAX)
+    if left <= 0 or not (title or body):
+        return {"nt": "", "nb": ""}
+    secs = data.get("secs")
+    if not _finite_number(secs) or secs <= 0:
+        secs = NOTIFY_SECS_DEFAULT
+    return {"nt": title, "nb": body, "nx": math.ceil(min(secs, left, NOTIFY_SECS_MAX))}
+
+
+def page_stamp() -> tuple | None:
+    """Change stamp of the page file (same idea as state_stamp)."""
+    return _file_stamp(PAGE_FILE)
+
+
+def read_page_msg() -> tuple[dict, float] | None:
+    """The device message for the page file, and the Unix time the page lapses.
+
+    A live page gives ({"pg", "pt", "p1", "p2", "p3", "pp", "pa"}, its "expires"). The
+    page message has no timer field, so the caller clears the page itself once that
+    time passes. "pp" is progress 0 to 100, or -1 for no bar.
+    No file, an empty "pg", or one past its "expires" (or without one) gives
+    ({"pg": ""}, 0.0) (clear).
+    Unreadable or malformed (no "pg" text): None after a log line; the caller sends nothing.
+    """
+    data = _read_relay_object(PAGE_FILE, "Page")
+    if data is None:
+        return None
+    if not data:
+        return {"pg": ""}, 0.0
+    name = data.get("pg")
+    if not isinstance(name, str):
+        log("Page file malformed (needs a page name in pg), ignoring")
+        return None
+    expires = data.get("expires")
+    if not name or _seconds_left(expires) <= 0:
+        return {"pg": ""}, 0.0
+    progress = data.get("pp")
+    progress = max(-1, min(100, round(progress))) if _finite_number(progress) else -1
+    return {
+        "pg": _text(name, PAGE_NAME_MAX),
+        "pt": _text(data.get("pt"), PAGE_TITLE_MAX),
+        "p1": _text(data.get("p1"), PAGE_LINE_MAX),
+        "p2": _text(data.get("p2"), PAGE_LINE_MAX),
+        "p3": _text(data.get("p3"), PAGE_LINE_MAX),
+        "pp": progress,
+        "pa": _text(data.get("pa"), PAGE_ANIM_MAX),
+    }, float(expires)
+
+
+def _page_sans_progress(msg: dict) -> dict:
+    return {k: v for k, v in msg.items() if k != "pp"}
+
+
+_FIRST_TICK = object()   # a page stamp no file has: a link's first tick always reads page.json
+_PAGED: set | None = None   # PAGE_BOARDS_FILE, read once per process; None until then
+
+
+def _paged() -> set:
+    """The addresses of the boards the daemon last sent a live page to, with no clear since."""
+    global _PAGED
+    if _PAGED is None:
+        _PAGED = set()
+        try:
+            data = json.loads(PAGE_BOARDS_FILE.read_bytes())
+        except FileNotFoundError:
+            data = {}
+        except (OSError, ValueError) as e:
+            log(f"Page record unreadable, starting without it: {e}")
+            data = {}
+        boards = data.get("boards") if isinstance(data, dict) else None
+        if isinstance(boards, list):
+            _PAGED.update(a for a in boards if isinstance(a, str))
+    return _PAGED
+
+
+def _note_page(address: str, shown: bool) -> None:
+    """Record whether the board at `address` now shows a page from the daemon. The file
+    is rewritten only when that changes (a page appearing or going), never for an update."""
+    paged = _paged()
+    if (address in paged) == shown:
+        return
+    if shown:
+        paged.add(address)
+    else:
+        paged.discard(address)
+    try:
+        _write_json_atomic(PAGE_BOARDS_FILE, {"boards": sorted(paged)})
+    except OSError as e:
+        log(f"Page record write failed: {e}")
+
+
 def _write_json_atomic(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -334,6 +539,38 @@ def write_decision(request_id: str, behavior: str = "allow") -> None:
                            {"id": request_id, "behavior": behavior, "ts": time.time()})
     except OSError as e:
         log(f"Decision write failed: {e}")
+
+
+def _token_ok(value, limit: int) -> bool:
+    return (isinstance(value, str) and 0 < len(value) <= limit
+            and all(c.isalnum() or c in "-_" for c in value))
+
+
+_last_event_ns = 0  # the newest events/ file name so far, shared by every board
+
+
+def write_event(btn, scr, addr: str) -> None:
+    """events/<ns>.json for the engine: one button press on a board.
+
+    {"btn": "pwr" or "aux", "scr": the screen it was pressed on, "addr": the board's
+    address, "ts"}. The name is a nanosecond time that only ever grows, even inside
+    one clock step (time.time() moves in coarse steps on Windows), so two quick
+    presses never share a file and sorting the names replays them in order.
+    """
+    global _last_event_ns
+    if not _token_ok(btn, EVENT_FIELD_MAX):
+        log(f"Device sent a button press with a bad name, ignoring: {btn!r}")
+        return
+    if not _token_ok(scr, EVENT_FIELD_MAX):
+        scr = ""
+    ns = max(time.time_ns(), _last_event_ns + 1)
+    _last_event_ns = ns
+    log(f"Device button {btn} on {scr or 'an unnamed screen'} ({addr or 'address unknown'})")
+    try:
+        _write_json_atomic(EVENT_DIR / f"{ns}.json",
+                           {"btn": btn, "scr": scr, "addr": addr, "ts": time.time()})
+    except OSError as e:
+        log(f"Event write failed: {e}")
 
 
 async def poll_api(token: str) -> dict | None:
@@ -455,7 +692,7 @@ def _mac_from_pnp_instance_id(instance_id: str) -> str | None:
         BTHLE\\DEV_98A316A5D706\\7&B8081D1&0&98A316A5D706  ->  98:A3:16:A5:D7:06
 
     Returns None when no ``DEV_<12 hex>`` token is present. Pure — the
-    subprocess that produces the instance id lives in discover_bonded_address().
+    subprocess that produces the instance id lives in _bonded_pnp_ids().
     """
     m = re.search(r"DEV_([0-9A-Fa-f]{12})(?![0-9A-Fa-f])", instance_id)
     if not m:
@@ -464,23 +701,14 @@ def _mac_from_pnp_instance_id(instance_id: str) -> str | None:
     return ":".join(h[i:i + 2] for i in range(0, 12, 2))
 
 
-def discover_bonded_address() -> str | None:
-    """Return the BLE address of the bonded Clawdmeter, or None.
+def _bonded_pnp_ids() -> list[str]:
+    """InstanceIds of the Bluetooth PnP entries named like the board, one per line.
 
-    A device that is paired AND connected to Windows stops advertising, so
-    BleakScanner can't see it (the steady state once paired — see
-    README-windows.md). WinRT can still connect to it directly by address, so
-    we recover that address from the OS:
-
-    1. CLAWDMETER_BLE_ADDRESS env override (skips discovery — testing / pinning).
-    2. Windows PnP table, filtered to the device's FriendlyName.
-
-    Non-Windows or any failure returns None.
+    The only place that runs the PowerShell lookup. Non-Windows or any failure
+    returns [].
     """
-    if override := os.environ.get("CLAWDMETER_BLE_ADDRESS"):
-        return override.strip().upper()
     if sys.platform != "win32":
-        return None
+        return []
     command = (
         "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | "
         "Where-Object { $_.FriendlyName -in @(" + ", ".join(f"'{n}'" for n in DEVICE_NAMES) + ") } | "
@@ -496,11 +724,48 @@ def discover_bonded_address() -> str | None:
         )
     except (OSError, subprocess.SubprocessError) as e:
         log(f"Bonded-address lookup failed: {e}")
-        return None
-    for line in result.stdout.splitlines():
-        if mac := _mac_from_pnp_instance_id(line):
-            return mac
-    return None
+        return []
+    return result.stdout.splitlines()
+
+
+_BONDED: list[str] = []   # what the latest bond lookup found
+
+
+def discover_bonded_addresses() -> list[str]:
+    """Return the BLE address of EVERY bonded board, in PnP order, each once.
+
+    A device that is paired AND connected to Windows stops advertising, so
+    BleakScanner can't see it (the steady state once paired — see
+    README-windows.md). WinRT can still connect to it directly by address, so
+    we recover the addresses from the OS:
+
+    1. CLAWDMETER_BLE_ADDRESS env override: exactly that one board (skips
+       discovery, for testing or pinning).
+    2. Windows PnP table, filtered to the board's FriendlyNames (DEVICE_NAMES).
+       Windows can list one board more than once, so repeats are dropped.
+
+    Non-Windows or any failure returns []. The result is also kept in _BONDED, which
+    main() reads after acquire_target() instead of running the lookup a second time.
+    """
+    global _BONDED
+    addresses: list[str] = []
+    if override := os.environ.get("CLAWDMETER_BLE_ADDRESS"):
+        pinned = override.strip().upper()
+        if pinned:
+            addresses.append(pinned)
+    else:
+        for line in _bonded_pnp_ids():
+            mac = _mac_from_pnp_instance_id(line)
+            if mac and mac not in addresses:
+                addresses.append(mac)
+    _BONDED = list(addresses)
+    return addresses
+
+
+def discover_bonded_address() -> str | None:
+    """Return the BLE address of the first bonded board, or None (the single board lookup)."""
+    addresses = discover_bonded_addresses()
+    return addresses[0] if addresses else None
 
 
 async def acquire_target():
@@ -523,22 +788,65 @@ async def acquire_target():
     return BLEDevice(address, DEVICE_NAME, None)
 
 
+# The text a relay message gives up, from the end and least needed field first, when it
+# is too long for the link. A usage payload has none: it always goes out whole.
+_SHRINK_ORDER = (
+    ("pg", ("p3", "p2", "p1", "pt")),   # a page
+    ("nt", ("nb", "nt")),               # a notification
+    ("q", ("qs", "qt")),                # an approve prompt
+)
+
+
+def _encode(payload: dict) -> bytes:
+    """A message as it goes on the wire: compact JSON in raw UTF-8, which ArduinoJson reads
+    as it is (the default ASCII mode spends 6 bytes on each character outside ASCII). A
+    lone surrogate, which json.loads lets through, goes out as "?"."""
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8", "replace")
+
+
+def _fit(payload: dict, limit: int) -> dict | None:
+    """A relay message cut to at most `limit` bytes on the wire, or None.
+
+    The fields in _SHRINK_ORDER give up characters from the end, one field after the
+    other, until the message fits. None when that is not enough, or when the message
+    has no such field.
+    """
+    fields = next((keys for kind, keys in _SHRINK_ORDER if kind in payload), ())
+    fitted = dict(payload)
+    for key in fields:
+        text = fitted.get(key)
+        if not isinstance(text, str):
+            continue
+        while text and len(_encode(fitted)) > limit:
+            text = text[:-1]
+            fitted[key] = text
+        if len(_encode(fitted)) <= limit:
+            return fitted
+    return None
+
+
 class Session:
-    def __init__(self, client: BleakClient) -> None:
+    def __init__(self, client: BleakClient, address: str = "") -> None:
         self.client = client
+        self.address = address  # the board's BLE address, stamped on its button events
         self.refresh_requested = asyncio.Event()
+        self._last_write = -math.inf  # time.monotonic() of the previous write (WRITE_GAP)
 
     def _on_refresh(self, _char, _data: bytearray) -> None:
         log("Refresh requested by device")
         self.refresh_requested.set()
 
     def _on_tx(self, _char, data: bytearray) -> None:
-        """Device -> host notifies. Acks are noise; {"approve": id} is an answer."""
+        """Device -> host notifies. Acks are noise; {"approve": id} is an answer, and
+        {"btn", "scr"} a button press, which goes to events/ for the engine."""
         try:
             msg = json.loads(bytes(data).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return
         if not isinstance(msg, dict):
+            return
+        if "btn" in msg:
+            write_event(msg["btn"], msg.get("scr"), self.address)
             return
         request_id = msg.get("approve")
         if request_id is None:
@@ -569,9 +877,44 @@ class Session:
         except (BleakError, ValueError, OSError) as e:
             log(f"Refresh subscription unavailable: {e}")
 
-    async def write_payload(self, payload: dict) -> bool:
-        data = json.dumps(payload, separators=(",", ":")).encode()
-        log(f"Sending: {data.decode()}")
+    def write_limit(self) -> int:
+        """The most bytes one message may take on this link: the negotiated ATT MTU less
+        3, never more than the board keeps, and WIRE_MAX_ASSUMED while the link reports
+        no MTU of its own (23 is the ATT default from before the exchange)."""
+        try:
+            mtu = self.client.mtu_size
+        except (AssertionError, AttributeError, OSError, BleakError):
+            mtu = None   # bleak asserts a live session; WinRT can raise a raw OSError
+        if isinstance(mtu, int) and not isinstance(mtu, bool) and mtu > 23:
+            return min(mtu - 3, WIRE_MAX_BOARD)
+        return WIRE_MAX_ASSUMED
+
+    async def write_payload(self, payload: dict, quiet: bool = False) -> bool:
+        """Write one message to the board. quiet leaves out the "Sending:" log line.
+
+        A page, notification or prompt too long for the link is cut to fit (_fit), or
+        not sent at all (False, after a log line) when cutting is not enough. A usage
+        payload always goes out whole.
+        """
+        data = _encode(payload)
+        limit = self.write_limit()
+        if len(data) > limit and any(kind in payload for kind, _ in _SHRINK_ORDER):
+            fitted = _fit(payload, limit)
+            if fitted is None:
+                log(f"Message of {len(data)} bytes does not fit the link ({limit}), not sent:"
+                    f" {data[:48].decode('utf-8', 'ignore')}")
+                return False
+            cut = _encode(fitted)
+            if not quiet:
+                log(f"Message of {len(data)} bytes cut to {len(cut)} to fit the link ({limit})")
+            data = cut
+        # One message at a time: the board keeps a single incoming message until its
+        # loop reads it, so a burst waits WRITE_GAP between writes (see WRITE_GAP).
+        wait = self._last_write + WRITE_GAP - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        if not quiet:
+            log(f"Sending: {data.decode()}")
         try:
             await self.client.write_gatt_char(RX_CHAR_UUID, data, response=False)
             return True
@@ -584,6 +927,8 @@ class Session:
             # silent-freeze failure mode, SC#2 field report).
             log(f"Write failed: {e}")
             return False
+        finally:
+            self._last_write = time.monotonic()
 
 
 def _extract_access_token(blob: str) -> str | None:
@@ -702,7 +1047,13 @@ async def _wait_first(*events: asyncio.Event, timeout: float) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) -> bool:
+# The sessions whose board link is up right now. With several boards the heartbeat
+# says "connected" and the tray stays Connected while ANY of them is linked.
+_LIVE_LINKS: set = set()
+
+
+async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
+                          connect_turn: asyncio.Lock | None = None) -> bool:
     """Connect to device and poll until disconnected or stopped.
 
     Returns True if at least one successful write occurred.
@@ -710,6 +1061,9 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
     `device` is a BLEDevice — either from an advertisement scan or built from the
     bonded address by acquire_target(). The getattr keeps the log line robust if a
     bare address string is ever passed in.
+
+    `connect_turn` (several boards only): a lock the boards' connects take turns on,
+    held just while one connect is being established. None with a single board.
     """
     log(f"Connecting to {getattr(device, 'address', device)}...")
     # D-01: retry wrapper — defeats WinRT post-wake failure modes
@@ -726,7 +1080,8 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
             use_cached_services=False,
         )
         try:
-            await client.connect()
+            async with connect_turn or contextlib.nullcontext():
+                await client.connect()
         except (BleakError, OSError, asyncio.TimeoutError, AssertionError) as e:
             # WinRT service discovery inside connect() can surface a raw OSError
             # (WinError) or even a bare AssertionError from bleak's FutureLike
@@ -761,7 +1116,9 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
         return False
 
     log("Connected")
-    session = Session(client)
+    address = getattr(device, "address", device)
+    address = address if isinstance(address, str) else ""
+    session = Session(client, address)
     await session.setup_refresh_subscription()
     await session.setup_tx_subscription()
 
@@ -772,7 +1129,19 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
     state_fields: dict = {}  # last good "n"/"a" fields, merged into every payload
     last_usage: dict | None = None  # the last polled usage payload, without the state fields
     last_approve = approve_stamp()  # a request left over from before this link is stale, not ours to show
+    # A notification from before this link is old news too, like a leftover prompt.
+    last_notify = notify_stamp()
+    # A page is current state instead: the first tick reads page.json even when there is
+    # none and brings the board in line with it. page_sent is the page message this board
+    # has, so the same page is never sent twice. A board the daemon last sent a live page
+    # to (the record outlives the link and the tray) may still show it, so it starts at
+    # None and gets whatever page.json says, a clear included. A board never sent a page
+    # shows none: with no page.json it is sent nothing at all.
+    last_page = _FIRST_TICK
+    page_sent: dict | None = None if address in _paged() else {"pg": ""}
+    page_until = 0.0  # when that page lapses: the board keeps no timer for a page, so we clear it
     try:
+        _LIVE_LINKS.add(session)
         while client.is_connected and not stop_event.is_set():
             write_heartbeat(True)
             # Host state changed (agents / animation): push now instead of waiting
@@ -803,6 +1172,37 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
                 if msg is not None:
                     log(f"Approve file changed: {msg}")
                     await session.write_payload(msg)
+            # A notification (or its clear): its own message at once, like a prompt.
+            stamp = notify_stamp()
+            if stamp != last_notify:
+                last_notify = stamp
+                msg = read_notify_msg()
+                if msg is not None:
+                    log(f"Notify file changed: {msg}")
+                    await session.write_payload(msg)
+            # The page, when it differs from what this board has. A move of the
+            # progress bar alone goes out without log lines, which would otherwise
+            # flood daemon.log for as long as a track plays.
+            stamp = page_stamp()
+            if stamp != last_page:
+                last_page = stamp
+                page = read_page_msg()
+                if page is not None:
+                    msg, page_until = page
+                    if msg != page_sent:
+                        progress_only = (page_sent is not None
+                                         and _page_sans_progress(msg) == _page_sans_progress(page_sent))
+                        if not progress_only:
+                            log(f"Page file changed: {msg}")
+                        if await session.write_payload(msg, quiet=progress_only):
+                            page_sent = msg
+                            _note_page(address, bool(msg["pg"]))
+            if page_until and time.time() >= page_until:
+                page_until = 0.0
+                log("Page expired, clearing it")
+                if await session.write_payload({"pg": ""}):
+                    page_sent = {"pg": ""}
+                    _note_page(address, False)
             now = time.time()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:
@@ -850,7 +1250,8 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None) ->
             # being left frozen on stale data after Quit (SC#3 graceful shutdown).
             await _wait_first(session.refresh_requested, stop_event, timeout=min(TICK, WATCH_TICK))
     finally:
-        write_heartbeat(False)
+        _LIVE_LINKS.discard(session)
+        write_heartbeat(bool(_LIVE_LINKS))  # False unless another board is still linked
         # Clean GATT disconnect on the way out — this is what tells the peripheral
         # the link is gone. WinRT can surface a raw OSError (not BleakError) here,
         # so swallow both; the link tears down regardless once we exit.
@@ -873,6 +1274,47 @@ def _next_backoff(current: int, cap: int) -> int:
     Used by both slow-search (cap=60) and fast-reconnect (cap=RECONNECT_BACKOFF_CAP) regimes.
     """
     return min(current * 2, cap)
+
+
+async def _board_link(address: str, stop_event: asyncio.Event, tray_state,
+                      connect_turn: asyncio.Lock) -> None:
+    """Keep one of several bonded boards linked until stop.
+
+    The same connect_and_run a single board gets, pinned to this address, with its
+    own fast-reconnect backoff (D-05), so one board dropping never holds up another.
+    """
+    _LOG_TAG.set(f"[{address}] ")  # this task's context only: the other boards keep theirs
+    reconnect_backoff = 1
+    while not stop_event.is_set():
+        device = BLEDevice(address, DEVICE_NAME, None)
+        if await connect_and_run(device, stop_event, tray_state, connect_turn):
+            reconnect_backoff = 1
+            continue
+        if stop_event.is_set():
+            break
+        if tray_state and not _LIVE_LINKS:  # another board still linked keeps the tray Connected
+            tray_state.set_scanning()
+        log(f"Connection lost, reconnecting in {reconnect_backoff}s...")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=reconnect_backoff)
+        except asyncio.TimeoutError:
+            pass
+        reconnect_backoff = _next_backoff(reconnect_backoff, RECONNECT_BACKOFF_CAP)
+
+
+async def _run_boards(addresses: list[str], stop_event: asyncio.Event, tray_state) -> None:
+    """Link every bonded board at once: one _board_link per address, gathered.
+
+    Each link sends every message to its own board, so the boards mirror one another
+    (usage, state, prompts, notifications, pages), and approve answers and button
+    presses are taken from any of them. Connects take turns on one lock so two links
+    are never being established at the same moment; it is made here, per run of the
+    loop, because an asyncio.Lock belongs to one event loop and the tray starts a new
+    loop after a crash.
+    """
+    log(f"{len(addresses)} bonded boards, linking all: {', '.join(addresses)}")
+    connect_turn = asyncio.Lock()
+    await asyncio.gather(*(_board_link(a, stop_event, tray_state, connect_turn) for a in addresses))
 
 
 async def main(tray_state=None) -> None:
@@ -925,6 +1367,13 @@ async def main(tray_state=None) -> None:
             except asyncio.TimeoutError:
                 pass
             search_backoff = _next_backoff(search_backoff, 60)
+            continue
+
+        # More than one board bonded: link every one of them, until stop. The bond list
+        # is the one acquire_target() just looked up, so each round runs PowerShell once.
+        addresses = list(_BONDED)
+        if len(addresses) > 1:
+            await _run_boards(addresses, stop_event, tray_state)
             continue
 
         ok = await connect_and_run(device, stop_event, tray_state)

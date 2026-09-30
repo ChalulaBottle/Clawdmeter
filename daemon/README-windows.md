@@ -222,6 +222,80 @@ launched.
 
 ---
 
+## Relay files and several boards
+
+The tray daemon is the one process that talks to the boards. Other tools, the LabDaemon
+Engine first among them, reach the boards through small JSON files in
+`%LOCALAPPDATA%\Clawdmeter\`, the same way the approve hook uses `approve.json`. Write each
+file whole in one step: write a temp file in the same folder, then rename it over the target.
+The daemon checks the files every second and sends each change to the boards as its own
+message, never folded into the usage payload. A board holds one incoming message at a time,
+so when several are due in the same second the daemon sends them a quarter second apart.
+
+| File | Written by | Holds | The board gets |
+|------|------------|-------|----------------|
+| `notify.json` | the engine | `{"title", "body", "secs", "expires"}` | `{"nt", "nb", "nx"}` |
+| `page.json` | the engine | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "expires"}` | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa"}` |
+| `events\<ns>.json` | the daemon | `{"btn", "scr", "addr", "ts"}` | nothing: it is for the engine |
+| `daemon.pages` | the daemon | `{"boards"}`, the boards it last sent a page to | nothing: it is the daemon's own note |
+
+**Text.** Every text field is capped in bytes of `UTF-8`, the way the board caps it, and never
+cut inside a character. Control characters other than a newline go out as spaces, which is how
+the board shows them anyway. Text travels as `UTF-8` itself, not as `\u` escapes. The panel
+fonts draw printable ASCII only, so a writer should fold its text to ASCII first, as the engine
+does. Anything else still arrives intact, but the board has no glyph to draw it with.
+
+**Notifications.** The title keeps at most 23 bytes and the body 96. The board shows the
+notification for `secs` seconds (8 when `secs` is left out, never more than an hour) and never
+past `expires`. A notification already on disk when a board links is not shown; write a new one.
+
+**Pages.** The page name keeps at most 15 bytes, the title 23 and each of the three lines 40.
+`pp` is progress as a whole number from 0 to 100, or `-1` for no bar, and `pa` is a creature
+animation name or an empty string. A board that links gets the current page at once. The
+board keeps no timer for a page, so the daemon clears it itself when its `expires` passes.
+Rewriting the same page with a later `expires` keeps it up without sending anything again,
+and a change to the progress alone is sent without a log line.
+
+**Clearing.** `expires` is a Unix time in seconds and is required. While a board is linked, a
+file that goes away, or one without `expires` or past it, clears the board: `{"nt":"","nb":""}`
+for a notification, `{"pg":""}` for a page (an empty `pg` clears it too). A page can also be
+gone by the time a board links again, for example when the engine dropped it while the PC was
+asleep. The daemon notes in `daemon.pages` every board it sent a page to, and a board on that
+note that links while there is no live page gets `{"pg":""}` first, even after the tray has
+restarted. A board the daemon never sent a page is never sent a clear. A file that is not valid
+JSON is logged and skipped, and the board keeps what it shows.
+
+**Size on the wire.** One message carries at most the link's MTU less 3 bytes, and never more
+than the 511 bytes a board keeps. The boards ask for an MTU of 256, so the daemon assumes 253
+bytes until the link reports its own. A page, notification or approve prompt that would be
+longer gives up text from the end of its least needed field until it fits: `p3` first, then
+`p2`, `p1` and the title of a page, the body and then the title of a notification, the text and
+then the tool name of a prompt. One that still does not fit is logged and not sent. A usage
+payload always goes out whole.
+
+**Button presses.** A press the board hands to the host lands as `events\<ns>.json`: the
+button (`pwr` or `aux`), the screen it was pressed on (`splash`, `usage`, `approve`, `notify`
+or `page`), the Bluetooth address of the board, and the time. Names are nanosecond times that
+only ever grow, so reading them in name order replays the presses in order. Read only names
+that end in `.json`; a name that starts with a dot is a file still being written. The daemon
+only ever adds files to `events`; it never deletes them.
+
+**Several boards.** The daemon links every board bonded to this PC whose Bluetooth name is
+ECHO_LabDaemon or one of its older names (ECHO_MiniDaemon, Clawdmeter). Each board gets its
+own link and its own reconnect backoff, and every message goes to every linked board, so all
+of them show the same prompts, notifications and pages. Usage is the one exception: each link
+polls it on its own schedule, so two boards can show numbers up to a minute apart, and the API
+is asked once a minute for each board. An approve or a button press
+from any board counts, and its event carries that board's address. Connects take turns, one
+board at a time. The heartbeat reads connected, and the tray shows Connected, while at least
+one board is linked. Log lines from each link start with the board address in brackets. With
+one bond the daemon behaves exactly as before. The bond list is read when the daemon starts
+and each time its board has to be found again, so after pairing another board, Quit the tray
+and start it again. `CLAWDMETER_BLE_ADDRESS` still pins exactly one board and skips the
+lookup.
+
+---
+
 ## What is NOT covered here
 
 - PyInstaller / one-file `.exe` packaging — v2
