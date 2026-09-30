@@ -28,6 +28,22 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   (timeout is 30 min). Suspect: RGB panel refresh stall under BLE traffic + 5 s page updates (the plan's
   known risk; bounce buffer). The reflash reset cleared it. Operator's answer (solid black vs frozen)
   pending; if it recurs, capture `iox` + `fbshot` first, then look at the bounce-buffer path in display.cpp.
+- **2026-09-30 ~04:30, INCREMENT 2 ON THE 4 INCH BOARD, waiting on Wi-Fi:** workflow wf_f62c2d86-d89
+  (13 agents, GO). Board side 4d27b53, engine c5dafe1, docs 6340532. Flashed lcd_4 (Flash 54.1 %; the
+  hung lane build tree was ended by PID first, logged). Tray and engine restarted on the new code; the
+  engine's art listener is up on 0.0.0.0:8977 (`lab.art` token); the board holds the art base (serial
+  `art status` shows it, "wifi down"). **Waiting on the operator:** `wifi set "<ssid>"` in a real
+  console (getpass) while the 4 inch board is Connected, and the firewall: the LAN adapter's profile
+  is PUBLIC, so either `Set-NetConnectionProfile -InterfaceAlias "Ethernet 4" -NetworkCategory Private`
+  or a rule for TCP 8977 with `-Profile Any` (both admin). Then play a track: expect `art: <id> 160x160`
+  on serial and `art <id> sent to <ip>` in engine.log, the card in the art layout, `page: dance <name>`
+  every 12 to 25 s. Buttons now: PWR tap cycles creature, usage, live page; on the page BOOT tap =
+  play/pause (400 ms delay), BOOT double = next, PWR double = previous.
+- **Known follow-ups from increment 2:** tray should wait for the board's `wf` answer before deleting
+  wifi.json (spec in the fw lane B report; today a board without Wi-Fi can consume the file);
+  `echo mushroom b` stays bench-only; every board's PWR now cycles to usage instead of next creature
+  (plan rule; the 2.16 operator will notice); engine loop is still single-threaded (art download runs
+  inside it).
 - **2026-09-30 ~00:20:** MCP wired (`claude mcp add --scope user labdaemon`, status Connected; tools
   lab_list, lab_state, lab_do, lab_notify appear in new Claude Code sessions). Engine autostart on
   (HKCU Run `LabDaemonEngine`). Increment 2 (music card v2) building in workflow wf_f62c2d86-d89.
