@@ -180,6 +180,27 @@ has no room for Wi-Fi):**
 **Increment 2 order:** buttons + dance + daemon relay + engine mapping (all boards) → Wi-Fi + art
 (lcd_4) → flash, captures (card with art, dance rotation GIF), plan, README.
 
+## Increment 2b: album art over BLE (2026-09-30 ~05:20; the operator is on public campus Wi-Fi)
+
+Campus Wi-Fi needs a captive portal or 802.1X the board cannot do, isolates clients (the board
+could never reach the PC's 8977), and must never be marked Private on Windows. The laptop's own
+radio is on the campus network too, so no hotspot. A desk device that follows the operator anywhere
+must not depend on a LAN: **art travels over the bonded BLE link, like everything else.**
+- Firmware: a second RX characteristic (`...0005`, write without response, binary) receives chunks
+  of a baseline JPEG: header message on the JSON RX `{"ab":"<id>","al":<bytes>,"an":<chunks>}`,
+  then chunk k = 2 byte index + payload (MTU minus 5); the board assembles in PSRAM (cap 24 KB),
+  verifies length, decodes with JPEGDEC, shows it exactly as the Wi-Fi path does; missing chunks
+  after 3 s = `{"art":"<id>","miss":[k,...]}` on TX and the host resends those; `{"art":"<id>","ok":1}`
+  when shown. Cached last id, so a repeated pi costs nothing. The Wi-Fi path stays for pages that
+  need a network (websites, screen tiles) and for the future; `pi` keeps meaning "art id", the
+  board tries the BLE cache first, then Wi-Fi if it is up.
+- Engine: art files shrink to 128 px, quality 70 (about 4 to 6 KB) so a transfer is 20 to 30
+  packets, well under a second; `art\<id>.jpg` stays the cache.
+- Daemon: on a page with a new pi, streams `art\<pi>.jpg` after the page message (header, chunks
+  at the link's write pace, resend on miss), per board, never blocking the tick loop (asyncio task
+  per transfer, one at a time per board); logs one line per transfer with bytes and ms.
+- Bring-up: play a track on campus, expect `art: <id> from ble, N bytes in M ms` on serial.
+
 ## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
 
 Operator: "I dont like beeps, they hurt animals ear drums. We designed the alien clickings for this
