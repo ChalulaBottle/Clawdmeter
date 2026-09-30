@@ -9,7 +9,7 @@ static const BoardCaps caps = {
     .has_rotation = (bool)BOARD_HAS_ROTATION,
     .has_battery  = (bool)BOARD_HAS_BATTERY,
     .has_imu      = (bool)BOARD_HAS_IMU,
-    .pwr_toggles_stats = true,   // BOOT is the only button and touch is not up: button #1 = the stats
+    .pwr_toggles_stats = true,   // PWR tap cycles creature, usage and the live page
 };
 
 const BoardCaps& board_caps(void) { return caps; }

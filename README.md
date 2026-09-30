@@ -13,6 +13,8 @@
 >
 > If `pio run` fails within seconds with "Failed to install Python dependencies", set `$env:PLATFORMIO_OFFLINE = "1"` in the same PowerShell before running pio.
 >
+> Wi-Fi and album art (`FEATURE_PICTURE=1`, with JPEGDEC) are built into the `waveshare_lcd_4` env only; every other env builds without Wi-Fi, HTTP or JPEG, and the stock 2.16 board sits at 99.0 % of its flash.
+>
 > The board advertises as ECHO_LabDaemon; the Windows tray daemon links every bonded board named ECHO_LabDaemon, ECHO_MiniDaemon or Clawdmeter.
 >
 > **Creatures in the works** (drawn for the ECHO edition, benched at
@@ -317,11 +319,31 @@ Add the hook yourself (nothing in the repo writes to your settings); `settings.j
 
 The script always answers inside 40 s, under that timeout, so the hook's timeout path (which discards the output) never runs. Try it without Claude Code: `python daemon\clawdmeter_approve.py --test Bash "git push origin main"` puts a sample prompt on the device and prints what the hook would return; `ask` / `ok` / `askclr` over the serial console exercise the overlay with no host at all. The daemon must have been started from this code (restart the tray after updating).
 
-The same serial console pokes the two host cards with no host: `msg <text>` shows a notification with a body only, `msg <title>|<text>` one with a title, and `msgclr` clears it. `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>` shows the generic card page: a title, three lines, progress 0..100 (empty for no bar) and an optional creature name such as `echo headphones`; trailing fields may be left off, and `pageclr` takes it down.
+The same serial console pokes the two host cards with no host: `msg <text>` shows a notification with a body only, `msg <title>|<text>` one with a title, and `msgclr` clears it. `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>|<pi>` shows the generic card page: a title, three lines, progress 0..100 (empty for no bar), an optional creature name such as `echo headphones` (or `dance` for the dancing daemon) and an optional album art id; trailing fields may be left off, and `pageclr` takes it down. `btn pwr`, `btn pwr2`, `btn aux` and `btn aux2` press a button from the bench, once or twice in quick succession, down the same path as a real press. On the 4 inch board, the one built with Wi-Fi, `wifi <ssid>|<password>` stores a network and joins it (the bar is required and an open network is `wifi <ssid>|`; a line without the bar stores nothing and is never echoed), `wifi off` forgets it and `wifi status` reports the link without ever printing the password; `art <base url>` stores the base the album art comes from and `art status` reports on it.
 
 ### Notifications, pages and button reports (ECHO edition)
 
-Two more host messages ride the same RX characteristic as approve: a notification `{"nt": title, "nb": body, "nx": seconds}` and a page `{"pg": name, "pt": title, "p1", "p2", "p3": lines, "pp": progress, "pa": creature}`; an empty `nt` and `nb`, or an empty `pg`, clears them. The board reports PWR and aux presses on TX as `{"btn": "pwr"|"aux", "scr": "splash"|"usage"|"approve"|"notify"|"page"}`, with `scr` read before the press acts. A page from the host lapses after 90 s of host silence, so a tray that quit never leaves one stuck. On a page, PWR and aux send the press and do nothing locally while a host is listening; with no host they take the page down. A tap dismisses a page until its text changes. The host side is [LabDaemon Engine](https://github.com/ChalulaBottle/labdaemon-engine) (private), which writes `notify.json` and `page.json` into `%LOCALAPPDATA%\Clawdmeter` for the tray daemon to relay, the same way it relays `approve.json`.
+Two more host messages ride the same RX characteristic as approve: a notification `{"nt": title, "nb": body, "nx": seconds}` and a page `{"pg": name, "pt": title, "p1", "p2", "p3": lines, "pp": progress, "pa": creature, "pi": art}`; an empty `nt` and `nb`, or an empty `pg`, clears them. The board reports presses on TX as `{"btn": "pwr"|"pwr2"|"aux"|"aux2", "scr": "splash"|"usage"|"approve"|"notify"|"page"}`, with `scr` read before the press acts; `pwr2` and `aux2` only ever come from the page. A page from the host lapses after 90 s of host silence, so a tray that quit never leaves one stuck.
+
+The buttons (BOOT is the aux key on the 4 inch board):
+
+| Press | On the page | Anywhere else |
+|---|---|---|
+| PWR tap | back to the creature, nothing sent | sends `pwr`, then approves a prompt, else clears a notification, else steps the screens: creature, usage, the live page when there is one, creature |
+| PWR double tap (two within 400 ms) | sends `pwr2`, previous track | two single taps |
+| BOOT tap | sends `aux`, play or pause | sends `aux`, then approves a prompt, else clears a notification, else the next creature on the splash and brightness on usage |
+| BOOT double tap | sends `aux2`, next track | two single taps |
+| Touch tap | back to the creature | unchanged |
+
+On the page a single tap waits the 400 ms out in case a second one follows, so it lands slightly late there and nowhere else. A page left this way stays live out of sight: its updates (title, lines, progress, creature, art) never bring it back, and it returns on the next PWR cycle or when a page with a different `pg` arrives.
+
+`pa` set to `dance` is the dancing daemon: the board puts a random dance on the card (echo dj, echo rave, echo mixer, echo notes, echo headphones, echo hop, echo swing, echo cartwheel) and changes it every 12 to 25 s, and one change in four the creature steps off for 4 to 8 s and comes back with a different one. It runs only while the page is on top. Any other name in `pa` is that creature, fixed.
+
+Album art, on the 4 inch board only: `pi` names a picture, 8 to 16 characters of a to z and 0 to 9 (the engine sends 12). The board fetches `<art base><pi>.jpg` over HTTP on its own Wi-Fi, decodes it with JPEGDEC and shows it as a 160 px square beside the text; with no art, or when a fetch fails, the card keeps its plain layout. The art base is stored on the board once with the serial poke `art <base url>`. `python -m labdaemon_engine art base` prints it, and it carries a token: `http://<PC LAN IP>:8977/a/<token>/`. The engine's listener on port 8977 serves only `/a/<token>/<id>.jpg` and nothing else.
+
+Wi-Fi reaches the board over serial (above) or over BLE, as its own message: `{"wf": ssid, "wp": password}`, the SSID 1 to 32 bytes and the password empty for an open network, 8 to 63 characters, or exactly 64 hex digits; `{"wf": ""}` forgets the network. The board answers `{"ack":true,"wf":"ok"}` when it stored or forgot them and `{"err":true,"wf":"no"}` when it did not; a board built without Wi-Fi answers the plain `{"err":true}`. From the PC, `python -m labdaemon_engine wifi set "<ssid>"` asks for the password without echoing it and writes `wifi.json` into `%LOCALAPPDATA%\Clawdmeter`, and `wifi clear` writes the forget. The tray sends the file once to the connected boards and deletes it after a write succeeds, so a board without Wi-Fi can use it up: run `wifi set` while the 4 inch board shows Connected. A follow-up will make the tray wait for the `wf` answer.
+
+The host side is [LabDaemon Engine](https://github.com/ChalulaBottle/labdaemon-engine) (private), which writes `notify.json` and `page.json` into `%LOCALAPPDATA%\Clawdmeter` for the tray daemon to relay, the same way it relays `approve.json`.
 
 ### Make the creature follow Claude
 

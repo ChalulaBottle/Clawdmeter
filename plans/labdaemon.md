@@ -70,16 +70,26 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 ## Protocol (settled 2026-09-29 ~21:35; every lane uses these names verbatim)
 
 **Host to board, each its own BLE message, never merged into usage.** Firmware dispatch order:
-`handle_approve_msg || handle_notify_msg || handle_page_msg || parse_json(requires "s")`, then ack.
+`handle_approve_msg || handle_notify_msg || handle_wifi_msg || handle_page_msg || parse_json(requires "s")`,
+then ack (the Wi-Fi message answers for itself, below).
 
 | Message | Fields | Clear |
 |---|---|---|
 | approve (exists) | `q` id, `qt` tool, `qs` text, `qx` seconds left | `{"q":""}` |
 | notify | `nt` title (≤23), `nb` body (≤96), `nx` seconds (default 8) | `{"nt":"","nb":""}` |
-| page | `pg` page name (≤15), `pt` title (≤23), `p1` `p2` `p3` lines (≤40 each), `pp` progress 0..100 or -1, `pa` creature name or "" | `{"pg":""}` |
+| wifi (increment 2; boards built with `FEATURE_PICTURE` only, today lcd_4) | `wf` SSID (1 to 32 bytes), `wp` password (empty for an open network, 8 to 63 characters, or exactly 64 hex digits) | `{"wf":""}` forgets the network |
+| page | `pg` page name (≤15), `pt` title (≤23), `p1` `p2` `p3` lines (≤40 each), `pp` progress 0..100 or -1, `pa` creature name, "dance" or "", `pi` album art id or absent | `{"pg":""}` |
 
-**Board to host on TX:** existing `{"approve":"<id>"}` plus `{"btn":"pwr"|"aux","scr":"splash"|"usage"|"approve"|"notify"|"page"}`
-(`scr` read BEFORE the local action changes it; wake-swallowed presses send nothing).
+**Wi-Fi answers:** in place of the plain ack the board answers `{"ack":true,"wf":"ok"}` (stored or
+forgotten) or `{"err":true,"wf":"no"}` (not stored: refused or NVS failed). A board without Wi-Fi has
+no handler, so the message falls through to `parse_json` and gets the plain `{"err":true}`.
+
+**`pi` rule:** 8 to 16 characters of a to z and 0 to 9 (the engine sends 12); anything else is not
+fetched. Boards without `FEATURE_PICTURE` ignore it.
+
+**Board to host on TX:** existing `{"approve":"<id>"}` plus `{"btn":"pwr"|"pwr2"|"aux"|"aux2","scr":"splash"|"usage"|"approve"|"notify"|"page"}`
+(`scr` read BEFORE the local action changes it; wake-swallowed presses send nothing). `pwr2` and `aux2`
+are the double taps of increment 2 and only ever come with `"scr":"page"`.
 
 **Local button rules (board), in order:** wake swallow → approve accept → notify clear → page: PWR and
 aux do nothing locally (host decides) → existing behaviour (lcd_4: PWR stats toggle, aux next creature /
@@ -135,8 +145,10 @@ name in `pa` still means that creature, fixed.
 **Album art (lcd_4 first, build flag `FEATURE_PICTURE=1` set only in the lcd_4 env; the 2.16 partition
 has no room for Wi-Fi):**
 - Board: Wi-Fi station joined from NVS credentials set over serial (`wifi <ssid>|<password>`,
-  `wifi off`, `wifi status`; never in a repo, never echoed back in full), reconnect with backoff, BLE
-  untouched. `art <base url>` stores the engine's art base (e.g. `http://192.168.1.50:8977/a/`).
+  `wifi off`, `wifi status`), or over BLE from wifi.json (the engine's `wifi set` and `wifi clear`, relayed
+  by the tray as the wifi message); never in a repo, never echoed back in full; reconnect with backoff, BLE
+  untouched. `art <base url>` stores the engine's art base, which carries the LAN token
+  (e.g. `http://192.168.1.50:8977/a/<token>/`, printed by the engine's `art base`).
 - Page field `pi` = an 8 to 16 char art id; the board fetches `<base><pi>.jpg` over HTTP (2 s timeout,
   one fetch at a time, cached last id), decodes with JPEGDEC into an LVGL image; the card shows the art
   as a square on one side, text on the other, creature band below; no art = today's layout. Fetch
