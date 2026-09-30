@@ -15,6 +15,19 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   `page Spotify|Hoppipolla|Sigur Ros|Desk speaker|42|echo headphones` (page-spotify-device.png: title,
   headphones creature, three lines, 42 % bar), and the full engine path `python -m labdaemon_engine notify`
   → notify.json → tray `{"nt","nb","nx"}` → overlay (engine-notify-device.png). Daemon 472 tests, engine 372.
+- **2026-09-29 ~23:58, SPOTIFY LIVE ON THE PANEL:** operator created the Spotify app (client id in
+  `%LOCALAPPDATA%\Clawdmeter\spotify.client`, never in a repo), `spotify login` (PKCE) succeeded, tokens
+  DPAPI-encrypted in `spotify.tok`; the card followed real playback on the operator's PC (XICO): Hunnids,
+  GREAT WHITE NORTH, 2 Step Stevie, with the bar moving (capture `docs/media/lcd4/spotify-live-device.png`).
+  Then flashed 01c60d8: echo mushroom + echo mushroom b in the table (74 animations; echo mushroom in the
+  idle rotation in the dead `echo sleep` slot) and `idle_keep_awake()` (a page still receiving updates
+  keeps a lit panel lit). `anim echo mushroom` plays on the device (serial confirms; capture pending, the
+  live card sits over it until the music pauses).
+- **Dark-panel incident ~23:50:** operator saw nothing on the 4 inch panel while the framebuffer held
+  the live card, the link was up, and the CH32 PWM register read 0xC8 (backlight on). Not the idle sleep
+  (timeout is 30 min). Suspect: RGB panel refresh stall under BLE traffic + 5 s page updates (the plan's
+  known risk; bounce buffer). The reflash reset cleared it. Operator's answer (solid black vs frozen)
+  pending; if it recurs, capture `iox` + `fbshot` first, then look at the bounce-buffer path in display.cpp.
 - **Not yet proven:** the btn TX message (needs a press on the board while a page is up: expect
   `BLE: btn pwr on page` on serial, `events/<ns>.json` in the relay dir, one "routed" or "dropped" line in
   engine.log); Spotify login (needs the operator's client id in `spotify.client`); the second board
