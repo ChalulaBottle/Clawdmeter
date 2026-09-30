@@ -63,7 +63,7 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // Group 0 — idle / sleepy. The ECHO edition's own creatures (tools/add_echo_anims.py)
     // live here too, listed first so they come up in normal rotation and not only on
     // request; names missing from the table are skipped by resolve_group_lists().
-    { "echo idle", "echo sleep", "echo breathe", "echo wink", "echo coffee", "echo happy", "echo headphones", "echo morning", "echo pizza",
+    { "echo idle", "echo mushroom", "echo breathe", "echo wink", "echo coffee", "echo happy", "echo headphones", "echo morning", "echo pizza",
       "echo doze", "echo breath", "echo blink", "echo winky", "echo done" },
     // Group 1 — normal pace
     { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "echo glance", "echo ponder", "echo code", "echo bubble", "echo ask" },

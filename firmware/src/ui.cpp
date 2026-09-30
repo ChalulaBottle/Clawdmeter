@@ -888,6 +888,8 @@ void ui_page_show(const char* pg, const char* title, const char* l1, const char*
         splash_hide();
         idle_note_activity();   // a dark panel lights up for a new page, never for its updates
         Serial.printf("page: show %s\n", page_name);
+    } else {
+        idle_keep_awake();      // a page still being updated (a track playing) keeps a lit panel lit
     }
 }
 

@@ -5,6 +5,11 @@ void idle_init(void);
 void idle_tick(void);
 void idle_note_activity(void);
 
+// Activity that keeps a lit panel lit but never wakes a dark one: a host page
+// that is still receiving updates (a track playing). Once the updates stop the
+// normal timeout applies again.
+void idle_keep_awake(void);
+
 // Set the "awake" brightness target (0..255). idle owns display brightness
 // (it fades between this and 0), so user brightness control routes through
 // here. Applied immediately if the screen is currently fully awake; otherwise
