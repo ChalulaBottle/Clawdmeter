@@ -238,6 +238,20 @@
     "palette_size": 9
   },
   {
+    "filename": "echo_mushroom.html",
+    "name": "echo mushroom",
+    "category": "Idle",
+    "frame_count": 57,
+    "palette_size": 10
+  },
+  {
+    "filename": "echo_mushroom_b.html",
+    "name": "echo mushroom b",
+    "category": "Idle",
+    "frame_count": 77,
+    "palette_size": 10
+  },
+  {
     "filename": "echo_breathe.html",
     "name": "echo breathe",
     "category": "Idle",

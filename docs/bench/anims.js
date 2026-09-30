@@ -2406,6 +2406,352 @@
     };
   })();
 
+  // 3x. Mushroom (operator, 2026-09-29: "make the creature eat a mushroom and its eyes get super big and wiggly, and it
+  // looks up and stares at the blue sky and clouds, and the skies are beautiful"). Eyes first.
+  // A spotted toadstool (5 x 4: red dome, a red brim with two white spots, a white stem) sprouts from the ground left of
+  // the creature in three frames; the eyes find it and the antenna pings, the mouth opens (3 x 2 dark, rows 10..11, the
+  // middle of the credits out mouth), and it hops up past the left arm shrinking to 3 x 2, crosses the chest and goes in,
+  // the last red cell last; the mouth shuts, three chews with the eyes squinting, a gulp and a blink.
+  // Then the eyes pop, 3 x 3 and then 5 x 5 each (rows 5..9, cols 5..9 and 11..15; the cut corners and the col 10
+  // bridge stay visor, so the eyes sit in the band): white, corners cut round, a 2 x 2 dark pupil, and an open grin two
+  // rows under them. They overshoot square for a frame and settle round, then the pupils run an eight phase ring round
+  // the rim of the eye for two turns, the right eye the mirror of the left, so they cross and uncross; once a turn the
+  // eyes throb square (their four corner cells fill) on the same beat as an antenna ping; the whole creature sways a
+  // cell left and right, feet and all.
+  // The sky opens out of the eyes: a disc round the bridge (row 7, col 10), its rim in ping, grows over three frames
+  // until every empty cell of rows 0..16 is sky, deep blue on top, light blue from row 6, three dithered rows between;
+  // rows 17..19 stay panel black, the ground. Three small round clouds with soft light edges drift left behind the
+  // creature, each at its own speed, placed by the sky clock (the holds summed from the sky's first frame), so a long
+  // hold and a short one drift alike; a cloud that has left the left edge comes back in at the right one step later.
+  // Then the head tips back: the eyes rise a row to the top of the head (rows 4..8; on that row the corners and the
+  // bridge stay body, so the antenna never stands on white), the pupils look slowly round the top of the ring together
+  // as if watching the clouds, throbbing at each end of the look, the sway slows to 4 s, and it stares. The head comes
+  // level, the sky folds back into the eyes (the bloom backwards), the eyes shrink, an antenna ping and a blink, rest.
+  // One closure, so echoMushroom is the only name this adds to the scope. Index 6 is cloud white here, not ping, so
+  // nothing in it goes through echoGlitch.
+  const echoMushroom = (() => {
+    const EYE = 2, VISOR = 3, PING = 4, WHITE = 6, RED = 7, SKY = 8, LIGHT = 9;
+    // Constants the cell is judged on.
+    const EYE_COLS = [5, 11];                      // left columns of the two 5 x 5 eye boxes, col 10 between them
+    const EYE_TOP = 5, EYE_TOP_UP = 4;             // top row of the boxes: level (rows 5..9), head tipped back (rows 4..8)
+    const STEP = 150;                              // ms a pupil step while the head is level (eight steps a turn)
+    const STARE = 330;                             // ms a frame while it stares up
+    const SKY_BOTTOM = 16;                         // sky rows 0..16; rows 17..19 stay panel black, the ground
+    const GRAD_TOP = 2;                            // deep blue to row 2, dithered rows 3..5, light blue from row 6
+    const CR = 7, CC = 10;                         // centre of the sky disc: the bridge between the eyes
+    const BLOOM = [5, 8, 11];                      // disc radius on the frames the sky opens (rim in ping); then all
+    const SWAY8 = [0, -1, -1, 0, 0, 1, 1, 0];      // dx per pupil phase while level: 1.2 s a sway
+    const SWAY12 = [0, 0, -1, -1, -1, 0, 0, 0, 1, 1, 1, 0];   // dx per stare frame: 4 s a sway
+    const SCAN12 = [1, 1, 0, 0, 7, 7, 0, 0, 1, 1, 2, 2];      // pupil ring position per stare frame: one slow look round
+    // Pupil ring: top left of the 2 x 2 pupil inside the 5 x 5 eye, clockwise from the top. Every position keeps the
+    // pupil inside the round eye and on its rim, so the eye always shows white on the far side. Position 8 is the
+    // middle (a 2 x 2 cannot centre in 5, so it sits a half cell up and toward the nose in both eyes): the pop's stare.
+    const PUPIL_RING = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 2], [3, 1], [2, 0], [1, 0], [1, 2]];
+    const MIDDLE = 8;
+    // Sprites in palette digits, 0 leaves the cell alone: 6 white, 7 mushroom red, 9 light sky (a cloud's soft edge).
+    const MUSH = rows(`
+      07770
+      76767
+      00600
+      00600`);                                     // the toadstool, 5 x 4, stem at its col 2
+    const MUSH_S = rows(`
+      767
+      060`);                                       // the same toadstool, small: sprouting, and in flight
+    const NUB = [[WHITE]];                         // the first thing out of the ground
+    const LAST = [[RED]];                          // the last of it, in the mouth
+    // Clouds: [top row, sprite, ms a cell, start col], drifting left, round, with a soft light edge that shows on the
+    // deep blue. Two cross the top band at their own speeds, the smaller one slower, as if further off: the big one is
+    // over the head when it tips back and drifts off to the left while it stares, the small one leaves at the left and
+    // comes back in at the right. The third is a low bun that starts behind the left hand and drifts out past it, so
+    // the lower sky moves while it stares: it shows at the lower left as the head tips back, leaves at the left and
+    // comes back in at the right while it is still staring.
+    const CLOUDS = [
+      [0, rows(`
+        0966690
+        9666669
+        0966690`), 450, 12],
+      [1, rows(`
+        096690
+        966669
+        096690`), 720, 1],
+      [10, rows(`
+        96669
+        66666`), 560, 3],
+    ];
+
+    const stamp = (g, spr, r0, c0) => { const b = clone(g); spr.forEach((row, r) => row.forEach((v, c) => { if (v) set(b, r0 + r, c0 + c, v); })); return b; };
+    const mouth = g => { const b = clone(g); for (let r = 10; r <= 11; r++) for (let c = 9; c <= 11; c++) set(b, r, c, EYE); return b; };
+    // Open grin under the big eyes: 5 wide on its top row, 3 on the next.
+    const grin = (g, top) => { const b = clone(g); for (let c = 8; c <= 12; c++) set(b, top, c, EYE); for (let c = 9; c <= 11; c++) set(b, top + 1, c, EYE); return b; };
+    // The pop: each eye 3 x 3 white round its old place (rows 6..8, cols 6..8 and 12..14), a one cell pupil in the middle.
+    const popEyes = g => { const b = clone(g); for (const c0 of [6, 12]) for (let r = 6; r <= 8; r++) for (let c = c0; c <= c0 + 2; c++) set(b, r, c, r === 7 && c === c0 + 1 ? EYE : WHITE); return b; };
+    // Both big eyes, box top row `top`: white with the corners cut unless square, the pupil at ring position p, the right
+    // eye mirroring the left unless same. The cut corners and the col 10 bridge between the boxes are visor, so the
+    // eyes sit in the band; with the head tipped back (top 4) the corners and the bridge on the head's top row stay
+    // body, square or not, so the antenna over the right eye never stands on white. Every other cell of both boxes is
+    // repainted, so none of the old face shows through.
+    function bigEyes(g, top, p, {square = false, same = false} = {}) {
+      const b = clone(g);
+      const [pr, pc] = PUPIL_RING[p];
+      for (let r = Math.max(top, EYE_TOP); r < top + 5; r++) set(b, r, 10, VISOR);
+      EYE_COLS.forEach((c0, k) => {
+        const qc = k && !same ? 3 - pc : pc;
+        for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+          const corner = (r === 0 || r === 4) && (c === 0 || c === 4);
+          if (corner && top + r < EYE_TOP) continue;
+          if (corner && !square) { set(b, top + r, c0 + c, VISOR); continue; }
+          set(b, top + r, c0 + c, r >= pr && r <= pr + 1 && c >= qc && c <= qc + 1 ? EYE : WHITE);
+        }
+      });
+      return b;
+    }
+    // The whole creature, feet and all, dx cells across.
+    const sway = (g, dx) => { if (!dx) return g; const b = empty(); for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g[r][c]) set(b, r, c + dx, g[r][c]); return b; };
+    // The gradient: light cells of the three dithered rows (a quarter, a half, three quarters light), period 4.
+    const DITHER = ['0100', '1010', '1110'];
+    const skyAt = (r, c) => (r <= GRAD_TOP ? SKY : r > GRAD_TOP + 3 ? LIGHT : DITHER[r - GRAD_TOP - 1][c % 4] === '1' ? LIGHT : SKY);
+    // Left column of a cloud at sky time t: one cell further left for every `ms` of sky time, wrapping over the lattice
+    // plus its own width, so it reenters at col 19 one step after its last column has left col 0.
+    const cloudCol = (spr, ms, c0, t) => { const w = spr[0].length, span = G + w; return (((c0 - Math.floor(t / ms) + w) % span) + span) % span - w; };
+    // The sky behind g at sky time t, inside a disc of radius rad round the bridge (rad Infinity: all of it, no rim).
+    // Only empty cells of rows 0..SKY_BOTTOM take sky or cloud, so the creature always stays in front.
+    function sky(g, t, rad) {
+      const b = clone(g);
+      const d2 = (r, c) => (r - CR) * (r - CR) + (c - CC) * (c - CC);
+      const open = (r, c) => r <= SKY_BOTTOM && !g[r][c] && d2(r, c) <= rad * rad;
+      for (let r = 0; r <= SKY_BOTTOM; r++) for (let c = 0; c < G; c++) if (open(r, c)) b[r][c] = skyAt(r, c);
+      for (const [top, spr, ms, c0] of CLOUDS) {
+        const left = cloudCol(spr, ms, c0, t);
+        spr.forEach((row, dr) => row.forEach((v, dc) => { const r = top + dr, c = left + dc; if (v && c >= 0 && c < G && open(r, c)) b[r][c] = v; }));
+      }
+      if (rad !== Infinity) for (let r = 0; r <= SKY_BOTTOM; r++) for (let c = 0; c < G; c++) if (open(r, c) && d2(r, c) > (rad - 1) * (rad - 1)) b[r][c] = PING;
+      return b;
+    }
+
+    const rest = echoPing(false);
+    const frames = [];
+    const F = (hold, grid) => frames.push({hold, grid});
+    // 1. The toadstool sprouts and the eyes find it.
+    F(900, rest);                                                                   // rest, the loop anchor
+    F(120, stamp(rest, NUB, 16, 2));                                                // a white nub breaks the ground
+    F(120, stamp(rest, MUSH_S, 15, 1));                                             // a little toadstool
+    F(520, stamp(eyesToward(rest, -1), MUSH, 13, 0));                               // full size; the eyes find it
+    F(140, stamp(eyesToward(echoPing(true), -1), MUSH, 13, 0));                     // antenna ping: noticed
+    // 2. It eats it.
+    F(380, stamp(mouth(eyesToward(rest, -1)), MUSH, 13, 0));                        // the mouth opens
+    F(120, stamp(mouth(eyesToward(rest, -1)), MUSH_S, 8, 0));                       // it hops up past the arm, shrinking
+    F(120, stamp(mouth(rest), MUSH_S, 8, 5));                                       // across the chest
+    F(120, stamp(mouth(rest), MUSH_S, 10, 9));                                      // into the mouth
+    F(110, stamp(mouth(rest), LAST, 10, 10));                                       // the last red cell
+    F(150, bob(squint(rest), -1)); F(150, squint(rest)); F(150, bob(squint(rest), -1));   // three chews
+    F(520, rest);                                                                   // gulp
+    F(80, echoBlinkFrame(rest)); F(240, rest);                                      // a blink, and here it comes
+    // 3. The eyes pop and the sky opens out of them; the pupils ring, the eyes throb, the body sways.
+    // The big eyed face: eye box top row, ring position, throb (square eyes and an antenna ping on the same beat), grin
+    // two rows under the boxes.
+    const face = (top, p, {square = false, same = false} = {}) => grin(bigEyes(echoPing(square), top, p, {square, same}), top + 6);
+    let t = 0;                                                                      // the sky clock
+    const S = (hold, g, rad) => { F(hold, sky(g, t, rad)); t += hold; };
+    F(100, popEyes(echoPing(true)));                                                // pop: 3 x 3, antenna ping
+    S(110, face(EYE_TOP, MIDDLE, {square: true}), BLOOM[0]);                        // 5 x 5, overshooting square
+    S(STEP, face(EYE_TOP, MIDDLE), BLOOM[1]);                                       // settles round
+    for (let k = 0; k < 16; k++) {                                                  // two turns of the ring
+      const p = k % 8;
+      S(STEP, sway(face(EYE_TOP, p, {square: p === 0}), SWAY8[p]), k + 2 < BLOOM.length ? BLOOM[k + 2] : Infinity);
+    }
+    // 4. The head tips back and it stares at the sky: a slow look round the top of the ring, a throb at each end.
+    S(200, face(EYE_TOP_UP, 1, {same: true}), Infinity);                            // eyes up a row, pupils to the top
+    for (let k = 0; k < 12; k++) {
+      const p = SCAN12[k], end = p !== SCAN12[k - 1] && (p === 2 || p === 7);
+      S(STARE, sway(face(EYE_TOP_UP, p, {same: true, square: end}), SWAY12[k]), Infinity);
+    }
+    // 5. The head comes level, the sky folds back into the eyes, the eyes shrink.
+    S(200, face(EYE_TOP, MIDDLE), Infinity);
+    for (const rad of [...BLOOM].reverse()) S(90, face(EYE_TOP, MIDDLE), rad);      // the bloom backwards
+    F(120, face(EYE_TOP, MIDDLE));                                                  // the sky is in the eyes now
+    F(110, popEyes(rest));
+    F(160, echoPing(true));                                                         // eyes back, antenna ping
+    F(80, echoBlinkFrame(rest));
+    F(700, rest);
+    return {
+      name: 'ECHO · mushroom', key: 'echo_mushroom', fwname: 'echo mushroom', category: 'Idle',
+      intent: 'Proposal. A spotted toadstool sprouts beside the creature and hops into its open mouth, three chews and a gulp, then the eyes pop to 5 x 5 each, white with a 2 x 2 pupil, sitting in the visor band, a grin opens, and for 2.4 s the pupils run an eight phase ring in mirror, 150 ms a step, crossing and uncrossing, while the whole creature sways a cell left and right, feet and all, 1.2 s a sway, and once a turn the eyes throb square with an antenna ping, as the sky opens out of the eyes in a ping rimmed disc to fill rows 0..16 (deep #3b8bff over light #7cc4ff, three dithered rows between) and three small round clouds drift left behind the creature at 450, 560 and 720 ms a cell; then the head tips back, the eyes rise a row to the top of the head and it stares for 4 s, 330 ms a frame, the pupils looking slowly round the top of the eye and the sway slowed to 4 s, before the sky folds back into the eyes; judge whether the 5 x 5 eyes still read as this creature and as happy, and whether the sky reads as sky and not a wall.',
+      // 0 transparent, 1 body, 2 eyes and pupils, 3 visor, 4 ping, 5 feet, 6 cloud white (sclera, clouds, spots, stem;
+      // replaces the second ping), 7 mushroom red, 8 sky blue, 9 light sky (the lower sky, a cloud's soft edge)
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#e0665a', '#3b8bff', '#7cc4ff'],
+      frames,
+    };
+  })();
+
+  // 3x. Mushroom, the big sky: the sky first variant of echoMushroom above (operator, 2026-09-29: "make the creature
+  // eat a mushroom and its eyes get super big and wiggly, and it looks up and stares at the blue sky and clouds, and
+  // the skies are beautiful"). A 30 cell lattice, 16 px cells that cut the 480 panel exactly, so the sky can be the
+  // whole background. The creature is echoBase at 1x, cell for cell, sat low: every 20 cell (r, c) lands on
+  // (r + 10, c + 5), so the feet stand on row 26 and rows 27..29 are the ground, left panel black. On the panel it is
+  // two thirds of its usual size; that is what the sky costs.
+  //   mushroom  5 x 5, a red cap with two white spots on a white stem, rises out of the ground at cols 23..27, pops a
+  //             row clear and lands; the eyes glance at it and the antenna pings.
+  //   eat       a 3 x 2 mouth opens one row under the visor and the mushroom hops in over four frames, up, over beside
+  //             the head clear of the arm, then shrinking 3 x 3 and 1 x 2 into the mouth while the eyes follow it;
+  //             chomp, two chews with the eyes squinting, a gulp and a ping.
+  //   eyes      the eyes widen to 2 x 2 and those become the pupils of two round white eyeballs, 4 x 4 on rows 5..8 of
+  //             the 20 cell pose (cols 6..9 and 11..14), set in a visor band grown to their height across cols 6..14,
+  //             so the cut corners and the col 10 bridge are band and the eyes sit in the visor, with an open grin
+  //             under them (5 cells on row 11 over 3 on row 12). They pulse to 4 x 5 and back every 2 steps, the band
+  //             with them; the pupils wobble round a diamond a step apart (never opposite, so never cross eyed), roll
+  //             up together, and the body rises onto tiptoe (each leg a cell longer, the feet planted), so the eyes
+  //             and the grin drift up a row as the gaze lifts.
+  //   sky       opens out from the zenith over its head, a growing circle with a one cell white rim where the light
+  //             comes in, in five ticks. Clean bands, since a dither ramp at 16 px reads as a checkerboard: deep blue
+  //             on rows 0..11, light blue on rows 13..23, an aqua glow on rows 25..26 over the ground, one checker row
+  //             where two bands meet. Two near cumulus (white, light blue undersides) drift right a cell every 2 ticks
+  //             up high; two small far clouds drift a cell every 4 ticks lower down and pass behind the creature,
+  //             since clouds only land on sky cells. Every sky frame holds one 200 ms tick so the drift is even, and
+  //             odd ticks move only the eyes.
+  //   gaze      the dominant state, 28 ticks: pupils up, dwelling there, with a glance right and a glance left every
+  //             six ticks and never a look back out at the viewer, the eyeballs still pulsing round and tall, one
+  //             antenna ping every 12 ticks.
+  //   back      the circle closes back up into the zenith in four ticks, the creature comes off tiptoe, the eyes shrink
+  //             back through 2 x 2, happy eyes and a ping, rest.
+  // Palette: 0..5 are the ECHO palette unchanged; 6 sky blue takes the duplicate ping's slot (so no echoGlitch here: its
+  // split paints index 6), 7 light sky (also the cloud undersides), 8 cloud white (clouds, eyeballs, spots and stem),
+  // 9 mushroom red; the ping (4) doubles as the horizon glow, far below the antenna.
+  // One closure, so echoMushroomB is the only name this adds to the scope.
+  const echoMushroomB = (() => {
+    const N = 30, OR = 10, OC = 5;                                      // lattice; a 20 cell pose sits at (r + OR, c + OC)
+    const GROUND = 27, TICK = 200, MC = 23;                             // first ground row; sky frame hold; mushroom's left col
+    const EYE = 2, VISOR = 3, PING = 4, FEET = 5, SKY = 6, HAZE = 7, WHITE = 8, RED = 9;   // 1 is the body, never repainted
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+
+    // ---- the creature: posed on the 20 cell lattice with the family's own helpers, then placed at 1x ----
+    // lift 1 is tiptoe: rows 0..13 (antenna to hips) rise a row and each leg grows a feet cell into the gap, so the feet
+    // stay planted. hop lifts the whole creature, legs too, off the ground (the chews).
+    const LEGS = [5, 8, 12, 15];
+    function place(g20, lift = 0, hop = 0) {
+      const b = blank();
+      for (let r = 0; r < G; r++) for (let c = 0; c < G; c++) if (g20[r][c]) put(b, r + OR - (r <= 13 ? lift : 0) - hop, c + OC, g20[r][c]);
+      if (lift) for (const c of LEGS) put(b, 13 + OR - hop, c + OC, FEET);
+      return b;
+    }
+    // Eyes one cell toward the mushroom (dir 1) or home (0), the band repainted plain first, as eyesToward does.
+    const look = (g, dir) => { const b = clone(g); for (const r of [6, 7]) { for (let c = 6; c <= 14; c++) set(b, r, c, VISOR); set(b, r, 7 + dir, EYE); set(b, r, 13 + dir, EYE); } return b; };
+    // The mouth: 3 x 2, dark, one body row under the visor (rows 9..10, cols 9..11).
+    const mouth = g => { const b = clone(g); for (const r of [9, 10]) for (let c = 9; c <= 11; c++) set(b, r, c, EYE); return b; };
+    // The eyes widen: each a 2 x 2 dark block, the left one growing right and the right one left (cols 7..8 and 12..13),
+    // exactly where the pupils sit when the eyeballs arrive.
+    const wide = g => { const b = clone(g); for (const r of [6, 7]) { for (let c = 6; c <= 14; c++) set(b, r, c, VISOR); for (const c of [7, 8, 12, 13]) set(b, r, c, EYE); } return b; };
+    // Big eyes: round white eyeballs 4 wide on rows 5..8 (tall: rows 5..9), cols 6..9 and 11..14, each with a 2 x 2
+    // pupil at [row, col] inside it, in a visor band as tall as they are across cols 6..14, so the cut corners and the
+    // col 10 bridge are band; then the open grin, 5 cells on row 11 over 3 on row 12, one body row under the tall eyes.
+    // Every pupil offset below keeps all four pupil cells inside both shapes.
+    const ROUND = ['.XX.', 'XXXX', 'XXXX', '.XX.'], TALL = ['.XX.', 'XXXX', 'XXXX', 'XXXX', '.XX.'];
+    const UP = [0, 1], RIGHT = [1, 2], MID = [1, 1], LEFT = [1, 0], DOWN = [2, 1];
+    function bigEyes(g, pl, pr, tall) {
+      const b = clone(g);
+      for (let r = 5; r <= (tall ? 9 : 8); r++) for (let c = 6; c <= 14; c++) set(b, r, c, VISOR);
+      for (const [c0, [pr0, pc0]] of [[6, pl], [11, pr]]) {
+        (tall ? TALL : ROUND).forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch === 'X') set(b, 5 + dr, c0 + dc, WHITE); }));
+        for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) set(b, 5 + pr0 + i, c0 + pc0 + j, EYE);
+      }
+      for (let c = 8; c <= 12; c++) set(b, 11, c, EYE); for (let c = 9; c <= 11; c++) set(b, 12, c, EYE);
+      return b;
+    }
+
+    // ---- the mushroom: r red, w white, painted over whatever is there and never on the ground, so it can rise out of it ----
+    const MUSH = ['.rrr.', 'rwrrr', 'rrrwr', '.www.', '.www.'], MUSH_S = ['rrr', 'rwr', '.w.'], MUSH_T = ['r', 'w'];
+    function shroom(g, art, r0, c0) {
+      art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.' && r0 + dr < GROUND) put(g, r0 + dr, c0 + dc, ch === 'r' ? RED : WHITE); }));
+      return g;
+    }
+
+    // ---- the sky ----
+    // Clean bands, because at 16 px a dither ramp reads as a checkerboard: deep blue on rows 0..11, light blue on rows
+    // 13..23, the aqua glow on rows 25..26 over the ground, and one checker row (12 and 24) where two bands meet.
+    function skyCell(r, c) {
+      const odd = (r + c) & 1;
+      if (r < 12) return SKY;
+      if (r === 12) return odd ? HAZE : SKY;
+      if (r < 24) return HAZE;
+      if (r === 24) return odd ? PING : HAZE;
+      return PING;
+    }
+    // Four clouds, w white and s the light blue underside. The near two, up high, move a cell right every 2 ticks; the far
+    // two, small and low, every 4. Each comes back in from the left once it is wholly off the right edge.
+    const CLOUDS = [
+      {row: 1, x0: 1, every: 2, art: ['....wwww.....', '..wwwwwww.ww.', '.wwwwwwwwwwww', 'wwwwwwwwwwwww', '.sssssssssss.']},
+      {row: 6, x0: 18, every: 2, art: ['..ww.www.', '.wwwwwwww', 'wwwwwwwww', '.sssssss.']},
+      {row: 16, x0: 22, every: 4, art: ['.www.', 'wwwww']},
+      {row: 20, x0: 3, every: 4, art: ['.ww.www.', 'wwwwwwww']},
+    ];
+    function skyLayer(t) {
+      const s = blank();
+      for (let r = 0; r < GROUND; r++) for (let c = 0; c < N; c++) s[r][c] = skyCell(r, c);
+      for (const {row, x0, every, art} of CLOUDS) {
+        const w = art[0].length, left = (x0 + Math.floor(t / every) + w) % (N + w) - w;
+        art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') put(s, row + dr, left + dc, ch === 'w' ? WHITE : HAZE); }));
+      }
+      return s;
+    }
+    // A sky frame: the creature, then, wherever the creature is not and above the ground, the sky at tick t inside a
+    // circle of radius R round the zenith (row 3, between cols 14 and 15) with a one cell white rim where the light comes
+    // in. R left out is the whole sky.
+    function withSky(cr, t, R = Infinity) {
+      const s = skyLayer(t), g = clone(cr);
+      for (let r = 0; r < GROUND; r++) for (let c = 0; c < N; c++) {
+        if (g[r][c]) continue;
+        const d = Math.hypot(r - 3, c - 14.5);
+        if (d < R - 1) g[r][c] = s[r][c]; else if (d < R) g[r][c] = WHITE;
+      }
+      return g;
+    }
+
+    // ---- the frames ----
+    const frames = [], F = (hold, grid) => frames.push({hold, grid});
+    const P = echoPing;                                                   // a pose; P(true) has the antenna tip lit
+    const rest = place(P(false));
+    F(900, rest);                                                          // rest, the loop anchor
+    for (const top of [26, 25, 24, 23]) F(top === 26 ? 140 : 120, shroom(place(P(false)), MUSH, top, MC));   // rises out of the ground
+    F(110, shroom(place(P(false)), MUSH, 21, MC));                         // pops a row clear
+    F(160, shroom(place(P(false)), MUSH, 22, MC));                         // and lands
+    F(240, shroom(place(look(P(true), 1)), MUSH, 22, MC));                 // it notices: eyes on it, antenna ping
+    F(620, shroom(place(look(P(false), 1)), MUSH, 22, MC));
+    F(220, shroom(place(mouth(look(P(false), 1))), MUSH, 22, MC));         // the mouth opens
+    F(110, shroom(place(mouth(look(P(false), 1))), MUSH, 17, 23));         // the mushroom hops straight up
+    F(130, shroom(place(mouth(look(P(false), 1))), MUSH, 12, 21));         // over, clear of the arm, beside the head
+    F(120, shroom(place(mouth(look(P(false), 0))), MUSH_S, 18, 17));       // shrinking, at the mouth
+    F(120, shroom(place(mouth(look(P(false), 0))), MUSH_T, 19, 15));       // and in
+    F(220, place(squint(P(false))));                                       // chomp
+    for (const h of [1, 0, 1, 0]) F(150, place(squint(P(false)), 0, h));   // two chews
+    F(360, place(P(true)));                                                // gulp, antenna ping
+    F(300, rest);                                                          // a still beat
+    F(90, place(wide(P(false))));                                          // the eyes widen
+    F(90, place(bigEyes(P(false), MID, MID, false)));                      // white eyeballs grow round them
+    F(140, place(bigEyes(P(false), MID, MID, true)));                      // boing
+    F(160, place(bigEyes(P(false), MID, MID, false)));
+    const DIAMOND = [UP, RIGHT, DOWN, LEFT];
+    for (let k = 0; k < 8; k++) F(130, place(bigEyes(P(false), DIAMOND[k % 4], DIAMOND[(k + 1) % 4], k % 4 >= 2)));   // the wobble, a step apart
+    F(160, place(bigEyes(P(false), UP, UP, false)));                       // both roll up
+    F(220, place(bigEyes(P(true), UP, UP, false), 1));                     // onto tiptoe, antenna ping
+    let t = 0;                                                             // the sky's tick
+    const gazer = (pupil, ping = false) => place(bigEyes(P(ping), pupil, pupil, Math.floor(t / 2) % 2 === 1), 1);
+    for (const R of [4, 9, 14, 19, 24]) { F(TICK, withSky(gazer(UP), t, R)); t++; }                        // the sky opens
+    const GAZE = [UP, UP, RIGHT, UP, LEFT, UP];
+    for (let k = 0; k < 28; k++) { F(TICK, withSky(gazer(GAZE[k % 6], k % 12 === 6), t)); t++; }          // the gaze
+    for (const [R, pupil] of [[24, UP], [18, MID], [12, MID], [6, MID]]) { F(TICK, withSky(gazer(pupil), t, R)); t++; }   // and closes back up
+    F(160, place(bigEyes(P(false), MID, MID, false)));                     // off tiptoe
+    F(110, place(wide(P(false))));                                         // the eyes shrink back
+    F(120, rest);
+    F(700, place(happyEyes(P(true))));                                     // happy eyes, antenna ping
+    F(500, rest);                                                          // rest (loops to frame 0)
+    return {
+      name: 'ECHO · mushroom (big sky)', key: 'echo_mushroom_b', fwname: 'echo mushroom b', category: 'Idle', size: N,
+      intent: 'Proposal, 30 cell lattice (16 px cells, the creature at 1x and two thirds of its usual size so the sky can fill the panel): a red spotted mushroom rises out of the ground beside the creature, which glances at it, opens a mouth and swallows it as it hops in over four frames, shrinking on the last two, chews and gulps; its eyes grow into round white eyeballs four cells across, set in a visor band grown to their height with an open grin under them; the pupils wobble a step apart while the eyeballs pulse between round and tall, then roll up together as it rises onto tiptoe, and the sky opens out of the zenith above it as a growing circle with a white rim (deep blue over light blue with one checker row between, an aqua glow on the horizon), two near clouds drifting a cell every 400 ms up high and two far ones a cell every 800 ms passing behind it; after 28 ticks of gazing, pupils up with a glance right and a glance left every six ticks, the sky closes back into the zenith, the eyes shrink back and it rests with happy eyes; judge whether it still reads as ECHO at two thirds size, whether the eyes read as delighted rather than startled, and whether the sky is beautiful enough to be the point.',
+      palette: [...echo.palette.slice(0, 6), '#3b8bff', '#7cc4ff', '#eafffb', '#e0665a'],   // 6 sky, 7 light sky, 8 cloud white, 9 mushroom red
+      frames,
+    };
+  })();
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -2413,7 +2759,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
