@@ -7,13 +7,14 @@
 // charging / VBUS state is unknowable and both report false. Battery voltage
 // is readable only on V4 through the CH32's ADC; older revisions get -1.
 //
-// PWRKEY is wired to the power chip, not to an ESP GPIO, and BOOT is the only
-// button the ESP can see. A desk display needs screen cycling and pairing more
-// than it needs a Space key, so BOOT plays the PWR role here (input.cpp
-// reports no primary button, so no HID key fires):
-//   short    — fired on release if the hold was shorter than PWR_LONG_MS
-//   long     — fired once when a hold crosses PWR_LONG_MS
-//   release  — fired on every release edge
+// Two buttons reach the ESP (input.cpp reports no HID key, so neither types):
+//   PWR  on GPIO16, active LOW (the PWRKEY sense line; read only, never drive
+//        it). Proven 2026-09-29 with the `pwrkey` poke: clean edges, ~140 ms
+//        taps. Short press only = the PWR role (stats toggle, approve). A long
+//        hold belongs to the power chip, so PWR has no long-press role.
+//   BOOT on GPIO0, active LOW. Short press = the aux role
+//        (board_aux_pressed: next creature / brightness). Long hold = the
+//        pairing gesture (pwr_long / pwr_released feed main.cpp pair_tick).
 
 #define BATTERY_POLL_MS  2000
 #define PWR_POLL_MS      50
@@ -23,9 +24,11 @@ static int      cached_pct        = -1;
 static bool     pwr_pressed_flag  = false;
 static bool     pwr_long_flag     = false;
 static bool     pwr_released_flag = false;
+static bool     aux_pressed_flag  = false;
+static bool     last_boot_state   = false;
 static bool     last_pwr_state    = false;
-static uint32_t pwr_press_started_ms = 0;
-static bool     pwr_long_fired    = false;
+static uint32_t boot_press_started_ms = 0;
+static bool     boot_long_fired   = false;
 static uint32_t last_battery_ms   = 0;
 static uint32_t last_pwr_ms       = 0;
 
@@ -42,6 +45,7 @@ static void sample_battery(void) {
 
 void power_hal_init(void) {
     pinMode(BTN_BACK_GPIO, INPUT_PULLUP);
+    pinMode(BTN_PWR_GPIO, INPUT);   // external 10K pull-up; never an output
     sample_battery();
 }
 
@@ -54,19 +58,23 @@ void power_hal_tick(void) {
     }
     if (now - last_pwr_ms >= PWR_POLL_MS) {
         last_pwr_ms = now;
-        bool pwr_now = (digitalRead(BTN_BACK_GPIO) == LOW);   // active LOW
-        if (pwr_now && !last_pwr_state) {            // press edge — hold begins
-            pwr_press_started_ms = now;
-            pwr_long_fired = false;
-        } else if (pwr_now && last_pwr_state) {      // held
-            if (!pwr_long_fired && (now - pwr_press_started_ms >= PWR_LONG_MS)) {
-                pwr_long_flag  = true;
-                pwr_long_fired = true;
+        bool boot_now = (digitalRead(BTN_BACK_GPIO) == LOW);  // active LOW
+        if (boot_now && !last_boot_state) {          // press edge — hold begins
+            boot_press_started_ms = now;
+            boot_long_fired = false;
+        } else if (boot_now && last_boot_state) {    // held
+            if (!boot_long_fired && (now - boot_press_started_ms >= PWR_LONG_MS)) {
+                pwr_long_flag   = true;
+                boot_long_fired = true;
             }
-        } else if (!pwr_now && last_pwr_state) {     // release edge
+        } else if (!boot_now && last_boot_state) {   // release edge
             pwr_released_flag = true;
-            if (!pwr_long_fired) pwr_pressed_flag = true;  // short press
+            if (!boot_long_fired) aux_pressed_flag = true;  // short press
         }
+        last_boot_state = boot_now;
+
+        bool pwr_now = (digitalRead(BTN_PWR_GPIO) == LOW);    // active LOW
+        if (!pwr_now && last_pwr_state) pwr_pressed_flag = true;  // on release
         last_pwr_state = pwr_now;
     }
 }
@@ -87,5 +95,10 @@ bool power_hal_pwr_long_pressed(void) {
 
 bool power_hal_pwr_released(void) {
     if (pwr_released_flag) { pwr_released_flag = false; return true; }
+    return false;
+}
+
+extern "C" bool board_aux_pressed(void) {
+    if (aux_pressed_flag) { aux_pressed_flag = false; return true; }
     return false;
 }

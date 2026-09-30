@@ -18,6 +18,7 @@
 //   gt             re-probe the GT911 at 0x5D / 0x14
 //   tprst          pulse touch reset low for 20 ms, wait 100 ms, re-probe
 //   bl N           backlight level 0..255
+//   pwrkey         10 s read-only watch of GPIO16 and the CH32 IN register
 //   rot N          force the rotation quadrant 0..3 (`rot auto` hands it back to the IMU)
 //   imu            last accelerometer reading and the quadrant it maps to
 //   fbshot         dump the panel framebuffer (same wire format as `screenshot`,
@@ -111,6 +112,28 @@ extern "C" bool board_serial_command(const char* cmd) {
     }
     if (strcmp(cmd, "fbshot") == 0) {
         send_fbshot();
+        return true;
+    }
+    if (strcmp(cmd, "pwrkey") == 0) {
+        // Read only: is the PWR key visible to the ESP? Watches GPIO16 (PWRKEY
+        // sense per the research, SYS_OUT per the net list: never driven, only
+        // read) and the CH32 IN register for 10 s and prints every change.
+        // Short presses only; a long press belongs to the power chip.
+        pinMode(16, INPUT);
+        int last_gpio = -1, last_in = -1;
+        uint32_t t0 = millis();
+        Serial.println("pwrkey: watching GPIO16 + CH32 IN for 10 s, short-press PWR now");
+        while (millis() - t0 < 10000) {
+            int g = digitalRead(16);
+            int in = io_expander_reg_read(0x04);
+            if (g != last_gpio || in != last_in) {
+                Serial.printf("pwrkey +%5lu ms  gpio16=%d  ch32_in=0x%02X\n",
+                              (unsigned long)(millis() - t0), g, in & 0xFF);
+                last_gpio = g; last_in = in;
+            }
+            delay(10);
+        }
+        Serial.println("pwrkey: done");
         return true;
     }
     if (strncmp(cmd, "bl ", 3) == 0) {

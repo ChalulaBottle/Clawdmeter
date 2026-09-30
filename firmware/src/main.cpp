@@ -198,6 +198,9 @@ static void send_screenshot() {
 
 // Boards may claim serial commands the shared set does not know (hardware
 // bring-up pokes, register dumps). Weak default: nothing claimed.
+extern "C" bool board_aux_pressed(void);
+extern "C" __attribute__((weak)) bool board_aux_pressed(void) { return false; }
+
 extern "C" bool board_serial_command(const char* cmd);
 extern "C" __attribute__((weak)) bool board_serial_command(const char* cmd) {
     (void)cmd;
@@ -423,6 +426,15 @@ void loop() {
                     brightness_cycle();
                 }
             }
+        }
+
+        // Boards with a second physical key report its short press here:
+        // next creature on splash, brightness on usage, or an answer to a
+        // prompt that is up.
+        if (board_aux_pressed() && !idle_consume_wake_press()) {
+            if (ui_approve_visible())                          ui_approve_accept();
+            else if (ui_get_current_screen() == SCREEN_SPLASH) splash_next();
+            else                                               brightness_cycle();
         }
 
         pair_tick();

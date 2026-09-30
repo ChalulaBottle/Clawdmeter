@@ -67,8 +67,8 @@
 // ---- Touch (GT911, inline I2C reader, 16-bit registers) ----
 // Address is picked by the INT level while reset releases; probe both.
 // On V4 both TP_RST and TP_INT are CH32 expander pins (EXIO1 / EXIO2), so
-// there is no ESP GPIO to interrupt on; the reader polls. GPIO16 is SYS_OUT
-// (power latch), never touch it.
+// there is no ESP GPIO to interrupt on; the reader polls. GPIO16 is the PWR key
+// sense line (see Buttons), never drive it.
 #define GT911_ADDR_A         0x5D
 #define GT911_ADDR_B         0x14
 
@@ -93,10 +93,12 @@
 #define SW6106_ADDR          0x3C
 
 // ---- Buttons ----
-// BOOT is the only button on an ESP GPIO (shared with CAN RX, harmless as an
-// input). PWRKEY goes to the power chip, not to the ESP, so power.cpp
-// synthesises the PWR-role edges from a long BOOT hold instead.
+// BOOT on GPIO0 (shared with CAN RX, harmless as an input). PWR also reaches
+// the ESP: GPIO16 is the PWRKEY sense line (active LOW, external pull-up),
+// proven with the `pwrkey` poke 2026-09-29. Read it, never drive it; a long
+// PWR hold is the power chip's. Roles live in power.cpp.
 #define BTN_BACK_GPIO        0
+#define BTN_PWR_GPIO         16
 
 // ---- IMU (not on the board: a QMI8658 breakout on the I2C header) ----
 // The panel turns with the board once the breakout reports which way is up.
