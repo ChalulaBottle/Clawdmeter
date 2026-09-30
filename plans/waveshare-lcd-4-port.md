@@ -66,7 +66,21 @@
   touch via the BLE reset zone; `buzz` serial command tests the buzzer.
 - **Gotchas:** see "Hardware facts" and "Known risks" below. Do not trust the wiki's I2C pin claim.
 
-## 2026-09-29 ~01:30: RESUME HERE. Board holds Waveshare's FACTORY image, not ours
+## 2026-09-29 ~20:00: RESUME HERE. Two buttons, our firmware back on, BLE re-paired
+
+- **PWR is readable:** GPIO16 is the PWRKEY sense line (active LOW, idle HIGH; CH32 IN unchanged at
+  0x2E). Proven with the `pwrkey` serial poke (5 clean taps, ~140 ms). Read only, never drive.
+- **Roles (fc81354):** PWR short = stats toggle / approve; PWR long = nothing (power chip's).
+  BOOT short = `board_aux_pressed()` (next creature on splash, brightness on usage, approve if up);
+  BOOT hold ~3 s then release = pair. On-screen behaviour not yet confirmed by the operator's eyes.
+- **Link restored:** operator re-paired in Windows, tray started by hand (base pythonw +
+  `daemon\tray_windows.py`), usage live on the panel. **Autostart entry is gone** (HKCU Run empty):
+  rerun the autostart step of `install-windows.ps1` when the operator says yes.
+- **Next:** notification overlay (copy of `ui_approve_show` without the button, self-expiring,
+  either key dismisses; daemon `notify.json` + serial poke `msg`), then Spotify (desktop app via
+  Windows media session vs phone via Web API: operator's answer pending).
+
+## 2026-09-29 ~01:30: board held Waveshare's FACTORY image (superseded above) Board holds Waveshare's FACTORY image, not ours
 
 Waveshare's own V4 factory firmware says `Touch not found` and crash-loops, beeping on every boot
 (evidence: `docs/hardware/factory-firmware-touch-not-found.log`). The operator unplugged it mid way
