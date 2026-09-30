@@ -130,6 +130,11 @@ def main() -> int:
     for e in index:
         key = e["filename"].replace(".html", "")
         d = json.load(open(os.path.join(args.src, key + ".json"), encoding="utf-8"))
+        # bench and website only (benchOnly in anims.js): GIFs yes, firmware table no, so every
+        # board ships the same table and the stock 2.16 partition keeps fitting
+        if d.get("bench_only"):
+            print("bench only, not shipped:", d["name"])
+            continue
         # category "ECHO ..." marks our rows so a rerun can find and replace them
         cat = d.get("category", "ECHO")
         if not cat.startswith("ECHO"):

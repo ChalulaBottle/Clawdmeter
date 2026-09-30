@@ -79,6 +79,9 @@ for (const a of BENCH.anims) {
     palette: a.palette,
     size,                      // lattice: frames are size x size cells
     ...(a.replaces ? { replaces: a.replaces } : {}),   // a stock animation this one takes the place of
+    // bench and website only: exported for the GIFs, skipped by tools/add_echo_anims.py, so the
+    // firmware table stays the same on every board (the stock 2.16 partition has no room for big variants)
+    ...(a.benchOnly ? { bench_only: true } : {}),
     frame_count: a.frames.length,
     frames,
   } });
@@ -92,7 +95,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const index = [];
 for (const { a, size, json } of exported) {
   fs.writeFileSync(path.join(OUT, a.key + '.json'), JSON.stringify(json, null, 1));
-  index.push({ filename: json.filename, name: json.name, category: json.category, frame_count: json.frame_count, palette_size: a.palette.length });
+  index.push({ filename: json.filename, name: json.name, category: json.category, frame_count: json.frame_count, palette_size: a.palette.length,
+               ...(json.bench_only ? { bench_only: true } : {}) });
   console.log(`${a.key}: ${a.frames.length} frames, palette ${a.palette.length}, ${size} x ${size} cells`);
 }
 fs.writeFileSync(path.join(OUT, '_index.json'), JSON.stringify(index, null, 2));

@@ -249,7 +249,8 @@
     "name": "echo mushroom b",
     "category": "Idle",
     "frame_count": 77,
-    "palette_size": 10
+    "palette_size": 10,
+    "bench_only": true
   },
   {
     "filename": "echo_breathe.html",

@@ -2746,6 +2746,10 @@
     F(500, rest);                                                          // rest (loops to frame 0)
     return {
       name: 'ECHO · mushroom (big sky)', key: 'echo_mushroom_b', fwname: 'echo mushroom b', category: 'Idle', size: N,
+      // Bench and website only: 69 KB of frames on the 30 lattice, and the stock 2.16 board's
+      // partition overflowed by 34 KB with it in the table (2026-09-30). Lift this once that env
+      // moves to the 16 MB layout.
+      benchOnly: true,
       intent: 'Proposal, 30 cell lattice (16 px cells, the creature at 1x and two thirds of its usual size so the sky can fill the panel): a red spotted mushroom rises out of the ground beside the creature, which glances at it, opens a mouth and swallows it as it hops in over four frames, shrinking on the last two, chews and gulps; its eyes grow into round white eyeballs four cells across, set in a visor band grown to their height with an open grin under them; the pupils wobble a step apart while the eyeballs pulse between round and tall, then roll up together as it rises onto tiptoe, and the sky opens out of the zenith above it as a growing circle with a white rim (deep blue over light blue with one checker row between, an aqua glow on the horizon), two near clouds drifting a cell every 400 ms up high and two far ones a cell every 800 ms passing behind it; after 28 ticks of gazing, pupils up with a glance right and a glance left every six ticks, the sky closes back into the zenith, the eyes shrink back and it rests with happy eyes; judge whether it still reads as ECHO at two thirds size, whether the eyes read as delighted rather than startled, and whether the sky is beautiful enough to be the point.',
       palette: [...echo.palette.slice(0, 6), '#3b8bff', '#7cc4ff', '#eafffb', '#e0665a'],   // 6 sky, 7 light sky, 8 cloud white, 9 mushroom red
       frames,
