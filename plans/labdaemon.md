@@ -109,6 +109,44 @@ button events from any, heartbeat `connected` = any link up. `CLAWDMETER_BLE_ADD
   `labdaemon_mcp.py` (stdio, `mcp` package: `lab_list`, `lab_state`, `lab_do`, `lab_notify`), settings
   entry operator gated. Autostart: HKCU Run value `LabDaemonEngine` (base pythonw), same helper pattern.
 
+## Increment 2: music card v2 (operator 2026-09-30 ~00:10: album art, everything, the daemon dancing, switch displays while music plays)
+
+**Buttons (all boards, board-side, replaces the increment 1 card rules):**
+- PWR tap = cycle screens: creature → usage → live page (when one exists) → creature. A page the
+  operator cycled away from stays live and hidden; it comes back on the next PWR cycle, or when a
+  DIFFERENT pg arrives. Updates to the hidden page (pp, pt, lines, pa) never bring it back.
+- PWR double tap (two taps within 400 ms) on the page = `{"btn":"pwr2"}` (host maps to previous).
+- BOOT tap on the page = `{"btn":"aux"}` (play/pause); BOOT double tap = `{"btn":"aux2"}` (next).
+  Elsewhere BOOT keeps its increment 1 roles. Double taps are detected generically in main.cpp (a
+  single tap fires after the 400 ms window closes, so a single now has a 400 ms delay on the page only).
+- Approve and notify overlays keep precedence as before. Serial pokes `btn pwr|pwr2|aux|aux2` simulate.
+
+**Dancing daemon (board-side):** page field `pa` = `"dance"` means the board picks a random member of
+DANCE_NAMES {echo dj, echo rave, echo mixer, echo notes, echo headphones, echo hop, echo swing,
+echo cartwheel} every 12 to 25 s (random), and one time in four it hides the creature for 4 to 8 s and
+brings it back with a different dance; the card layout leaves the band free for it. A plain creature
+name in `pa` still means that creature, fixed.
+
+**Album art (lcd_4 first, build flag `FEATURE_PICTURE=1` set only in the lcd_4 env; the 2.16 partition
+has no room for Wi-Fi):**
+- Board: Wi-Fi station joined from NVS credentials set over serial (`wifi <ssid>|<password>`,
+  `wifi off`, `wifi status`; never in a repo, never echoed back in full), reconnect with backoff, BLE
+  untouched. `art <base url>` stores the engine's art base (e.g. `http://192.168.1.50:8977/a/`).
+- Page field `pi` = an 8 to 16 char art id; the board fetches `<base><pi>.jpg` over HTTP (2 s timeout,
+  one fetch at a time, cached last id), decodes with JPEGDEC into an LVGL image; the card shows the art
+  as a square on one side, text on the other, creature band below; no art = today's layout. Fetch
+  failures fall back silently.
+- Engine: spotify controller downloads the 300 px album image from the Web API item, resizes to
+  the card's art size (Pillow, new requirement), stores under `%LOCALAPPDATA%\Clawdmeter\art\<id>.jpg`
+  (id = first 12 hex of sha1 of the Spotify image url), keeps at most 50; a LAN listener on
+  `0.0.0.0:8977` serves ONLY `/a/<token>/<id>.jpg` (token = lab.art token file, random, printed by
+  `art base` CLI so the operator can paste the base url into the board), nothing else, no directory
+  listing, no other paths; page gets `pi`. Daemon relays `pi` unchanged (fits the MTU: ≤16 chars).
+- Controls: engine maps aux → play_pause, aux2 → next, pwr2 → previous; volume stays CLI and MCP.
+
+**Increment 2 order:** buttons + dance + daemon relay + engine mapping (all boards) → Wi-Fi + art
+(lcd_4) → flash, captures (card with art, dance rotation GIF), plan, README.
+
 ## Increments (each ends flashed, captured, committed, pushed)
 
 1. **Firmware:** notify overlay + generic page + button TX + tightened parse_json, all boards, plus serial
