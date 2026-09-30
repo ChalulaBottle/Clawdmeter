@@ -182,11 +182,18 @@ has no room for Wi-Fi):**
 
 ## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
 
-Operator: "I dont like beeps, they hurt animals ear drums." Nothing in this project ever drives the
-buzzer; strike "buzzer as an output" from the hub direction. Urgent = visual only.
-- Priorities: normal (8 s, quiet) and urgent (accent title, slow brightness pulse, stays until
-  dismissed). Quiet hours (configurable, default 23:00 to 07:00: urgent shows without the pulse,
-  normal is held for the history page). Per-source on/off and duration in the engine config.
+Operator: "I dont like beeps, they hurt animals ear drums. We designed the alien clickings for this
+reason." Nothing in this project ever drives the buzzer (a single-tone piezo cannot play a clip);
+strike "buzzer as an output" from the hub direction. The sound language is the alien clicks already
+approved for the Meeting Copilot: `Downloads\Temp Meeting Copilot\sounds\on.wav` and `off.wav`
+(operator's own recording). The engine plays them on the PC (Windows audio, stdlib `winsound`) for
+urgent notifications; the panel itself stays visual.
+- Priorities: normal (8 s, no sound) and urgent (accent title, slow brightness pulse, stays until
+  dismissed; the engine plays on.wav when it fires and off.wav when it is dismissed from the
+  board). Quiet hours (configurable, default 23:00 to 07:00: urgent shows without the pulse and
+  without sound, normal is held for the history page). Per-source on/off, duration and sound
+  on/off in the engine config; the cue files are copied into the engine repo's `sounds/` with
+  their provenance noted, never regenerated as tones.
 - History page: the last five notifications as a page in the PWR cycle.
 - Sources, one engine controller each, in this order: Claude Code events via the existing hooks (job
   done, needs permission, error, session ended), Google Calendar (meeting in 10 min), one chat
