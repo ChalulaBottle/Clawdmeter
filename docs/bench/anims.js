@@ -4422,6 +4422,698 @@
     };
   })();
 
+  // 3x. Rave bunny HD, hands up (operator, 2026-09-30: "one where its dancing with bunny ears at a rave and its
+  // eyes are like super dilated and black"). The anthem moment of a rave on the 60 cell lattice, 8 px cells on the 480
+  // panel, built the way mushroom HD is built: the body is the family's 20 cell pose repeated exactly 3 times across and
+  // down, so the silhouette, the visor band, the antenna and the legs are the family's own, and the face is mushroom HD's
+  // own trip face (the slits open round, the pupils dilate to black discs 14 across inside a white ring one cell thick,
+  // one highlight held still high on the left of each eye however the pupil moves, the band grown round both eyes like
+  // goggles, an open grin with a pink tongue, rosy cheeks). The creature stands 7 rows lower than the family's 3x frame,
+  // its feet on row 57 over the floor line on row 58, which leaves the rows over its head for the ears. The new detail is
+  // drawn on the fine lattice: the ears, the raised arms, the glow sticks and their trails, and the room behind, which only
+  // takes cells that are empty and not beside the creature, so a dark cell always rims it.
+  //   ears      two soft bunny ears 17 long rise from the head top at cols 20 and 33, so ear, ear and antenna stand evenly
+  //             spaced; each is a centre line that curls a given turn eased in over its middle (a soft curl, never a
+  //             crease), drawn as discs of the ear's half width (4 across at the root, 6 to 7 at the widest, a round tip),
+  //             with a pink inner ear down the part that faces the viewer; past a 50 degree turn the flopped flap shows
+  //             its plain back.
+  //   sticks    a lime glow stick in the left hand and a magenta one in the right, 3 across with a white hot core: held in
+  //             the family's own hands, angled down and out, while the arms rest, and at the top of raised arms (round
+  //             ended bars from the shoulders, 5 to 6 across, with a fist 7 across) while they are up. A moving stick
+  //             leaves a comet: the path of its tip, a solid line over its last move and a dotted one over the move
+  //             before, over a checker of the band its lit end swept, light seen through.
+  //   build     bar one: rest on the one with an antenna ping and one pair of laser rays; a dip on beats two and three and a
+  //             rise after each, the sticks swinging, while the slits pop round and the pupils dilate 6, 8, 10 and 12
+  //             cells across and the laser fan opens a pair of rays a beat; on four a crouch with the pupils full, the
+  //             grin and the cheeks, the ears flopped, the fan wide open over a riser of pulsing dots; then a blackout,
+  //             the room cut for half a beat while the creature stays lit.
+  //   drop      bars two and three, a strobe on every beat: it lands squashed with both arms up in a V, both sticks
+  //             straight up and both ears straight up, on a white flash of the room (the dark rim keeps the silhouette,
+  //             and a flash freezes motion, so it leaves no trail); between the flashes the laser fan sweeps, its magenta
+  //             and cyan rays trading places each beat, confetti falls and the ears flop. Bar two is the wave: it hops 2
+  //             rows and leans a cell to one side, both arms swinging that way and both sticks rocking, both ears blown
+  //             over. Bar three is the pump: the fists pull down beside the head and punch back up with the sticks held
+  //             straight up, an outer leg kicking out on each hop, a shuffle step, the ears flopping out.
+  //   wink      bar four: the arms sweep down to rest with long trails, two easy bounces while the last confetti lands on
+  //             the floor, then on three a wink, the right eye shut in a thick arch and the right ear flopped, a glint and
+  //             a ping, and on four the open eye closes down to the family's slit for the family's own wink; the loop
+  //             opens on the rest again.
+  // Music: one step of 125 ms, four a beat, sixteen a bar (120 bpm); every hold is whole steps, a frame starts on every
+  // beat, and the loop is four bars, 8 s. The strobe flashes once a beat for one step, 2 flashes a second, under the limit
+  // of 3 a second, and no other frame lights a quarter of the panel.
+  // Palette: 0..5 the ECHO palette unchanged (4, the ping, is also the cyan laser rays, dots, confetti and the glint's
+  // tips; 5 is also the floor line and a kicked leg); 6 white (eye rings, highlights, stick cores, the strobe, confetti,
+  // the glint), 7 magenta (the right stick, laser rays, dots, confetti), 8 lime (the left stick, confetti), 9 pink (the
+  // inner ears, the tongue, the cheeks, confetti). Index 6 is not ping here, so nothing
+  // in it goes through echoGlitch. Big tier: 38 frames of 3600 cells are 136800 bytes of firmware table, so it ships only
+  // on boards built with SPLASH_BIG. One closure, so echoRaveBunnyHd is the only name it adds to this
+  // scope; list it in BENCH.anims or the bench and the export never see it.
+  const echoRaveBunnyHd = (() => {
+    const N = 60, K = 3;                                           // lattice; a 20 cell pose repeated K times across and down
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, FEET = 5, WHITE = 6, MAG = 7, LIME = 8, PINK = 9;
+    // Constants: 60 cells of 8 px; the creature at 3x, 7 rows below the family frame, floor line row 58; step 125 ms, 4 a beat, 16 a bar (120 bpm), 4 bars, 8 s, 38 frames; pupils 6, 8, 10, 12, 14 across in sockets 10, 12, 14, 16, 16, ring 1 at full; ears 17 long from cols 20 and 33, flopped flap past 50 degrees; arms 14 long at 30 degrees in the V, fists 7 across; sticks 3 across, 11 out of the fist (9 out of a resting hand); hop 2 rows in the wave and the pump, squash 2; confetti all down 750 ms after the drop; strobe 1 step a beat; laser fan of up to 8 rays from 9 rows over the top centre.
+    const STEP = 125;                                              // ms, one step
+    const OY = 7, FLOOR = 58;                                      // rows the family frame sits lower; the floor line
+    const LEG_TOP = 49;                                            // first row of the legs on the panel: no rim below it
+    const HIPS = 41;                                               // family rows 0..41 are the torso, 42..50 the legs
+    const EYE_TOP = 17, EYE_COLS = [22.5, 39.5], SOCKET = 16, PUPIL = 14;   // mushroom HD's eyes at full dilation
+    const EAR_ROOT = [[13.5, 20], [13.5, 33]], EAR_LEN = 17;       // family rows and cols: the roots sit inside the head
+    const EAR_W = [[0, 1.9], [0.25, 2.7], [0.55, 3.3], [0.8, 3.0], [0.93, 2.3], [1, 1.5]];   // half width along the ear
+    const SHOULDER = [[25, 16.5], [25, 46.5]], HAND = [[31.5, 10.5], [31.5, 52.5]];   // family: shoulders, the resting hands
+    const ARM_R = 2.75, FIST_R = 3.3, ARM_LEN = 14;                // a raised arm's half width, the fist's radius, its length
+    const TRAIL = 4.5;                                             // cells of the stick's lit end whose sweep the comet shows
+    const LASER_SRC = [-9, 30.5];                                  // the laser fan's source, over the top centre
+    const DROP_MS = 4000, WRAP = 70;                               // the drop's length; the confetti's fall before it comes back
+    const LAND_MS = 750;                                           // after the drop every piece is on the floor by then (frame 34)
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const copy = g => g.map(row => row.slice());
+    const inside = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
+    const put = (g, r, c, v) => { if (inside(r, c)) g[r][c] = v; return g; };
+    const fill = (g, r, c, v) => { if (inside(r, c) && !g[r][c]) g[r][c] = v; return g; };
+    // The room paints only empty cells above the floor that are not on the rim, the cells beside the creature.
+    let RIM = null;
+    const room = (g, r, c, v) => { if (inside(r, c) && r < FLOOR && !g[r][c] && !(RIM && RIM[r][c])) g[r][c] = v; return g; };
+    const INK = {k: EYE, w: WHITE, p: PINK};
+    const stamp = (g, art, r0, c0) => { art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') put(g, r0 + dr, c0 + dc, INK[ch]); })); return g; };
+    const rad = d => d * Math.PI / 180;
+    const dir = a => [-Math.cos(rad(a)), Math.sin(rad(a))];       // a unit step a degrees clockwise from up: [down, right]
+    // Distance from (y, x) to the segment p q.
+    const seg = (y, x, p, q) => {
+      const vy = q[0] - p[0], vx = q[1] - p[1], L2 = vy * vy + vx * vx;
+      const t = L2 ? Math.max(0, Math.min(1, ((y - p[0]) * vy + (x - p[1]) * vx) / L2)) : 0;
+      return Math.hypot(y - p[0] - t * vy, x - p[1] - t * vx);
+    };
+
+    // The creature on the family lattice.
+    const pose = (ping = false) => upscale(echoPing(ping), K);
+    // The family's arm stub and hand on one side (side negative for the left, positive for the right) taken off, for an
+    // arm drawn raised.
+    const noArm = (g, side) => {
+      const b = copy(g);
+      for (let r = 21; r <= 32; r++) for (let c = 0; c < N; c++) if ((side < 0 && c <= 14) || (side > 0 && c >= 48)) b[r][c] = 0;
+      return b;
+    };
+    // The torso (rows 0..HIPS) dx cells across and dy rows down; the legs stay where they are.
+    function torso(g, dx, dy = 0) {
+      if (!dx && !dy) return g;
+      const b = blank();
+      for (let r = HIPS + 1; r < N; r++) b[r] = g[r].slice();
+      for (let r = 0; r <= HIPS; r++) for (let c = 0; c < N; c++) if (g[r][c]) put(b, r + dy, c + dx, g[r][c]);
+      return b;
+    }
+    // A kicked leg: leg k (0..3, left to right) comes off its column and is drawn as a bar 3 across from its hip to a
+    // foot moved dr rows and dc cols, so it angles out.
+    const LEG_COLS = [15, 24, 36, 45];
+    function kick(g, k, dr, dc) {
+      const b = copy(g), c0 = LEG_COLS[k], hip = [42, c0 + 1.5], foot = [51 + dr, c0 + 1.5 + dc];
+      for (let r = HIPS + 1; r <= 50; r++) for (let c = c0; c <= c0 + 2; c++) b[r][c] = 0;
+      const len = Math.hypot(foot[0] - hip[0], foot[1] - hip[1]), uy = (foot[0] - hip[0]) / len, ux = (foot[1] - hip[1]) / len;
+      for (let r = HIPS + 1; r < N; r++) for (let c = 0; c < N; c++) {
+        const y = r + 0.5 - hip[0], x = c + 0.5 - hip[1], t = y * uy + x * ux;
+        if (t >= 0 && t <= len && Math.abs(y * ux - x * uy) <= 1.5 && !b[r][c]) b[r][c] = FEET;
+      }
+      return b;
+    }
+    // The family's visor band (rows 18..23, cols 18..44) and its slit eyes; the family's wink, the left slit and a shut
+    // happy arch on the right.
+    const band = g => { const b = copy(g); for (let r = 18; r <= 23; r++) for (let c = 18; c <= 44; c++) b[r][c] = VISOR; return b; };
+    const slits = g => { const b = band(g); for (let r = 18; r <= 23; r++) for (const c0 of [21, 39]) for (let c = c0; c < c0 + 3; c++) b[r][c] = EYE; return b; };
+    const ARCH = ['..kkkkk..', '.kk...kk.', 'kk.....kk'];
+    const famWink = g => { const b = band(g); for (let r = 18; r <= 23; r++) for (let c = 21; c < 24; c++) b[r][c] = EYE; return stamp(b, ARCH, 19, 36); };
+    // Mouths, centred on col 31: a shut smile, and the open grin with a pink tongue under the round eyes.
+    const SMILE = ['k.......k', '.kkkkkkk.'];
+    const GRIN = ['k...........k', 'kk.........kk', 'kkkkkkkkkkkkk', '.kkkkkkkkkkk.', '..kkkpppkkk..', '...kkpppkk...', '.....kkk.....'];
+    const CHEEK = ['.pp.', 'pppp'];
+    const mouth = (g, art, r0) => stamp(copy(g), art, r0, 31 - (art[0].length - 1) / 2);
+    // Mushroom HD's trip face: the slits and the old band go back to body, the band grows to the sockets, each eye a white
+    // socket sock across holding a black pupil pup across offset [dy, dx] and clipped a cell inside the socket, then the
+    // highlight, placed by the socket and the pupil's size only, so it stays put while the pupil moves, then the cheeks
+    // and the mouth. An eye shut (the wink) is a thick happy arch across its middle instead.
+    const disc = (r, c, cy, cx, d) => (r - cy) ** 2 + (c - cx) ** 2 <= d * d / 4 + d / 4;
+    const SHINE = [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 1]];
+    const SHINE_S = [[0, 0], [0, 1], [1, 0]];
+    function trip(g, sock, pup, offs, {mouthArt = GRIN, mouthRow = 34, shut = [false, false]} = {}) {
+      const b = copy(g);
+      for (let r = 18; r <= 23; r++) for (let c = 18; c <= 44; c++) b[r][c] = BODY;
+      const top = EYE_TOP, cy = top + sock / 2 - 0.5;
+      const left = EYE_COLS[0] - sock / 2 + 0.5, right = EYE_COLS[1] + sock / 2 - 0.5;
+      for (let r = Math.min(18, top); r <= Math.max(23, top + sock - 1); r++) for (let c = Math.min(18, left); c <= Math.max(44, right); c++) b[r][c] = VISOR;
+      EYE_COLS.forEach((cx, k) => {
+        if (shut[k]) {
+          for (let r = top; r < top + sock; r++) for (let c = cx - sock / 2 + 0.5; c <= cx + sock / 2 - 0.5; c++) {
+            const d = Math.hypot(r - (cy + 2.5), c - cx);
+            if (r <= cy + 2.5 && d <= 6.2 && d >= 4.2) b[r][c] = EYE;
+          }
+          return;
+        }
+        const inS = (r, c) => disc(r, c, cy, cx, sock);
+        const inner = (r, c) => inS(r - 1, c) && inS(r + 1, c) && inS(r, c - 1) && inS(r, c + 1);
+        const [dy, dx] = offs[k];
+        for (let r = top; r < top + sock; r++) for (let c = cx - sock / 2 + 0.5; c <= cx + sock / 2 - 0.5; c++) {
+          if (inS(r, c)) b[r][c] = inner(r, c) && disc(r, c, cy + dy, cx + dx, pup) ? EYE : WHITE;
+        }
+        const hr = Math.round(cy - 0.2 * pup), hc = Math.round(cx - 0.2 * pup);
+        for (const [i, j] of (pup >= 10 ? SHINE : SHINE_S)) b[hr + i][hc + j] = WHITE;
+      });
+      if (pup === PUPIL) for (const c0 of [17, 42]) stamp(b, CHEEK, 34, c0);
+      return stamp(b, mouthArt, mouthRow, 31 - (mouthArt[0].length - 1) / 2);
+    }
+    const level = [[0, 0], [0, 0]];
+
+    // The ears, the arms and the sticks, on the panel.
+    const tab = (T, u) => { for (let i = 1; i < T.length; i++) if (u <= T[i][0]) { const [u0, w0] = T[i - 1], [u1, w1] = T[i]; return w0 + (w1 - w0) * (u - u0) / (u1 - u0); } return T[T.length - 1][1]; };
+    const ease = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+    // An ear from its root, leaving a1 degrees off upright and turning bend degrees more over its middle (from three
+    // tenths of the way up to four fifths): discs of the ear's half width along the centre line, the inner ear in pink a
+    // little inside them while the ear has turned less than 50 degrees; past that the flap shows its back.
+    function ear(g, root, a1, bend) {
+      const n = 48, pts = [];
+      let y = root[0], x = root[1];
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, turn = bend * ease((u - 0.3) / 0.5), w = tab(EAR_W, u);
+        const pink = u > 0.14 && u < 0.86 && Math.abs(turn) < 50 ? (w - 1.6) ** 2 : -1;   // squared radii: the ear, its pink
+        pts.push([y, x, w * w, pink]);
+        const [dy, dx] = dir(a1 + turn);
+        y += dy * EAR_LEN / n; x += dx * EAR_LEN / n;
+      }
+      const box = k => [Math.max(0, Math.floor(Math.min(...pts.map(q => q[k])) - 4)), Math.min(N - 1, Math.ceil(Math.max(...pts.map(q => q[k])) + 4))];
+      const [r0, r1] = box(0), [c0, c1] = box(1);
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        if (g[r][c]) continue;
+        let out = 0;
+        for (const [py, px, w2, pink2] of pts) {
+          const d2 = (r + 0.5 - py) ** 2 + (c + 0.5 - px) ** 2;
+          if (d2 <= pink2) { out = PINK; break; }
+          if (d2 <= w2) out = BODY;
+        }
+        if (out) g[r][c] = out;
+      }
+    }
+    // A raised arm, behind the body: a round ended bar from the shoulder to the hand and a round fist on it.
+    function armUp(g, sh, hand) {
+      const r0 = Math.max(0, Math.floor(Math.min(sh[0], hand[0]) - 4)), r1 = Math.min(N - 1, Math.ceil(Math.max(sh[0], hand[0]) + 4));
+      const c0 = Math.max(0, Math.floor(Math.min(sh[1], hand[1]) - 4)), c1 = Math.min(N - 1, Math.ceil(Math.max(sh[1], hand[1]) + 4));
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        if (g[r][c]) continue;
+        const y = r + 0.5, x = c + 0.5;
+        if (seg(y, x, sh, hand) <= ARM_R || Math.hypot(y - hand[0], x - hand[1]) <= FIST_R) g[r][c] = BODY;
+      }
+    }
+    // A glow stick through its grip, back cells behind it and fwd cells ahead along ang, drawn a line of cells at a time
+    // across its length (rows when it stands steeper than 45 degrees, cols when it lies flatter): the cell under the
+    // centre line white hot with a cell of the stick's colour either side, and only the colour at the two ends, rounded;
+    // only on empty cells, so the hand holding it stays in front.
+    function stick(g, st) {
+      const [dy, dx] = dir(st.ang), steep = Math.abs(dy) >= Math.abs(dx);
+      const a = [st.grip[0] - dy * st.back, st.grip[1] - dx * st.back], b = [st.grip[0] + dy * st.fwd, st.grip[1] + dx * st.fwd];
+      const i = steep ? 0 : 1, j = 1 - i, lo = Math.ceil(Math.min(a[i], b[i]) - 0.5), hi = Math.floor(Math.max(a[i], b[i]) - 0.5);
+      for (let m = lo; m <= hi; m++) {
+        const across = Math.floor(a[j] + (m + 0.5 - a[i]) * (b[j] - a[j]) / (b[i] - a[i]));
+        const at = (k, v) => (steep ? fill(g, m, k, v) : fill(g, k, m, v));
+        if (m === lo || m === hi) { at(across, st.ink); continue; }
+        at(across, WHITE); at(across - 1, st.ink); at(across + 1, st.ink);
+      }
+    }
+    // The comet behind a moving stick, through its last few poses: its tip's path, solid over the newest leg and dotted
+    // over the older ones, and a checker of the band its last TRAIL cells swept over the newest leg.
+    function trail(g, path) {
+      const legs = path.length - 1, tips = [], swept = [];
+      for (let j = 0; j < legs; j++) {
+        const from = path[j], to = path[j + 1], old = legs - 1 - j;
+        for (let u = 0; u <= 1.0001; u += 0.02) {
+          const ang = from.ang + (to.ang - from.ang) * u, fwd = from.fwd + (to.fwd - from.fwd) * u;
+          const grip = [from.grip[0] + (to.grip[0] - from.grip[0]) * u, from.grip[1] + (to.grip[1] - from.grip[1]) * u];
+          const [dy, dx] = dir(ang);
+          for (let s = fwd - TRAIL; s <= fwd + 0.3; s += 0.4) {
+            const r = Math.floor(grip[0] + dy * s), c = Math.floor(grip[1] + dx * s);
+            if (s > fwd - 0.6) tips.push([r, c, old]); else if (!old) swept.push([r, c]);
+          }
+        }
+      }
+      const ink = path[legs].ink;
+      for (const [r, c, old] of tips) if (inside(r, c) && !g[r][c] && (!old || (r + c) % 2 === 0)) g[r][c] = ink;
+      for (const [r, c] of swept) if (inside(r, c) && !g[r][c] && (r + c) % 2 === 0) g[r][c] = ink;
+    }
+    // A glint beside the winking eye: a white four point star with ping tips, and its small afterglow.
+    const GLINT = [['...c...', '...w...', '..www..', 'cwwwwwc', '..www..', '...w...', '...c...'], ['.c.', 'cwc', '.c.']];
+    const glint = (g, k, r0, c0) => GLINT[k].forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') fill(g, r0 + dr, c0 + dc, ch === 'w' ? WHITE : PING); }));
+
+    // The room.
+    // The laser fan: n pairs of rays a cell wide, gap degrees apart, swung a0 degrees, from over the top centre down to
+    // the floor, the colours taking turns.
+    function lasers(g, a0, n, gap, inks) {
+      for (let k = -n; k <= n; k++) {
+        if (!k) continue;
+        const ang = a0 + k * gap, uy = Math.cos(rad(ang)), ux = Math.sin(rad(ang)), ink = inks[(k + 10) % 2];
+        for (let s = 0; s < 120; s += 0.3) {
+          const r = Math.floor(LASER_SRC[0] + uy * s), c = Math.floor(LASER_SRC[1] + ux * s);
+          if (r >= FLOOR || c < 0 || c >= N) break;
+          room(g, r, c, ink);
+        }
+      }
+    }
+    // Dots on the back wall, every 8 cols on rows 6 apart, staggered: lvl of every 8 lit, the set and the colours turning
+    // over and stepping a cell on every beat; big makes every other one a plus.
+    const DOTS = [];
+    for (let r = 3, i = 0; r < FLOOR - 4; r += 6, i++) for (let c = i % 2 ? 6 : 2; c < N; c += 8) DOTS.push([r, c]);
+    function dots(g, lvl, big, t) {
+      const beat = Math.floor(t / 500);
+      DOTS.forEach(([r, c], i) => {
+        if ((i * 3 + beat) % 8 >= lvl) return;
+        const ink = (i + beat) % 2 ? MAG : PING, cc = c + (beat % 2);
+        room(g, r, cc, ink);
+        if (big && i % 2 === 0) for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) room(g, r + a, cc + b, ink);
+      });
+    }
+    // Confetti at drop time t, 22 pieces 2 cells long tumbling as they fall at three speeds; while the drop runs a piece
+    // that falls out comes back in at the top, after it none does: each falls at its own speed or faster, so all of it
+    // is on the floor LAND_MS after the drop, and a piece that reaches the floor lies on it, flat, until the loop ends.
+    // Like the rest of the room it only takes empty cells off the rim, so on a flash it goes in before the white.
+    const CONFETTI = Array.from({length: 22}, (_, i) => ({c: (i * 23 + 4) % 57 + 1, y0: -((i * 29) % 70) - 2, v: [1.5, 2.1, 2.7][i % 3], ink: [WHITE, MAG, LIME, PING, PINK][i % 5]}));
+    function confetti(g, t) {
+      const wrap = y => (((y + 4) % WRAP) + WRAP) % WRAP - 4;
+      CONFETTI.forEach(({c, y0, v, ink}, i) => {
+        const yd = wrap(y0 + v * Math.min(t, DROP_MS) / STEP), late = Math.max(0, t - DROP_MS);
+        const y = Math.max(yd + v * late / STEP, yd + (FLOOR - 1 - yd) * Math.min(1, late / LAND_MS));
+        const landed = y >= FLOOR - 1, r = landed ? FLOOR - 1 : Math.floor(y), turn = landed ? 1 : (Math.floor(t / STEP) + i) % 3;
+        room(g, r, c, ink);
+        if (turn === 1) room(g, r, c + 1, ink); else room(g, r + 1, c, ink);
+      });
+    }
+    // The strobe: the whole room white for a step.
+    const strobe = g => { for (let r = 0; r < FLOOR; r++) for (let c = 0; c < N; c++) room(g, r, c, WHITE); };
+
+    // A frame.
+    // o: tdx, tdy the torso across and down; lift the whole creature up; ping; face {mode: 'slits', 'wink' or 'trip',
+    // sock, pup, offs, opts}; kick [leg, dr, dc]; arms [left, right], each null (the family's own, its stick rest degrees
+    // out from straight up) or {arm degrees out from straight up, len, tilt the stick's degrees clockwise from up};
+    // ears [[a1, bend] left, right]; trail, how many poses back the comets reach; glint [size, row, col]; the room:
+    // strobe, blackout, lasers [swing, pairs, gap, inks], dots, big, confetti (the drop clock).
+    const EARS = {
+      up: [[-4, 0], [4, 0]], bob: [[-6, -22], [5, 20]], out: [[-8, -45], [4, 45]], flop: [[-8, -75], [0, 70]],
+      droop: [[-10, -100], [0, 85]], halfL: [[-3, -20], [-6, -40]], leanL: [[-2, -30], [-10, -55]],
+      halfR: [[6, 40], [3, 20]], leanR: [[10, 55], [2, 30]], wink: [[-4, 0], [0, 70]],
+    };
+    const hist = [];                                               // every frame's two sticks, for the comets
+    function frame(o) {
+      const tdx = o.tdx || 0, tdy = o.tdy || 0, lift = o.lift || 0, arms = o.arms || [null, null];
+      let f = pose(!!o.ping);
+      arms.forEach((a, k) => { if (a) f = noArm(f, k ? 1 : -1); });
+      const fc = o.face || {mode: 'slits'};
+      if (fc.mode === 'slits') f = slits(f);
+      else if (fc.mode === 'wink') f = mouth(famWink(f), SMILE, 31);
+      else f = trip(f, fc.sock, fc.pup, fc.offs || level, fc.opts || (fc.pup === PUPIL ? {} : {mouthArt: SMILE, mouthRow: 35}));
+      f = torso(f, tdx, tdy);
+      if (o.kick) f = kick(f, ...o.kick);
+      const g = blank();
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (f[r][c]) put(g, r + OY - lift, c, f[r][c]);
+      const P = ([r, c]) => [r + OY - lift + tdy, c + tdx];        // a torso point of the family lattice, on the panel
+      const sticks = arms.map((a, k) => {
+        const s = k ? 1 : -1, ink = k ? MAG : LIME;
+        if (!a) return {grip: P(HAND[k]), ang: s * (o.rest || [150, 150])[k], ink, fwd: 9, back: 3};
+        const sh = P(SHOULDER[k]), len = a.len || ARM_LEN, [dy, dx] = dir(s * a.arm), hand = [sh[0] + dy * len, sh[1] + dx * len];
+        armUp(g, sh, hand);
+        return {grip: hand, ang: a.tilt || 0, ink, fwd: 11, back: 2};
+      });
+      for (const st of sticks) stick(g, st);
+      (o.ears || EARS.up).forEach(([a1, bend], k) => ear(g, P(EAR_ROOT[k]), a1, bend));
+      if (o.trail && !o.strobe) sticks.forEach((st, k) => trail(g, [...hist.slice(-o.trail).map(h => h[k]), st]));
+      hist.push(sticks);
+      if (o.glint) glint(g, ...o.glint);
+      RIM = g.map((row, r) => row.map((v, c) => {
+        if (v || r >= LEG_TOP) return false;
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (inside(r + a, c + b) && g[r + a][c + b]) return true;
+        return false;
+      }));
+      if (o.confetti !== undefined && !o.blackout) confetti(g, o.confetti);
+      if (o.strobe) strobe(g);
+      else if (!o.blackout) {
+        if (o.dots) dots(g, o.dots, !!o.big, o.t);
+        if (o.lasers) lasers(g, ...o.lasers);
+      }
+      for (let c = 0; c < N; c++) g[FLOOR][c] = FEET;
+      return g;
+    }
+
+    // The routine.
+    const frames = [];
+    let t = 0;
+    const F = (steps, o) => { frames.push({hold: steps * STEP, grid: frame({...o, t})}); t += steps * STEP; };
+    const D = (sock, pup, offs, opts) => ({mode: 'trip', sock, pup, offs, opts});
+    const FULL = offs => D(SOCKET, PUPIL, offs);
+    const V = (tl = 0, tr = tl, arm = 30, len = ARM_LEN, armR = arm) => [{arm, len, tilt: tl}, {arm: armR, len, tilt: tr}];
+    const FAN = (a0, n, gap, s = -1) => [a0, n, gap, s < 0 ? [MAG, PING] : [PING, MAG]];
+    // Bar 1, the build: rest on the one, then the pupils dilate a step a frame on the bounce while the fan opens a pair
+    // of rays a beat; the crouch on four with the riser, and the blackout.
+    F(4, {ping: true, lasers: FAN(0, 1, 26), dots: 1});                                           // rest, the loop anchor
+    F(2, {tdy: 1, face: D(10, 6), rest: [140, 140], ears: EARS.bob, lasers: FAN(0, 2, 20), dots: 2});
+    F(2, {face: D(12, 8), rest: [158, 158], lasers: FAN(3, 2, 20), dots: 2, trail: 1});
+    F(2, {tdy: 1, face: D(14, 10), rest: [140, 140], ears: EARS.bob, lasers: FAN(0, 3, 16), dots: 4, trail: 1});
+    F(2, {face: D(16, 12), rest: [158, 158], lasers: FAN(3, 3, 16), dots: 4, trail: 1});
+    F(2, {tdy: 2, face: FULL(), rest: [120, 120], ears: EARS.flop, lasers: FAN(0, 4, 13), dots: 8, big: true, trail: 1});
+    F(2, {tdy: 3, face: FULL([[1, 0], [1, 0]]), rest: [115, 122], ears: EARS.droop, blackout: true});
+    // Bars 2 and 3, the drop: on every beat a flash, squashed, the arms up in a V and the sticks and the ears straight up;
+    // then a hop and a fall, the laser fan swinging one way a beat and the other the next.
+    let ct = 0;                                                    // the confetti clock, from the first flash
+    for (let b = 0; b < 8; b++) {
+      const s = b % 2 ? 1 : -1, pump = b >= 4;
+      F(1, {tdy: 2, face: FULL([[1, 0], [1, 0]]), arms: V(), ears: EARS.up, strobe: true, confetti: ct}); ct += 125;
+      if (!pump) {
+        // The wave: it leans a cell to one side, both arms swing that way and both sticks rock, the ears blow over. The
+        // family pose stands a cell and a half right of the panel's centre, so the swing to the right is the shorter.
+        const aL = s < 0 ? 45 : 22, aR = s < 0 ? 25 : 40, tl = s < 0 ? -12 : 14, tr = s < 0 ? -10 : 8;
+        F(1, {lift: 2, tdx: s, face: FULL([[-1, s], [-1, s]]), arms: V(tl / 2, tr / 2, (30 + aL) / 2, ARM_LEN, (30 + aR) / 2), ears: s < 0 ? EARS.halfL : EARS.halfR, lasers: FAN(4 * s, 4, 13, s), confetti: ct, trail: 1}); ct += 125;
+        F(2, {lift: 1, tdx: s, face: FULL([[0, s], [0, s]]), arms: V(tl, tr, aL, ARM_LEN, aR), ears: s < 0 ? EARS.leanL : EARS.leanR, lasers: FAN(8 * s, 4, 13, s), confetti: ct, trail: 2}); ct += 250;
+      } else {
+        // The pump: the fists pull down beside the head and punch back up, the sticks held straight up; an outer leg
+        // kicks out on the hop, the left one a beat and the right the next, a shuffle step.
+        F(1, {lift: 2, kick: s < 0 ? [0, -3, -6] : [3, -3, 6], face: FULL([[-1, 0], [-1, 0]]), arms: V(0, 0, 64, 11), ears: EARS.out, lasers: FAN(4 * s, 4, 13, s), confetti: ct, trail: 1}); ct += 125;
+        F(2, {lift: 1, face: FULL(), arms: V(0, 0, 42, 12.5), ears: EARS.flop, lasers: FAN(8 * s, 4, 13, s), confetti: ct, trail: 2}); ct += 250;
+      }
+    }
+    // Bar 4: the arms sweep down to rest, two easy bounces while the confetti lands, the wink on three, and on four the
+    // open eye closes down to the family's slit for the family's own wink (it loops to the rest).
+    F(2, {tdy: 2, face: FULL([[1, 0], [1, 0]]), arms: V(-10, 10, 50, 13), ears: EARS.flop, lasers: FAN(0, 2, 20), dots: 2, confetti: ct, trail: 1}); ct += 250;
+    F(2, {face: FULL(), rest: [150, 150], ears: EARS.out, dots: 2, confetti: ct, trail: 1}); ct += 250;
+    F(2, {tdy: 1, face: FULL([[0, -1], [0, -1]]), rest: [140, 140], ears: EARS.bob, dots: 1, confetti: ct, trail: 1}); ct += 250;
+    F(2, {face: FULL([[0, 1], [0, 1]]), rest: [158, 158], dots: 1, confetti: ct, trail: 1}); ct += 250;
+    F(4, {tdy: 1, ping: true, face: D(SOCKET, PUPIL, level, {shut: [false, true]}), rest: [150, 150], ears: EARS.wink, dots: 1, glint: [0, 15, 49], confetti: ct});
+    F(1, {face: D(12, 8, level, {shut: [false, true], mouthArt: SMILE, mouthRow: 35}), rest: [150, 150], ears: EARS.wink, glint: [1, 17, 51], confetti: ct});
+    F(3, {face: {mode: 'wink'}, rest: [150, 150], ears: EARS.wink, confetti: ct});   // the landed confetti stays; the loop clears it
+
+    return {
+      name: 'ECHO · rave bunny HD', key: 'echo_rave_bunny_hd', fwname: 'echo rave bunny hd', category: 'Active', size: N,
+      // Big tier, like the other HD cells: 38 frames of 3600 bytes (136800 bytes) ship only on boards built with SPLASH_BIG.
+      tier: 'big',
+      intent: 'Proposal, hands up, 60 cell lattice (8 px cells, the creature at 3x as in mushroom HD, wearing soft bunny ears with pink inner ears and holding a lime glow stick and a magenta one): over a slow first bar it bounces on the beat while its slits pop round and the pupils dilate to mushroom HD\'s huge black discs inside a thin white ring with a fixed sparkle, and a laser fan opens a pair of rays a beat, crouches on four with its ears flopped under a riser of dots, goes dark for half a beat and then drops, two bars with a white strobe flash on every beat (2 a second) in which it lands squashed with its arms up in a V and both sticks and both ears straight up, then hops and falls with a grin under sweeping magenta and cyan lasers and falling confetti, its ears flopping, its sticks leaving comet trails, the first bar a wave from side to side and the second a pump with a shuffle kick, before its arms sweep down, the confetti settles and it ends the loop on a wink with one ear flopped, a glint and an antenna ping, closing down to its own slit eyes; judge whether the dilated pupils read as delighted rather than scary, whether the ears read as bunny ears that flop, whether the sticks and their trails read as glow sticks, and whether the strobe is too much.',
+      // 0 transparent, 1 body, 2 pupils and mouths, 3 visor, 4 ping (antenna tip, laser rays, dots, confetti, the glint's tips), 5
+      // feet, the floor line and a kicked leg, 6 white (eye rings, highlights, stick cores, the strobe, confetti, the
+      // glint), 7 magenta (the right stick, laser rays, dots, confetti), 8 lime (the left stick, confetti), 9 pink (the
+      // inner ears, the tongue, the cheeks, confetti)
+      palette: [...ECHO_PALETTE.slice(0, 6), '#eafffb', '#ff5fd2', '#b8ff3a', '#ffa6d8'],
+      frames,
+    };
+  })();
+
+  // ECHO · rave bunny HD, take b: the bounce (operator, 2026-09-30: "one where its dancing with bunny ears at a rave and
+  // its eyes are like super dilated and black"). A 60 cell lattice, 8 px cells on the 480 panel, built the way mushroom
+  // HD is built: the head and body are the family's 20 cell pose repeated exactly 3 times across and down
+  // (upscale(echoPing(ping), 3)), with mushroom HD's trip face at full dilation painted on it (a visor band grown to the
+  // eyes' height across the whole head, sockets 16 across holding black pupils 14 across, so a one cell white ring, one
+  // white sparkle high on the left of each eye that never moves, an open grin, rosy cheeks). The face is never stretched:
+  // the squash and stretch takes or adds only plain teal rows above the band (the forehead) and under the grin (the
+  // belly), and a squash adds a col either side. The antenna is the family's own and keeps its col. The body stands 3
+  // cols left of the family frame, its centre a col left of the panel's, so the right glow stick has room between the
+  // antenna and the panel's edge. The arms, the legs, the ears and the glow sticks are drawn at 8 px from the body's own
+  // points: arms of two bones from shoulders inside the body's sides, behind it, so a hand never covers the face; legs
+  // as 3 cell bars in the feet teal from hips under it; ears as soft leaves on the head top, either side of its centre.
+  //   bounce   the whole loop, one hop a beat in four steps: a squash on the beat (feet planted, knees out, the head
+  //            three forehead rows shorter and a col wider each side), a stretch up as the feet leave the floor, the
+  //            top of the hop with the knees tucked, a stretch down; big hops on beats one and three, small ones on two
+  //            and four; in the shuffle bar a bob with the feet down.
+  //   ears     flopping with every hop: standing tall as it lands, flopping out as it rises, flopped out at
+  //            the top, springing up with the tips curled in as it falls. The right ear's flop is capped so it never
+  //            comes within a col of the antenna.
+  //   bar 1    the glow sticks draw figure eights lying down beside its head, mirrored, one a bar: the fists loop
+  //            beside the head and the wrists swing the sticks, so the tips loop wider than the fists.
+  //   bar 2    hands up: the arms go up in a V in two steps, pump on the beat and sway together; on beats three and
+  //            four the ears whirl one full turn round the head like a carousel, 45 degrees a step, narrowing edge on,
+  //            showing their darker backs and coming round to the front, with white whoosh marks where the tips just
+  //            went; the hands come down through the last beat.
+  //   bar 3    the shuffle: the feet step in pairs on every step while the body glides two cols left, back, two
+  //            right and back, and the sticks circle the fists in turn.
+  //   trails   behind each stick tip, the path it drew over the last 5 steps, from a third of a step behind it, body
+  //            relative so the figure eight keeps its shape on a hopping body: a lit cell in two for the newest 2
+  //            steps, one in three before that; empty cells only, so they pass behind the creature.
+  //   room     a dark wall of dots in magenta and cyan, swelling to a plus on every beat and swapping colours; a floor of
+  //            lit tiles, full on the beat and the step after, then dimming; on beats one and three a strobe turns
+  //            the dots and the floor white for one step and the antenna pings; a shadow on the floor narrows as it
+  //            hops. The pupils drift one slow circle a loop, a step of the circle every 750 ms.
+  // Music: one step of 125 ms, four a beat, sixteen a bar (120 bpm); one frame a step, so every move lands on the beat.
+  // Constants: 60 cells of 8 px; step 125 ms, 3 bars, 48 frames, 6000 ms; the creature at 3x, 33 cols by 39 rows from
+  // antenna tip to belly at rest, its left col on 12; floor rows 58 and 59, feet on row 57; hops lift the feet 6 rows
+  // (big) and 3 (small); squash 3 forehead rows less and a col more each side, stretch a forehead row more (and a belly
+  // row more on a big hop's way up); ears
+  // 13 cells long either side of the centre line at 6, flopped out to 13 and 34 degrees; arms two bones of 8; sticks 10
+  // past the fist; trails 5 steps; glide 2 cols; ear spin 45 degrees a step.
+  // Palette: 0..5 the ECHO palette unchanged; 6 white (eye rings, sparkles, stick cores, the strobe, whoosh marks),
+  // 7 magenta and 4 the family's ping cyan (the two lights of the room; 4 is also the antenna tip), 8 lime (glow sticks
+  // and their trails), 9 pink (inner ears, cheeks, tongue). Index 6 is not ping here, so no frame goes through
+  // echoGlitch. One closure, so echoRaveBunnyHdB is the only name it adds to this scope; list it in BENCH.anims or the
+  // bench and the export never see it.
+  const echoRaveBunnyHdB = (() => {
+    const N = 60, K = 3;                                           // lattice; the family pose lands at K = 3
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, LEG = 5, WHITE = 6, MAGENTA = 7, LIME = 8, PINK = 9;
+    const STEP = 125;                                              // ms a step: 4 a beat, 16 a bar, 120 bpm
+    const STEPS = 48;                                              // the loop: 3 bars, one frame a step
+    const FLOOR = 58;                                              // the floor's top row; the feet stand on row 57
+    const LEFT = 12;                                               // the body's left col at rest: the family's 15, 3 cols left
+    const MID = 28.5;                                              // the body's centre line at rest
+    const EAR_GAP = 6, EAR_LEN = 13;                               // ears either side of the centre line; their length
+    const UPPER = 8, FORE = 8, STICK = 10;                         // the two bones of an arm; a glow stick past the fist
+    const TRAIL = 5;                                               // steps of path a stick tip leaves lit behind it
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+    const putEmpty = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N && !g[r][c]) g[r][c] = v; return g; };
+    const rad = d => d * Math.PI / 180;
+
+    // The face: mushroom HD's eyes at full dilation, painted on the family pose at 3x (its rows and cols).
+    const EYE_TOP = 17, EYE_COLS = [22.5, 39.5], SOCKET = 16, PUPIL = 14;
+    const disc = (r, c, cy, cx, d) => (r - cy) ** 2 + (c - cx) ** 2 <= d * d / 4 + d / 4;
+    const SHINE = [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 1]];  // the sparkle, six cells
+    const INK = {k: EYE, p: PINK};
+    const GRIN = ['k...........k', 'kk.........kk', 'kkkkkkkkkkkkk', '.kkkkkkkkkkk.', '..kkkpppkkk..', '...kkpppkk...', '.....kkk.....'];
+    const CHEEK = ['.pp.', 'pppp'];
+    const stamp = (g, art, r0, c0) => { art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') g[r0 + dr][c0 + dc] = INK[ch]; })); return g; };
+    // The band grows to the sockets' height across the head; each pupil sits [dy, dx] off its socket's middle, clipped a
+    // cell inside it so the ring always shows; the sparkle is placed by the socket alone, so it stays put.
+    function face(g, [dy, dx]) {
+      const cy = EYE_TOP + SOCKET / 2 - 0.5;
+      for (let r = EYE_TOP; r < EYE_TOP + SOCKET; r++) for (let c = 15; c <= 47; c++) g[r][c] = VISOR;
+      for (const cx of EYE_COLS) {
+        const inS = (r, c) => disc(r, c, cy, cx, SOCKET);
+        const inner = (r, c) => inS(r - 1, c) && inS(r + 1, c) && inS(r, c - 1) && inS(r, c + 1);
+        for (let r = EYE_TOP; r < EYE_TOP + SOCKET; r++) for (let c = cx - SOCKET / 2 + 0.5; c <= cx + SOCKET / 2 - 0.5; c++) {
+          if (inS(r, c)) g[r][c] = inner(r, c) && disc(r, c, cy + dy, cx + dx, PUPIL) ? EYE : WHITE;
+        }
+        const hr = Math.round(cy - 0.2 * PUPIL), hc = Math.round(cx - 0.2 * PUPIL);
+        for (const [i, j] of SHINE) g[hr + i][hc + j] = WHITE;
+      }
+      for (const c0 of [17, 42]) stamp(g, CHEEK, 34, c0);
+      return stamp(g, GRIN, 34, 25);
+    }
+    const LOOP = [[-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1]];   // pupil drift, clockwise from the top
+    // The head and body: rows 3..41 and cols 15..47 of the family pose at 3x with the face on (the antenna, then the body
+    // block; the arms and legs are left out and drawn as limbs).
+    const sprites = new Map();
+    function sprite(ping, look) {
+      const key = ping + ':' + look;
+      if (!sprites.has(key)) sprites.set(key, face(upscale(echoPing(ping), K), LOOP[look]).slice(3, 42).map(row => row.slice(15, 48)));
+      return sprites.get(key);
+    }
+    // Squash and stretch: f forehead rows (5 at rest), b belly rows (1 at rest), w cols added either side.
+    function shape(spr, f, b, w) {
+      const edge = r => (r >= 14 && r <= 29 ? VISOR : BODY);
+      const body = r => [...new Array(w).fill(edge(r)), ...spr[r], ...new Array(w).fill(edge(r))];
+      const out = [];
+      for (let r = 0; r <= 8; r++) out.push([...new Array(w).fill(0), ...spr[r], ...new Array(w).fill(0)]);   // the antenna keeps its col
+      for (let k = 0; k < f; k++) out.push(body(9));
+      for (let r = 14; r <= 37; r++) out.push(body(r));
+      for (let k = 0; k < b; k++) out.push(body(38));
+      return out;
+    }
+
+    // Cells whose centres lie within r0 of a polyline of [row, col] points; v an index, or a function of the distance.
+    const segDist = (y, x, [ay, ax], [by, bx]) => {
+      const vy = by - ay, vx = bx - ax, wy = y - ay, wx = x - ax, L = vy * vy + vx * vx;
+      const t = L ? Math.max(0, Math.min(1, (wy * vy + wx * vx) / L)) : 0;
+      return Math.hypot(wy - t * vy, wx - t * vx);
+    };
+    function capsule(g, pts, r0, v) {
+      const ys = pts.map(p => p[0]), xs = pts.map(p => p[1]);
+      for (let r = Math.floor(Math.min(...ys) - r0); r <= Math.ceil(Math.max(...ys) + r0); r++) for (let c = Math.floor(Math.min(...xs) - r0); c <= Math.ceil(Math.max(...xs) + r0); c++) {
+        let d = pts.length === 1 ? Math.hypot(r + 0.5 - pts[0][0], c + 0.5 - pts[0][1]) : Infinity;
+        for (let i = 0; i + 1 < pts.length; i++) d = Math.min(d, segDist(r + 0.5, c + 0.5, pts[i], pts[i + 1]));
+        if (d <= r0) put(g, r, c, typeof v === 'function' ? v(d) : v);
+      }
+      return g;
+    }
+
+    // An ear: a soft leaf from its base, EAR_LEN long, leaning lean degrees outward (side 1 right, minus 1 left) and
+    // turning curl degrees more by the tip; teal round a pink inside (a darker back when back), sq its width's scale as
+    // it turns edge on in the spin.
+    const W_EAR = t => 1.5 + 2 * Math.sin(Math.PI * Math.min(1, 0.15 + 0.95 * t));   // half width along the ear
+    function ear(g, [by, bx], side, {lean = 0, curl = 0, sq = 1, back = false}) {
+      const pts = [];
+      let y = by, x = bx;
+      for (let s = 0; s <= EAR_LEN + 1e-9; s += 0.25) {
+        const t = s / EAR_LEN, a = rad(lean + curl * t * t);
+        pts.push([y, x, t]);
+        y -= 0.25 * Math.cos(a); x += side * 0.25 * Math.sin(a);
+      }
+      sq = Math.max(sq, 0.3);
+      const ys = pts.map(p => p[0]), xs = pts.map(p => p[1]);
+      for (let r = Math.floor(Math.min(...ys) - 4); r <= Math.ceil(Math.max(...ys) + 4); r++) for (let c = Math.floor(Math.min(...xs) - 4); c <= Math.ceil(Math.max(...xs) + 4); c++) {
+        let inO = false, inP = false;
+        for (const [py, px, t] of pts) {
+          const d = Math.hypot(r + 0.5 - py, (c + 0.5 - px) / sq), w = W_EAR(t);
+          if (d <= w) inO = true;
+          if (d <= w - 1.7 && t >= 0.2 && t <= 0.88) inP = true;
+        }
+        if (inO) put(g, r, c, inP ? (back ? LEG : PINK) : BODY);
+      }
+      return g;
+    }
+
+    // An arm of two bones from shoulder S toward hand H (the hand stops where the arm runs out), the elbow bent to the
+    // side bend; answers the elbow and the hand.
+    function reach(S, H, bend) {
+      const dy = H[0] - S[0], dx = H[1] - S[1], D = Math.hypot(dy, dx), d = Math.min(D, UPPER + FORE - 0.01);
+      const a = Math.atan2(dy, dx), cosA = (UPPER * UPPER + d * d - FORE * FORE) / (2 * UPPER * d);
+      const t = a + bend * Math.acos(Math.max(-1, Math.min(1, cosA)));
+      return [[S[0] + UPPER * Math.sin(t), S[1] + UPPER * Math.cos(t)], [S[0] + dy * d / D, S[1] + dx * d / D]];
+    }
+    const stickDir = ang => [-Math.cos(rad(ang)), Math.sin(rad(ang))];   // ang degrees clockwise from straight up
+    // The arm 5 cells thick, the glow stick 3 across (lime round a white core) from the fist, the fist over it.
+    function limb(g, S, {dy, dx, ang, bend}) {
+      const [E, h] = reach(S, [S[0] + dy, S[1] + dx], bend), u = stickDir(ang);
+      capsule(g, [S, E, h], 2.3, BODY);
+      capsule(g, [[h[0] + 0.5 * u[0], h[1] + 0.5 * u[1]], [h[0] + STICK * u[0], h[1] + STICK * u[1]]], 1.45, d => (d <= 0.55 ? WHITE : LIME));
+      capsule(g, [h], 2.2, BODY);
+    }
+    const tipOf = (S, {dy, dx, ang, bend}) => { const h = reach(S, [S[0] + dy, S[1] + dx], bend)[1], u = stickDir(ang); return [h[0] + STICK * u[0], h[1] + STICK * u[1]]; };
+
+    // Legs: the family's four, 3 cell bars from hips under the body to the feet; bent puts the knees out, lift raises a
+    // foot that many rows with its knee further out.
+    const HIPS = [1.5, 10.5, 22.5, 31.5];
+    function legs(g, hip, feetY, x0, w, mode, lift) {
+      HIPS.forEach((hx0, k) => {
+        const side = k < 2 ? -1 : 1, outer = k === 0 || k === 3;
+        const hx = x0 + hx0 + (outer ? side * w : 0), top = hip + 0.5;
+        if (mode === 'bent' || lift[k]) {
+          const fy = feetY - lift[k], ky = (top + fy) / 2, out = (outer ? 2.5 : 1.5) + lift[k] / 2;
+          capsule(g, [[top, hx], [ky, hx + side * out], [fy, hx + side * (outer ? 1 : 0.5)]], 1.5, LEG);
+        } else capsule(g, [[top, hx], [feetY, hx]], 1.5, LEG);
+      });
+    }
+
+    // The room, only on empty cells: the dots swell to a plus on the beat and swap colours every beat; the tiles are full
+    // on the beat and the step after, a checker on the third step, a dotted line on the fourth; the strobe turns both
+    // white; the shadow darkens the floor's top row under the creature.
+    function room(g, p, beat, strobe, shadow) {
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+        const r = 3 + 8 * i, c = 3 + 8 * j + (i % 2 ? 4 : 0);
+        if (r >= FLOOR - 3 || c > 57) continue;
+        const v = strobe ? WHITE : (i + j + beat) % 2 ? MAGENTA : PING;
+        putEmpty(g, r, c, v);
+        if (p === 0) for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) putEmpty(g, r + a, c + b, v);
+      }
+      for (let c = 0; c < N; c++) {
+        const tile = (Math.floor(c / 6) + beat) % 2 ? MAGENTA : PING, gap = c % 6 === 5;
+        for (const r of [FLOOR, FLOOR + 1]) {
+          const lit = !gap && (p <= 1 || (p === 2 ? (r + c) % 2 === 0 : r === FLOOR + 1 && c % 2 === 0));
+          if (r === FLOOR && Math.abs(c + 0.5 - shadow[0]) <= shadow[1]) putEmpty(g, r, c, EYE);
+          else if (lit) putEmpty(g, r, c, strobe ? WHITE : tile);
+        }
+      }
+      return g;
+    }
+
+    // The dance, step by step.
+    // A hop's four steps, [forehead rows, belly rows, cols added, hip row, feet row centre, legs], at three sizes.
+    const HOPS = {
+      big: [[2, 1, 1, 51, 56.5, 'bent'], [6, 2, 0, 46, 55.5, 'straight'], [5, 1, 0, 43, 50.5, 'bent'], [6, 1, 0, 44, 53.5, 'straight']],
+      small: [[2, 1, 1, 51, 56.5, 'bent'], [6, 1, 0, 47, 55.5, 'straight'], [5, 1, 0, 46, 53.5, 'bent'], [6, 1, 0, 47, 55.5, 'straight']],
+      bob: [[4, 1, 1, 50, 56.5, 'bent'], [5, 1, 0, 48, 56.5, 'straight'], [5, 1, 0, 47, 56.5, 'straight'], [5, 1, 0, 48, 56.5, 'straight']],
+    };
+    // The ears flopping with the hop: [lean, curl] for the same four steps.
+    const FLOP = {big: [[5, 2], [12, 24], [13, 34], [3, -12]], small: [[6, 2], [10, 18], [12, 28], [4, -6]], bob: [[8, 4], [9, 10], [10, 18], [7, 2]]};
+
+    // The hands at any time u in steps (fractions too, for the trails): from each shoulder, rows down dy and cols out dx,
+    // the stick's lean outward in degrees, the elbow's bend.
+    function hand(u, side) {
+      const s = ((u % STEPS) + STEPS) % STEPS;
+      const R = side > 0;                                          // the right hand works further out and leans in less: the antenna
+      if (s < 16) {                                                // bar 1: figure eights lying down, mirrored
+        const th = 2 * Math.PI * s / 16, k = Math.sin(th);
+        return {dy: -10 - 3 * Math.sin(2 * th), dx: (R ? 10.5 : 8.5) + 2 * k, out: R ? -8 + 22 * k : -16 + 24 * k, bend: 1};
+      }
+      if (s < 32) {                                                // bar 2: hands up, pumped on the beat, swaying together
+        const q = s - 16, p = Math.floor(q) % 4, rise = Math.min(1, (q + 1) / 2);
+        const down = q >= 28 ? (q - 27) / 4 : 0;                    // the last beat brings them down
+        const sway = Math.sin(Math.PI * q / 4) * (1 - down);
+        const dyUp = -14 - [0, 1.2, 0.8, 0.3][p];
+        return {dy: (1 - rise) * -10 + rise * ((1 - down) * dyUp + down * -9), dx: (R ? 7.5 : 6.5) - 1.5 * sway * side,
+          out: (R ? 10 : 8) - 14 * sway * side - 14 * down, bend: 1};
+      }
+      const q = s - 32, ph = Math.PI * q / 4 + (R ? Math.PI : 0), k = Math.sin(ph);   // bar 3: the sticks circle in turn
+      return {dy: -9 - 2.5 * Math.cos(ph), dx: (R ? 9 : 7) - 2 * k, out: R ? -4 - 16 * k : -6 - 18 * k, bend: 1};
+    }
+    const handPose = (u, side) => { const h = hand(u, side); return {dy: h.dy, dx: side * h.dx, ang: side * h.out, bend: side * h.bend}; };
+
+    function frame(s) {
+      const bar = Math.floor(s / 16), beat = Math.floor(s / 4), p = s % 4;
+      const kind = bar === 2 ? 'bob' : beat % 2 ? 'small' : 'big';
+      const [f, b, w, hip, feetY, mode] = HOPS[kind][p];
+      const strobe = p === 0 && beat % 2 === 0;                    // beats one and three of every bar
+      // the shuffle: a glide two cols left and back, right and back, the feet in pairs on every step
+      const dx = bar === 2 ? Math.round(-2 * Math.sin(Math.PI * (s - 32) / 8)) : 0;
+      const lift = bar === 2 ? (s % 2 ? [3, 3, 0, 0] : [0, 0, 3, 3]) : [0, 0, 0, 0];
+      const spr = shape(sprite(strobe, Math.floor(s / 6) % 8), f, b, w);
+      const H = spr.length, top = hip - H + 1, headTop = top + 9, x0 = LEFT + dx;
+      const g = blank();
+      legs(g, hip, feetY, x0, w, mode, lift);
+      // the ears, behind the head; a carousel on bar 2's last two beats, the nearer ear drawn last
+      const spin = bar === 1 && s >= 24 ? (s - 23) * 45 : 0;
+      const [lean, curl] = FLOP[kind][p];
+      const cs = Math.cos(rad(spin)), sn = Math.sin(rad(spin));
+      const ears = [-1, 1].map(side => ({x: MID + dx + side * EAR_GAP * cs, z: -side * EAR_GAP * sn, side}));
+      ears.sort((A, B) => A.z - B.z);
+      for (const e of ears) {
+        const flare = spin ? Math.sign(e.x - MID - dx) || e.side : e.side;
+        ear(g, [headTop + 1.5, e.x], flare, spin ? {lean: 8 + 6 * Math.abs(sn), curl: 4, sq: Math.abs(cs), back: cs < 0} : {lean, curl});
+      }
+      // the arms and the glow sticks, behind the body
+      const sh = headTop + f + 8;
+      const S = side => [sh, side < 0 ? x0 + 1.5 : x0 + 31.5];
+      for (const side of [-1, 1]) limb(g, S(side), handPose(s, side));
+      // the head and body over them
+      spr.forEach((row, r) => row.forEach((v, c) => { if (v) put(g, top + r, x0 - w + c, v); }));
+      // the trails
+      for (const side of [-1, 1]) {
+        const cells = [], seen = new Set();
+        for (let k = 2; k <= TRAIL * 6; k++) {
+          const [y, x] = tipOf(S(side), handPose(s - k / 6, side)), r = Math.floor(y), c = Math.floor(x);
+          if (!seen.has(r * 100 + c)) { seen.add(r * 100 + c); cells.push([r, c, k / 6]); }
+        }
+        cells.forEach(([r, c, age], i) => { if (i % (age <= 2 ? 2 : 3) === 0) putEmpty(g, r, c, LIME); });
+      }
+      // the whoosh marks: dots where the ear tips went in the last step, round an ellipse whose near side sits lower
+      if (spin) for (let a = spin - 80; a <= spin - 20; a += 10) for (const side of [-1, 1]) {
+        const rr = EAR_GAP + 3.5, ex = MID + dx + side * rr * Math.cos(rad(a)), ey = headTop + 2.5 - EAR_LEN - 2 * side * Math.sin(rad(a));
+        putEmpty(g, Math.floor(ey), Math.floor(ex), WHITE);
+      }
+      return room(g, p, beat, strobe, [MID + dx, Math.max(6, 16 - 1.6 * (56.5 - feetY))]);
+    }
+
+    const frames = [], F = (steps, grid) => frames.push({hold: steps * STEP, grid});
+    for (let s = 0; s < STEPS; s++) F(1, frame(s));
+    return {
+      name: 'ECHO · rave bunny HD (bounce)', key: 'echo_rave_bunny_hd_b', fwname: 'echo rave bunny hd b', category: 'Active', size: N,
+      // Big tier, like the mushroom HD cells: the firmware table keeps size x size bytes a frame, so this is 48 frames of
+      // 3600 bytes (172800 bytes), and it ships only on boards built with SPLASH_BIG (the 4 inch board, 16 MB layout).
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells, the creature at 3x as in mushroom HD, with its huge black pupils, thin white rings and fixed sparkles, an open grin and rosy cheeks), take b, the bounce, in teal bunny ears with pink insides, bouncing on every beat at 120 bpm in 125 ms steps, a squash on the beat with the knees out, a stretch up, a hop with the knees tucked and a stretch down, big hops on beats one and three and small ones between, its ears flopping with every hop, standing tall as it lands, flopping out as it rises and springing back up as it falls, while lime glow sticks in both fists draw figure eights lying down beside its head with dotted light trails behind the tips for a bar, go up in a V and sway overhead for a bar while on its last two beats the ears whirl one full turn round the head like a carousel, edge on and back to front with white whoosh marks, then circle in turn while it shuffles for a bar, the feet stepping in pairs as it glides two cols each way, all on a dark wall of magenta and cyan dots that swell on every beat over a floor of lit tiles that dims through each beat, a white strobe on beats one and three with an antenna ping, and the pupils drifting one slow circle a loop; judge whether the ears read as flopping with the hop, whether the trails read as light, and whether the strobe lifts the face or swamps it.',
+      // 0 transparent, 1 body and ears, 2 pupils, mouth and the jump shadow, 3 visor, 4 ping (antenna tip) and the cyan
+      // light, 5 legs and the ears' backs, 6 white (eye rings, sparkles, stick cores, strobe, whoosh marks), 7 magenta
+      // light, 8 lime (glow sticks and trails), 9 pink (inner ears, cheeks, tongue)
+      palette: [...ECHO_PALETTE.slice(0, 6), '#eafffb', '#ff5fd2', '#b6ff3b', '#ffb3dd'],
+      frames,
+    };
+  })();
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -4429,7 +5121,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, echoBreakdanceHd, echoBreakdanceHdB, echoAcrobatHd, echoMoonwalkHd, echoMoonwalkHdB, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, echoBreakdanceHd, echoBreakdanceHdB, echoAcrobatHd, echoMoonwalkHd, echoMoonwalkHdB, echoRaveBunnyHd, echoRaveBunnyHdB, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

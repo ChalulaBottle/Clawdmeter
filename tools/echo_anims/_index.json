@@ -309,6 +309,22 @@
     "tier": "big"
   },
   {
+    "filename": "echo_rave_bunny_hd.html",
+    "name": "echo rave bunny hd",
+    "category": "Active",
+    "frame_count": 38,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_rave_bunny_hd_b.html",
+    "name": "echo rave bunny hd b",
+    "category": "Active",
+    "frame_count": 48,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
     "filename": "echo_breathe.html",
     "name": "echo breathe",
     "category": "Idle",
