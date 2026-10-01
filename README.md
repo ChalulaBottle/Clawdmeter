@@ -15,6 +15,8 @@
 >
 > Wi-Fi and album art (`FEATURE_PICTURE=1`, with JPEGDEC) are built into the `waveshare_lcd_4` env only; every other env builds without Wi-Fi, HTTP or JPEG, and the stock 2.16 board sits at 99.0 % of its flash.
 >
+> The big tier works the same way: an animation marked `tier: 'big'` in `docs/bench/anims.js` exports to JSON and GIFs like any other but compiles into the firmware table only with `-DSPLASH_BIG=1`, which the `waveshare_lcd_4` env sets, so the stock 2.16 board's table is unchanged (83 animations with it, 73 without); `benchOnly: true` still keeps an animation on the bench and in the GIFs, on no board.
+>
 > The board advertises as ECHO_LabDaemon; the Windows tray daemon links every bonded board named ECHO_LabDaemon, ECHO_MiniDaemon or Clawdmeter.
 >
 > **Creatures in the works** (drawn for the ECHO edition, benched at
@@ -57,13 +59,23 @@
 > |---|---|---|---|---|
 > | ![](docs/media/anims/echo_kiss_b.gif) | ![](docs/media/anims/echo_summon.gif) | ![](docs/media/anims/echo_openclaw.gif) | ![](docs/media/anims/echo_headphones.gif) | ![](docs/media/anims/clawd_headphones.gif) |
 >
+> | echo mushroom hd | echo breakdance hd | echo breakdance hd b | echo acrobat hd |
+> |---|---|---|---|
+> | ![](docs/media/anims/echo_mushroom_hd.gif) | ![](docs/media/anims/echo_breakdance_hd.gif) | ![](docs/media/anims/echo_breakdance_hd_b.gif) | ![](docs/media/anims/echo_acrobat_hd.gif) |
+>
+> | echo moonwalk hd | echo moonwalk hd b | echo rave bunny hd | echo rave bunny hd b |
+> |---|---|---|---|
+> | ![](docs/media/anims/echo_moonwalk_hd.gif) | ![](docs/media/anims/echo_moonwalk_hd_b.gif) | ![](docs/media/anims/echo_rave_bunny_hd.gif) | ![](docs/media/anims/echo_rave_bunny_hd_b.gif) |
+>
+> The HD set is drawn on a 60 cell lattice of 8 px cells and lives in the big tier, on the 4 inch board only: mushroom hd with dilated black pupils and a sky, breakdance hd with a headspin on the antenna and its b take with a windmill, acrobat hd running a gymnast pass (cartwheel, back handspring, backflip, stuck landing), moonwalk hd with a lean and a fedora in a seamless 20 frame clip and its b take with a wrap, rave bunny hd with hands up through lasers, a build, a blackout and a drop with strobe and confetti, and its b take bouncing. Captures from the panel are in `docs/media/lcd4/`.
+>
 > **Model tiers**, one family, four signatures (Haiku, Sonnet, Opus, Fable):
 >
 > ![Model tier creatures](docs/media/sheets/model-tiers.png)
 >
 > Plus the thinking set (echo think spin, echo think deep, echo work, echo write, echo read) and the
 > modes (opus enter, opus work, ultracode enter, ultracode work, agents split, agents join).
-> 52 animations in the firmware table as of 2026-09-28; every one plays by name from the host (`a` field).
+> 83 animations in the 4 inch board's firmware table as of 2026-10-01 (73 on boards built without the big tier); every one plays by name from the host (`a` field).
 >
 > Full progress board with states: [chalulabottle.github.io/ECHO_LabDaemon#creatures](https://chalulabottle.github.io/ECHO_LabDaemon/#creatures).
 >
@@ -319,7 +331,7 @@ Add the hook yourself (nothing in the repo writes to your settings); `settings.j
 
 The script always answers inside 40 s, under that timeout, so the hook's timeout path (which discards the output) never runs. Try it without Claude Code: `python daemon\clawdmeter_approve.py --test Bash "git push origin main"` puts a sample prompt on the device and prints what the hook would return; `ask` / `ok` / `askclr` over the serial console exercise the overlay with no host at all. The daemon must have been started from this code (restart the tray after updating).
 
-The same serial console pokes the two host cards with no host: `msg <text>` shows a notification with a body only, `msg <title>|<text>` one with a title, and `msgclr` clears it. `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>|<pi>` shows the generic card page: a title, three lines, progress 0..100 (empty for no bar), an optional creature name such as `echo headphones` (or `dance` for the dancing daemon) and an optional album art id; trailing fields may be left off, and `pageclr` takes it down. `btn pwr`, `btn pwr2`, `btn aux` and `btn aux2` press a button from the bench, once or twice in quick succession, down the same path as a real press. On the 4 inch board, the one built with Wi-Fi, `wifi <ssid>|<password>` stores a network and joins it (the bar is required and an open network is `wifi <ssid>|`; a line without the bar stores nothing and is never echoed), `wifi off` forgets it and `wifi status` reports the link without ever printing the password; `art <base url>` stores the base the album art comes from and `art status` reports on it.
+The same serial console pokes the two host cards with no host: `msg <text>` shows a notification with a body only, `msg <title>|<text>` one with a title, and `msgclr` clears it. `page <title>|<l1>|<l2>|<l3>|<pp>|<anim>|<pi>` shows the generic card page: a title, three lines, progress 0..100 (empty for no bar), an optional creature name such as `echo headphones` (or `dance` for the dancing daemon) and an optional album art id; trailing fields may be left off, and `pageclr` takes it down. While the dance floor is up, `dance next` moves on to the next dancer through the shrink to the dot and `dance status` prints the pool, the dancer and the seconds until the next change. `btn pwr`, `btn pwr2`, `btn aux` and `btn aux2` press a button from the bench, once or twice in quick succession, down the same path as a real press. On the 4 inch board, the one built with Wi-Fi, `wifi <ssid>|<password>` stores a network and joins it (the bar is required and an open network is `wifi <ssid>|`; a line without the bar stores nothing and is never echoed), `wifi off` forgets it and `wifi status` reports the link without ever printing the password; `art <base url>` stores the base the album art comes from and `art status` reports on it.
 
 ### Notifications, pages and button reports (ECHO edition)
 
@@ -337,7 +349,7 @@ The buttons (BOOT is the aux key on the 4 inch board):
 
 On the page a single tap waits the 400 ms out in case a second one follows, so it lands slightly late there and nowhere else. A page left this way stays live out of sight: its updates (title, lines, progress, creature, art) never bring it back, and it returns on the next PWR cycle or when a page with a different `pg` arrives.
 
-`pa` set to `dance` is the dancing daemon: the board puts a random dance on the card (echo dj, echo rave, echo mixer, echo notes, echo headphones, echo hop, echo swing, echo cartwheel) and changes it every 12 to 25 s, and one change in four the creature steps off for 4 to 8 s and comes back with a different one. It runs only while the page is on top. Any other name in `pa` is that creature, fixed.
+Dance floor: `pa` set to `dance` is the dancing daemon. The board alternates two pools on the card, a feature for 90 s (echo breakdance hd, echo acrobat hd, echo rave bunny hd, echo dj, echo rave, echo mixer) and then a clip of a repeating move for 30 s (echo moonwalk hd, echo hop, echo swing, echo headphones, echo notes, echo cartwheel). Each pick is random within its pool and never the same one twice in a row, and a name missing from the board's table is skipped, so the same pools serve every board. Between two dancers a 1.2 s transition shrinks the creature to a dot and brings it back up as the next one. The clock runs only while the page is on top; a track change keeps the sequence and a page clear resets it. The serial log reads `page: dance feature <name>` and `page: dance clip <name>`. Any other name in `pa` is that creature, fixed.
 
 Album art, on the 4 inch board only: `pi` names a picture, 8 to 16 characters of a to z and 0 to 9 (the engine sends 12). The board fetches `<art base><pi>.jpg` over HTTP on its own Wi-Fi, decodes it with JPEGDEC and shows it as a 160 px square beside the text; with no art, or when a fetch fails, the card keeps its plain layout. The art base is stored on the board once with the serial poke `art <base url>`. `python -m labdaemon_engine art base` prints it, and it carries a token: `http://<PC LAN IP>:8977/a/<token>/`. The engine's listener on port 8977 serves only `/a/<token>/<id>.jpg` and nothing else.
 

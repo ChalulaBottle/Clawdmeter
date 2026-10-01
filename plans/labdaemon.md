@@ -7,7 +7,27 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
-- **Status:** INCREMENT 1 ON THE 4 INCH BOARD (2026-09-29 ~23:30). Build workflow wf_e25c290c-f9d
+- **STATUS 2026-10-01 ~03:00: increments 1, 2, 2b (board + host), 2c and the big tier are ON THE 4 INCH
+  BOARD (table 11e2bc2, 83 animations; dance floor 5ebe84f; BLE art firmware efd5f1f; host art 4ab5e74 +
+  5e38b71). Spotify follows the operator's playback (phone or PC, same account). Tray and engine run the
+  committed code and autostart at login. MCP `labdaemon` registered. Everything committed and pushed
+  in both repos; docs and landing page updated (creature band has the 8 HD creatures).
+- **Exact next action:** (1) the operator re-pairs ECHO_LabDaemon in Windows Bluetooth (the cached GATT
+  table hides the new art characteristic), then restart the tray and play a track: expect `art: <id>
+  from ble, N bytes in M ms` on serial and `Art <id> shown` in daemon.log; capture the card with art.
+  (2) Ask or act on the operator's answer about a dance layout (creature in the middle of the card
+  while pa is "dance"; today the band is about a quarter of the panel). (3) Commit the engine's
+  LAN listener opt-in change (agent in flight). (4) Increment 3, notification centre (no sounds; the
+  alien clicks play on the PC). Also queued: the 3CHO rename of the Meeting Copilot, the second board
+  (never enumerated: data cable), the battery order (PH 2.0, pin 1 GND, pin 2 B+), the installer, the
+  Service Changed indication so a flash never needs a re-pair, the tray waiting for the board's `wf`
+  answer, the firmware `#ifdef SPLASH_BIG` in splash.cpp's group row (could be a plain name).
+- **Gotchas this session:** `fbshot` captures are upside down relative to the mounted panel: rotate 180
+  before committing (the pre-09-29 LVGL `screenshot` captures are upright, do not rotate those). Builds:
+  `$env:PLATFORMIO_OFFLINE = "1"` first. amoled_216 sits at 99.0 % (3309215 B of 3342336): nothing
+  non-big may be added to the shared table without the 16 MB layout. Pausing music resets the dance
+  sequence (pa flips to echo headphones). Campus Wi-Fi: no LAN features, never mark it Private.
+- **Status (history):** INCREMENT 1 ON THE 4 INCH BOARD (2026-09-29 ~23:30). Build workflow wf_e25c290c-f9d
   (13 agents: 4 lanes, 4 reviews, 3 fix rounds, 1 integration, GO). Board side b3955a7, engine 65c6473 +
   3b40eea (p3 = track length only). Flashed lcd_4 with `PLATFORMIO_OFFLINE=1`; tray restarted on the new
   daemon; engine served (`pythonw labdaemon_engine\__main__.py serve`, loopback 8976, lab.token issued).
@@ -259,6 +279,10 @@ moonwalking". Replaces the 12 to 25 s random rotation of increment 2.
 - Creature queue (bench first, then the big tier): echo breakdance hd (running), echo acrobat hd
   (running), echo rave bunny hd (bunny ears on the antenna, dilated black pupils like mushroom HD,
   glow sticks, strobe), echo moonwalk hd (a 30 s clip: four moonwalk steps that loop seamlessly).
+
+**2c SHIPPED: firmware 5ebe84f and table 11e2bc2, flashed 2026-10-01, proven over serial** (feature
+echo dj 87 s, `dance next`, clip echo notes 28 s, feature echo breakdance hd) with captures in
+`docs/media/lcd4/dancefloor-*-device.png` (6fde043).
 
 ## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
 
