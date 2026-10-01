@@ -236,6 +236,7 @@ so when several are due in the same second the daemon sends them a quarter secon
 |------|------------|-------|----------------|
 | `notify.json` | the engine | `{"title", "body", "secs", "expires"}` | `{"nt", "nb", "nx"}` |
 | `page.json` | the engine | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi", "expires"}` | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi"}` |
+| `art\<id>.jpg` | the engine | the album picture for a page's `pi`, at most 24 KB | the picture in chunks, when a page names it (see Album art) |
 | `wifi.json` | the engine's `wifi set` and `wifi clear`, or you | `{"ssid", "pass"}` | `{"wf", "wp"}`, once, and the file is deleted |
 | `events\<ns>.json` | the daemon | `{"btn", "scr", "addr", "ts"}` | nothing: it is for the engine |
 | `daemon.pages` | the daemon | `{"boards"}`, the boards it last sent a page to | nothing: it is the daemon's own note |
@@ -277,6 +278,32 @@ longer gives up text from the end of its least needed field until it fits: `p3` 
 then the tool name of a prompt. One that still does not fit is logged and not sent. A usage
 payload always goes out whole.
 
+**Album art.** The picture for a page travels over the Bluetooth link itself, so a board needs no
+network to show it. When a page goes to a board with a `pi` that board has not had on this link,
+the daemon sends it `art\<pi>.jpg`, the picture the engine keeps for that id, from a task of that
+board's own, so the other messages and the other boards never wait on it. First comes the message
+`{"ab", "al", "an"}`: the id, the size in bytes and the number of chunks. A quarter second later,
+the time the board takes to read a message, the chunks follow on a characteristic of their own,
+written without response, about 16 ms apart (the daemon asks for 8 ms, and the Windows clock
+moves in steps of 15.6 ms). Each chunk is its number in 2 bytes, low byte first, then the next
+part of the file: the link's MTU less 5 bytes, never more than 510 since one write to a
+characteristic carries at most 512 bytes. That is 251 bytes at the MTU of 256 the boards ask
+for, with the last chunk holding what is left. The board answers `{"art": id, "ok": 1}` once it
+shows the picture. `{"art": id, "miss": [...]}` names chunks that never arrived, and exactly
+those go again, at most three times. With no answer within 4 seconds of the last chunk the
+daemon gives the picture up: a second more than the board's own 3 second timer, whatever moment
+that counts from. Every picture gets one line in the log, whatever became of it: the id, what
+happened, then the bytes, the chunks, the chunk writes it took and the milliseconds, as in
+`Art 0123456789ab shown: 5120 bytes in 21 chunks, 21 writes, 900 ms`, about half of that the
+quarter seconds before and after the header. A board that shows the picture already may answer
+the header itself; then no chunk goes, and the line says `already on the board` in place of
+`shown`. A page with a newer id stops the picture going out before its next chunk and drops one
+still waiting for its turn. The same id again, on a progress update or after a page without
+art, sends nothing more on that link. Only ids of 8 to 16 characters are sent, and only files of
+at most 24 KB; a missing, empty or larger file is logged and skipped. A board on older firmware
+has no characteristic for the chunks, and a link that cannot hear the board's answers cannot
+finish a picture: either way the daemon says so once for the link and sends it no pictures.
+
 **Button presses.** A press the board hands to the host lands as `events\<ns>.json`: the
 button (`pwr` or `aux`, or `pwr2` and `aux2` for a double tap), the screen it was pressed on
 (`splash`, `usage`, `approve`, `notify` or `page`), the Bluetooth address of the board, and
@@ -285,8 +312,9 @@ replays the presses in order. Read only names that end in `.json`; a name that s
 dot is a file still being written. The daemon only ever adds files to `events`; it never
 deletes them.
 
-**Wi-Fi.** To put the boards on your Wi-Fi (the 4 inch board fetches album art over it; a board
-built without Wi-Fi ignores this), use the LabDaemon Engine. In its folder:
+**Wi-Fi.** To put the boards on your Wi-Fi (the 4 inch board can also fetch album art over it,
+when the art did not come over Bluetooth; a board built without Wi-Fi ignores this), use the
+LabDaemon Engine. In its folder:
 
 ```powershell
 .venv\Scripts\python.exe -m labdaemon_engine wifi set "Home Net"

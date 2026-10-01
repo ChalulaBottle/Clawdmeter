@@ -1,10 +1,11 @@
 """Keep every test away from the live %LOCALAPPDATA%\\Clawdmeter relay files.
 
 The relay files (heartbeat, approve.json, decisions/, notify.json, page.json,
-events/, the daemon.pages record, wifi.json) are touched by connect_and_run, so tests that
-drive the loop would otherwise write into the running tray daemon's directory (and a
-wifi.json waiting there would be sent to a fake board and removed). Point all of it at
-tmp_path, and the state file the loop reads every tick with it.
+events/, the daemon.pages record, wifi.json, the art/ pictures) are touched by connect_and_run,
+so tests that drive the loop would otherwise write into the running tray daemon's directory (and
+a wifi.json waiting there would be sent to a fake board and removed, and a page's art id would
+stream the engine's real picture). Point all of it at tmp_path, and the state file the loop
+reads every tick with it.
 
 The creature hooks (clawdmeter_hooks.py) keep state.json, hooks.json and
 hooks.lock in their own BASE_DIR (they do not import clawdmeter_state, to stay
@@ -38,6 +39,7 @@ def relay_files(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "PAGE_BOARDS_FILE", base / "daemon.pages")
     monkeypatch.setattr(mod, "_PAGED", None)            # read again from this test's record
     monkeypatch.setattr(mod, "WIFI_FILE", base / "wifi.json")
+    monkeypatch.setattr(mod, "ART_DIR", base / "art")
     monkeypatch.setattr(mod, "_WIFI_BUSY", False)
     monkeypatch.setattr(mod, "_WIFI_SENT", None)
     monkeypatch.setattr(mod, "_WIFI_UNREAD", None)

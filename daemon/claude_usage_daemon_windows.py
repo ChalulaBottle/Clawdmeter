@@ -27,6 +27,7 @@ from pathlib import Path
 import httpx
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
+from bleak.backends.service import BleakGATTServiceCollection
 from bleak.exc import BleakError
 
 DEVICE_NAME = "ECHO_LabDaemon"
@@ -75,6 +76,8 @@ WATCH_TICK = 1.0           # state / approve file checks; TICK stays the poll ca
 #   notify.json {"title", "body", "secs", "expires"}                         sent as {"nt", "nb", "nx"}
 #   page.json   {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi", "expires"}  sent as {"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi"}
 # A button press on a board comes back as events/<ns>.json {"btn", "scr", "addr", "ts"}.
+# art/<id>.jpg is the engine's album picture for a page's "pi"; it goes to a board over the
+# link itself (ART_CHAR_UUID below).
 # wifi.json {"ssid", "pass"} is the operator's (the engine's `wifi set` writes it), for the boards
 # built with Wi-Fi: it goes ONCE to every linked board as {"wf": ssid, "wp": pass} ({"wf": ""} for
 # an empty ssid: forget the network) and is removed once a board took it. Nothing of it ever
@@ -110,6 +113,32 @@ WIRE_MAX_BOARD = 511
 # The boards the daemon last sent a live page to, kept past the link and the tray, so a
 # board that links again after page.json went away is told to drop the page it shows.
 PAGE_BOARDS_FILE = CONFIG_FILE.parent / "daemon.pages"   # {"boards": [address, ...]}
+# Album art over the link (plans/labdaemon.md, Increment 2b), so a board needs no network for it.
+# When a page whose "pi" is new on a link goes to a board, the daemon streams the engine's cached
+# picture ART_DIR/<pi>.jpg to that board: the header {"ab": id, "al": bytes, "an": chunks} on RX
+# like any other message, then chunk k on ART_CHAR_UUID, write without response: k as 2 bytes
+# little endian, then the next art_chunk_size() bytes of the file, the link's MTU less 5 and at
+# most 510 (the last chunk carries what is left). The board answers on TX with {"art": id, "ok": 1}
+# once it shows the picture, or with {"art": id, "miss": [k, ...]} for the chunks it lacks, which
+# go again.
+ART_CHAR_UUID = "4c41555a-4465-7669-6365-000000000005"   # host to device: album art chunks, binary
+ART_DIR = CONFIG_FILE.parent / "art"   # the engine's art cache, <id>.jpg
+ART_ID = re.compile(r"[a-z0-9]{8,16}")   # the ids a board takes art for (the "pi" rule); others ride on the page only
+ART_FILE_MAX = 24 * 1024   # the board puts a picture together in a buffer of this size
+# One chunk write at most: an attribute value never holds more (ATT), whatever the MTU. The
+# board's message buffer (WIRE_MAX_BOARD) has nothing to do with it: a chunk lands in its
+# picture buffer.
+ART_CHUNK_MAX = 512
+# Seconds asked for between two chunk writes, so the tick loop and the other boards go in
+# between. The Windows clock moves in steps of 15.6 ms, so with the loop idle the gap comes out
+# about 16 ms.
+ART_CHUNK_GAP = 0.008
+# Seconds the board has to answer a round of chunks, counted from the round's last write. The
+# board's own timer is 3 s; the second more covers whichever moment it counts from (the header,
+# its last chunk, its last miss) and the link's delivery both ways. At exactly 3 s a miss timed
+# from the board's last chunk would always come just after the daemon gave the picture up.
+ART_ANSWER_WAIT = 4.0
+ART_RESEND_ROUNDS = 3      # rounds of resent chunks before a picture is given up
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -650,6 +679,36 @@ def read_wifi_msg() -> dict | None:
     return {"wf": ssid, "wp": password}
 
 
+def _read_art(pi: str) -> bytes | None:
+    """The picture for art id `pi` from the engine's cache (ART_DIR), or None after a log line:
+    no such file, an empty one, or one larger than a board takes (ART_FILE_MAX)."""
+    try:
+        with open(ART_DIR / f"{pi}.jpg", "rb") as f:
+            size = os.fstat(f.fileno()).st_size
+            data = f.read(ART_FILE_MAX + 1)
+    except OSError as e:
+        log(f"Art {pi}: no picture to send ({e.strerror or type(e).__name__})")
+        return None
+    if len(data) > ART_FILE_MAX:
+        log(f"Art {pi}: {max(size, len(data))} bytes, over the {ART_FILE_MAX} a board takes, not sent")
+        return None
+    if not data:
+        log(f"Art {pi}: the picture file is empty, not sent")
+        return None
+    return data
+
+
+def _art_missing(miss, count: int) -> list[int]:
+    """The chunk numbers in a board's "miss" list that a picture of `count` chunks has, in the
+    board's order, each once. Anything else in the list is dropped."""
+    todo: list[int] = []
+    if isinstance(miss, list):
+        for k in miss:
+            if isinstance(k, int) and not isinstance(k, bool) and 0 <= k < count and k not in todo:
+                todo.append(k)
+    return todo
+
+
 def _drop_wifi_file(stamp: tuple) -> str | None:
     """Remove the Wi-Fi file if it is still the version with that stamp. None once that
     version is gone, else why it is still there. A version written since is left alone
@@ -924,14 +983,25 @@ class Session:
         # One write at a time on this link, whichever task asks: relay_wifi writes to every
         # board from one link's task, while a board's own write may be under way.
         self._turn = asyncio.Lock()
+        self._tx_ok = False  # TX notifies are subscribed: the board's answers can be heard
+        # Album art (ART_CHAR_UUID), all of it per link: a board that links again starts afresh.
+        self._art_ok: bool | None = None  # this link takes art; None until it is looked up
+        self._art_last: str | None = None  # the newest art id a page took to this board
+        self._art_want: str | None = None  # the id whose picture goes next, not started yet
+        self._art_id: str | None = None  # the id whose picture is going out now
+        self._art_answer: asyncio.Future | None = None  # resolved by the board's answer to it
+        self._art_wake = asyncio.Event()  # set by every newer id, for a transfer waiting on an answer
+        self._art_task: asyncio.Task | None = None  # this link's one transfer task
 
     def _on_refresh(self, _char, _data: bytearray) -> None:
         log("Refresh requested by device")
         self.refresh_requested.set()
 
     def _on_tx(self, _char, data: bytearray) -> None:
-        """Device -> host notifies. Acks are noise; {"approve": id} is an answer, and
-        {"btn", "scr"} a button press, which goes to events/ for the engine."""
+        """Notifies from the board. Acks are noise; {"approve": id} is an answer, {"btn",
+        "scr"} a button press, which goes to events/ for the engine, and {"art": id, "ok"} or
+        {"art": id, "miss"} the board's answer about a picture (_art_heard). Anything else
+        is dropped."""
         try:
             msg = json.loads(bytes(data).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
@@ -940,6 +1010,9 @@ class Session:
             return
         if "btn" in msg:
             write_event(msg["btn"], msg.get("scr"), self.address)
+            return
+        if "art" in msg:
+            self._art_heard(msg)
             return
         request_id = msg.get("approve")
         if request_id is None:
@@ -957,6 +1030,8 @@ class Session:
             await self.client.start_notify(TX_CHAR_UUID, self._on_tx)
         except (BleakError, ValueError, OSError) as e:
             log(f"TX subscription unavailable (no approve answers): {e}")
+            return
+        self._tx_ok = True
 
     async def setup_refresh_subscription(self) -> None:
         # The refresh subscription is optional — the 60s poll loop works without it.
@@ -970,17 +1045,32 @@ class Session:
         except (BleakError, ValueError, OSError) as e:
             log(f"Refresh subscription unavailable: {e}")
 
+    def _wire_max(self) -> int | None:
+        """The most bytes one write carries on this link, the negotiated ATT MTU less 3, or
+        None while the link reports no MTU of its own (23 is the ATT default from before the
+        exchange)."""
+        try:
+            mtu = self.client.mtu_size
+        except (AssertionError, AttributeError, OSError, BleakError):
+            return None   # bleak asserts a live session; WinRT can raise a raw OSError
+        if isinstance(mtu, int) and not isinstance(mtu, bool) and mtu > 23:
+            return mtu - 3
+        return None
+
     def write_limit(self) -> int:
         """The most bytes one message may take on this link: the negotiated ATT MTU less
         3, never more than the board keeps, and WIRE_MAX_ASSUMED while the link reports
         no MTU of its own (23 is the ATT default from before the exchange)."""
-        try:
-            mtu = self.client.mtu_size
-        except (AssertionError, AttributeError, OSError, BleakError):
-            mtu = None   # bleak asserts a live session; WinRT can raise a raw OSError
-        if isinstance(mtu, int) and not isinstance(mtu, bool) and mtu > 23:
-            return min(mtu - 3, WIRE_MAX_BOARD)
-        return WIRE_MAX_ASSUMED
+        wire = self._wire_max()
+        return WIRE_MAX_ASSUMED if wire is None else min(wire, WIRE_MAX_BOARD)
+
+    def art_chunk_size(self) -> int:
+        """The bytes of picture in one chunk on this link: one write's worth (the negotiated
+        ATT MTU less 3, never more than ART_CHUNK_MAX) less the 2 bytes of the chunk's number,
+        so the MTU less 5 and at most 510; 251 at the MTU of 256 the boards ask for, which is
+        also what goes while the link reports no MTU of its own."""
+        wire = self._wire_max()
+        return (WIRE_MAX_ASSUMED if wire is None else min(wire, ART_CHUNK_MAX)) - 2
 
     async def write_payload(self, payload: dict, quiet: bool = False, secret: bool = False) -> bool:
         """Write one message to the board. quiet leaves out the "Sending:" log line.
@@ -1030,6 +1120,171 @@ class Session:
                 return False
             finally:
                 self._last_write = time.monotonic()
+
+    # Album art (ART_CHAR_UUID): one transfer task per link, never in the tick loop's way.
+
+    def page_art(self, pi) -> None:
+        """A page message carrying art id `pi` (None when it has none) just went to this board.
+
+        An id new on this link has its picture streamed by this link's transfer task, one
+        picture at a time: the newer id drops a picture still waiting for its turn, and the
+        one going out stops before its next chunk (_art_send). Only the ids of the "pi" rule
+        (ART_ID) count, and a link that takes no art (_art_channel) is left alone.
+        """
+        if not (isinstance(pi, str) and ART_ID.fullmatch(pi)) or pi == self._art_last:
+            return
+        self._art_last = pi
+        self._art_wake.set()
+        if not self._art_channel():
+            return
+        # The picture going out right now (the page went to another id and straight back) goes on.
+        self._art_want = None if pi == self._art_id else pi
+        if self._art_want and (self._art_task is None or self._art_task.done()):
+            self._art_task = asyncio.ensure_future(self._art_run())   # the board's log tag goes along
+
+    def _art_channel(self) -> bool:
+        """Whether this link takes album art, looked up once: the board's service table has
+        the art characteristic (older firmware has none), and its answers come in on TX. A
+        link that takes none says so in one log line and is left alone from then on."""
+        if self._art_ok is None:
+            try:
+                services = self.client.services   # bleak raises before service discovery
+                found = (services.get_characteristic(ART_CHAR_UUID)
+                         if isinstance(services, BleakGATTServiceCollection) else None)
+            except (BleakError, AssertionError, AttributeError, OSError):
+                found = None
+            self._art_ok = found is not None and self._tx_ok
+            if found is None:
+                log("Board has no album art characteristic (older firmware), no art on this link")
+            elif not self._tx_ok:
+                log("No TX answers on this link, so no album art on it")
+        return self._art_ok
+
+    def _art_heard(self, msg: dict) -> None:
+        """The board's answer about a picture: {"art": id, "ok": 1} or {"art": id, "miss": [...]}.
+        It resolves the answer future of the transfer of that id; an answer for any other id
+        (a late one), one with neither, or one with no transfer waiting is dropped."""
+        answer = self._art_answer
+        if answer is None or answer.done() or msg.get("art") != self._art_id:
+            return
+        if msg.get("ok") == 1 or isinstance(msg.get("miss"), list):
+            answer.set_result(msg)
+
+    async def _art_run(self) -> None:
+        """This link's transfer task: the picture wanted most recently, one at a time, until
+        none is left. Anything unexpected ends that picture with a log line, never the link."""
+        while self._art_want:
+            pi, self._art_want = self._art_want, None
+            try:
+                await self._art_send(pi)
+            except Exception as e:
+                log(f"Art {pi}: {type(e).__name__}: {e}, given up")
+
+    async def _art_send(self, pi: str) -> None:
+        """Stream the picture for `pi` to this board and log one line on how it went: shown,
+        already on the board (the board answered the header itself, so no chunk went), given
+        up, stopped with the link, or left for a newer picture; each with the picture's bytes
+        and chunks, the chunk writes it took (the resent ones among them) and the milliseconds.
+        The header goes the way every message goes (write_payload), so it keeps WRITE_GAP from
+        the page before it. Each chunk takes its turn on the link like a message,
+        ART_CHUNK_GAP apart, so the tick loop's messages and the other boards' links go in
+        between; a chunk does not count toward WRITE_GAP, since it lands in the board's
+        picture buffer and not in the one message the board holds."""
+        data = _read_art(pi)
+        if data is None:
+            return
+        size = self.art_chunk_size()   # the same in every round: the board puts chunk k at k * size
+        chunks = [k.to_bytes(2, "little") + data[i:i + size]
+                  for k, i in enumerate(range(0, len(data), size))]
+        loop = asyncio.get_running_loop()
+        self._art_id = pi
+        # Each round's answer future is there before the round's first write, so an early
+        # answer (an ok for a picture the board shows already, say) is not missed.
+        self._art_answer = answer = loop.create_future()
+        started = time.monotonic()
+        writes = resent = 0
+
+        def end(outcome: str) -> None:
+            """The picture's one log line: `outcome`, then what went and how long it took."""
+            ms = round((time.monotonic() - started) * 1000)
+            again = f" ({resent} resent)" if resent else ""
+            log(f"Art {pi} {outcome}: {len(data)} bytes in {len(chunks)} chunks,"
+                f" {writes} writes{again}, {ms} ms")
+
+        try:
+            if not await self.write_payload({"ab": pi, "al": len(data), "an": len(chunks)}, quiet=True):
+                end("given up, the header was not written")
+                return
+            # The board reads the header in its loop like any message (WRITE_GAP), while a chunk
+            # lands in its picture buffer as it comes: chunk 0 waits until the header is read.
+            await asyncio.sleep(max(0.0, self._last_write + WRITE_GAP - time.monotonic()))
+            todo = list(range(len(chunks)))
+            for round_ in range(ART_RESEND_ROUNDS + 1):
+                for n, k in enumerate(todo):
+                    if n:
+                        await asyncio.sleep(ART_CHUNK_GAP)
+                    if answer.done():
+                        break                        # answered mid round: see what the board says
+                    async with self._turn:
+                        if self._art_last != pi:     # a newer id came while this chunk waited
+                            end("left for a newer picture")
+                            return
+                        try:
+                            await self.client.write_gatt_char(ART_CHAR_UUID, chunks[k], response=False)
+                        except (BleakError, OSError, AssertionError) as e:
+                            end(f"given up, chunk {k} not written ({type(e).__name__}: {e})")
+                            return
+                    writes += 1
+                    resent += bool(round_)
+                reply = await self._art_reply(pi, answer)
+                if reply is None:
+                    if self._art_last != pi:
+                        end("left for a newer picture")
+                    else:
+                        end(f"given up, no answer from the board in {ART_ANSWER_WAIT:g} s")
+                    return
+                if reply.get("ok") == 1:
+                    # With no chunk written the ok answered the header: the board had this picture.
+                    end("shown" if writes else "already on the board (it answered the header)")
+                    return
+                todo = _art_missing(reply.get("miss"), len(chunks))
+                if round_ == ART_RESEND_ROUNDS:
+                    end(f"given up, {len(todo)} of {len(chunks)} chunks still missing after"
+                        f" {ART_RESEND_ROUNDS} resends")
+                    return
+                self._art_answer = answer = loop.create_future()
+        except asyncio.CancelledError:   # stop_art: the link is going
+            end("stopped, the link ended")
+            raise
+        finally:
+            self._art_id = None
+            self._art_answer = None
+
+    async def _art_reply(self, pi: str, answer: asyncio.Future) -> dict | None:
+        """The board's answer to the chunks just written, or None after ART_ANSWER_WAIT seconds
+        without one, or as soon as a newer id takes this link (page_art sets _art_wake)."""
+        deadline = time.monotonic() + ART_ANSWER_WAIT
+        while not answer.done() and self._art_last == pi:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            self._art_wake.clear()
+            wake = asyncio.ensure_future(self._art_wake.wait())
+            try:
+                await asyncio.wait((answer, wake), timeout=left, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                wake.cancel()
+                await asyncio.gather(wake, return_exceptions=True)
+        return answer.result() if answer.done() else None
+
+    async def stop_art(self) -> None:
+        """End this link's transfer, if one runs: the link is going, and nothing more is
+        written on it."""
+        self._art_want = None
+        task, self._art_task = self._art_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 def _extract_access_token(blob: str) -> str | None:
@@ -1364,6 +1619,9 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
                         if await session.write_payload(msg, quiet=progress_only):
                             page_sent = msg
                             _note_page(address, bool(msg["pg"]))
+                            # An art id new on this link: its picture follows from the link's
+                            # own transfer task, so this loop never waits on it.
+                            session.page_art(msg.get("pi"))
             if page_until and time.time() >= page_until:
                 page_until = 0.0
                 log("Page expired, clearing it")
@@ -1421,16 +1679,19 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
     finally:
         _LIVE_LINKS.discard(session)
         write_heartbeat(bool(_LIVE_LINKS))  # False unless another board is still linked
-        # Clean GATT disconnect on the way out — this is what tells the peripheral
-        # the link is gone. WinRT can surface a raw OSError (not BleakError) here,
-        # so swallow both; the link tears down regardless once we exit.
         try:
-            await client.disconnect()
-        except (BleakError, OSError, AssertionError):
-            # bleak's WinRT disconnect() also has bare asserts (e.g. assert char
-            # while tearing down notifications on an already-gone peer); swallow
-            # it too — the link tears down regardless once we exit.
-            pass
+            await session.stop_art()  # a picture going out stops before the link does
+        finally:
+            # Clean GATT disconnect on the way out — this is what tells the peripheral
+            # the link is gone. WinRT can surface a raw OSError (not BleakError) here,
+            # so swallow both; the link tears down regardless once we exit.
+            try:
+                await client.disconnect()
+            except (BleakError, OSError, AssertionError):
+                # bleak's WinRT disconnect() also has bare asserts (e.g. assert char
+                # while tearing down notifications on an already-gone peer); swallow
+                # it too — the link tears down regardless once we exit.
+                pass
 
     log("Device disconnected" if not stop_event.is_set() else "Stopping")
     return used_successfully
