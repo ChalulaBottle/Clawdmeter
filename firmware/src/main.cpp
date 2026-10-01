@@ -183,6 +183,27 @@ static bool handle_wifi_msg(const char* json) {
     ble_send_wifi_reply(wifi_link_set(ssid, doc["wp"] | ""));
     return true;
 }
+
+// Album art over BLE (art.h, plans/labdaemon.md "Increment 2b"): the header of
+// a picture whose chunks follow on the art characteristic. Its own message:
+//   {"ab":"3f9a0c1d2e4b","al":5120,"an":21}
+// ab = the art id (8 to 16 of a to z and 0 to 9, the pi rule), al = its bytes
+// (1 to 24576), an = its chunks (1 to 512); art_ble_begin holds the rules.
+// Returns true when the board took it, which the plain ack answers; art.cpp
+// answers for the picture itself on TX ("ok" or "miss"). A header it refuses
+// is logged there and ends at parse_json, with its nack. A board without
+// FEATURE_PICTURE has neither this nor the art characteristic, so a header
+// that reached one would end there too.
+static bool handle_art_header_msg(const char* json) {
+    if (!strstr(json, "\"ab\"")) return false;   // cheap gate: only an art header carries "ab"
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["ab"].is<const char*>() || !doc["s"].isNull()) return false;
+    // A field that is not a whole number counts as -1, which art_ble_begin refuses.
+    const long bytes  = doc["al"].is<long>() ? doc["al"].as<long>() : -1;
+    const long chunks = doc["an"].is<long>() ? doc["an"].as<long>() : -1;
+    return art_ble_begin(doc["ab"].as<const char*>(), bytes, chunks);
+}
 #else
 // No Wi-Fi on this board: a credentials message ends at parse_json and its
 // plain nack, which tells a host that this board cannot use them.
@@ -672,6 +693,7 @@ void loop() {
     host_page_tick();
 #ifdef FEATURE_PICTURE
     wifi_link_tick();   // what the Wi-Fi and art tasks logged, printed here between screenshots
+    art_ble_tick();     // album art over BLE: chunks put in place, the decoder handed a whole picture, misses
 #endif
     power_hal_tick();
     imu_hal_tick();
@@ -818,11 +840,17 @@ void loop() {
         // host message is its own, and only one carrying "s" is usage. Wi-Fi
         // credentials ("wf") sit beside notify and answer for themselves
         // (handle_wifi_msg); a board without Wi-Fi leaves them to parse_json,
-        // which nacks them.
+        // which nacks them. An album art header ("ab", boards with
+        // FEATURE_PICTURE) comes next, before the page; its chunks never pass
+        // here (art.h).
         if (handle_approve_msg(raw) || handle_notify_msg(raw)) {
             ble_send_ack();
         } else if (handle_wifi_msg(raw)) {
             // answered already, with the "wf" reply
+#ifdef FEATURE_PICTURE
+        } else if (handle_art_header_msg(raw)) {
+            ble_send_ack();   // art.cpp answers for the picture itself: "ok" or "miss"
+#endif
         } else if (handle_page_msg(raw)) {
             ble_send_ack();
         } else if (parse_json(raw, &usage)) {

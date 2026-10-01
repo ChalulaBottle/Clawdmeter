@@ -4,6 +4,12 @@
 #include <NimBLEHIDDevice.h>
 #include <Preferences.h>
 
+#ifdef FEATURE_PICTURE
+// art.cpp: one write on the art characteristic, as it came (art.h). Declared
+// here, as main.cpp declares ble_send_wifi_reply, because art.h brings LVGL in.
+void art_ble_chunk(const uint8_t* data, size_t len);
+#endif
+
 #define DEVICE_NAME "ECHO_LabDaemon"
 
 // Custom GATT UUIDs for data channel
@@ -11,6 +17,12 @@
 #define RX_CHAR_UUID        "4c41555a-4465-7669-6365-000000000002"  // host writes here
 #define TX_CHAR_UUID        "4c41555a-4465-7669-6365-000000000003"  // device ack/nack notifies
 #define REQ_CHAR_UUID       "4c41555a-4465-7669-6365-000000000004"  // device-initiated refresh request
+#ifdef FEATURE_PICTURE
+// Album art chunks, binary, write without response (art.h). Only boards built
+// with FEATURE_PICTURE have it: its absence tells the host a board takes no art.
+#define ART_CHAR_UUID       "4c41555a-4465-7669-6365-000000000005"
+#define ART_DROP_LOG_MS     5000   // a refused chunk write is logged at most this often
+#endif
 
 #define BLE_BUF_SIZE 512
 
@@ -317,6 +329,28 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+#ifdef FEATURE_PICTURE
+// Album art chunks (art.h): the bytes go to art_ble_chunk as they came, no JSON.
+// Only the owner's count, over its encrypted link, as on RX. Nothing claims the
+// owner here: the header on RX comes first and has. A picture comes in dozens of
+// writes, so a refused one is logged at most every ART_DROP_LOG_MS.
+class ArtCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr, NimBLEConnInfo& info) override {
+        if (!info.isEncrypted() || !owner_set ||
+            strcmp(info.getIdAddress().toString().c_str(), owner_addr) != 0) {
+            static uint32_t logged_ms = 0;
+            if (!logged_ms || millis() - logged_ms >= ART_DROP_LOG_MS) {
+                logged_ms = millis() | 1;
+                Serial.println("BLE: dropping art chunk (unencrypted link, or not the owner)");
+            }
+            return;
+        }
+        const NimBLEAttValue v = chr->getValue();
+        art_ble_chunk(v.data(), v.length());
+    }
+};
+#endif
+
 // Who can hear a button event: a central that has turned on TX notifications.
 // NimBLE calls this for a CCCD write, for a bonded peer's subscription restored
 // on reconnect, and (with subValue 0) for a link that broke.
@@ -403,6 +437,15 @@ void ble_init(void) {
     );
     static ReqCallbacks reqCb;
     req_char->setCallbacks(&reqCb);
+
+#ifdef FEATURE_PICTURE
+    NimBLECharacteristic* art_char = svc->createCharacteristic(
+        ART_CHAR_UUID,
+        NIMBLE_PROPERTY::WRITE_NR
+    );
+    static ArtCallbacks artCb;
+    art_char->setCallbacks(&artCb);
+#endif
 
     svc->start();
     server->start();
@@ -491,6 +534,30 @@ void ble_send_wifi_reply(bool stored) {
         tx_char->setValue(stored ? "{\"ack\":true,\"wf\":\"ok\"}" : "{\"err\":true,\"wf\":\"no\"}");
         tx_char->notify();
     }
+}
+
+bool ble_send_art(const char* msg) {
+    if (state != BLE_STATE_CONNECTED || !tx_char || !msg || !*msg || !tx_subscribed()) return false;
+    tx_char->setValue(msg);
+    tx_char->notify();
+    return true;
+}
+
+size_t ble_tx_max(void) {
+    if (!server) return 0;
+    size_t room = 0;
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        const uint16_t h = tx_subs[i];
+        if (h == CONN_HANDLE_NONE) continue;
+        const uint16_t mtu = server->getPeerMTU(h);   // 0 for a link that is gone
+        if (mtu <= 3) continue;
+        if (!room || (size_t)(mtu - 3) < room) room = mtu - 3;
+    }
+    return room;
+}
+
+uint32_t ble_last_host_write_ms(void) {
+    return last_host_write_ms;
 }
 #endif
 

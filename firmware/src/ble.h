@@ -46,6 +46,22 @@ uint32_t ble_ms_since_host_write(void);
 // (the OS keeps the link for the keyboard after the tray quits).
 bool ble_host_listening(void);
 
+#ifdef FEATURE_PICTURE
+#include <stddef.h>
+// Album art over BLE (art.h); boards built without FEATURE_PICTURE have none of
+// this, and no art characteristic.
+// An answer about a picture on the TX char, {"art":"<id>","ok":1} or
+// {"art":"<id>","miss":[...]}, from the loop. False when no central is
+// subscribed to TX. The caller keeps it within ble_tx_max().
+bool ble_send_art(const char* msg);
+// The most bytes one TX notification carries to every subscribed central: the
+// smallest ATT MTU among them, less 3. 0 while none is subscribed.
+size_t ble_tx_max(void);
+// millis() of the owner's last write on RX, the moment the message the loop
+// has just taken came in.
+uint32_t ble_last_host_write_ms(void);
+#endif
+
 void ble_set_battery_level(int pct);
 
 // BLE HID keyboard

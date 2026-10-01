@@ -780,7 +780,9 @@ static uint32_t random_ms(uint32_t lo, uint32_t hi) {
 // band across the whole width under both, the bar where it always is. Without
 // one it keeps the layout above. While a picture is on its way the square
 // stands empty in the panel colour, so a new track moves the text once, not
-// twice; a picture that fails leaves the card without art.
+// twice; a picture that fails leaves the card without art. The square sits
+// centred in the room the layout keeps for it and takes the size of its
+// picture, never scaled or stretched (page_art_square).
 enum page_art_t : uint8_t { PAGE_ART_NONE, PAGE_ART_COMING, PAGE_ART_SHOWN };
 
 struct PageGeom {            // where the text and the band sit in one layout
@@ -791,12 +793,20 @@ struct PageGeom {            // where the text and the band sit in one layout
 
 static lv_obj_t*  page_art_box = nullptr;    // the square, with the picture centred in it
 static lv_obj_t*  page_art_img = nullptr;
+static int        page_art_room = 0;         // the side of the room the layout keeps for the square
+static int        page_art_px   = 0;         // the square's side while it waits for a picture
 static int        page_pitch   = 0;          // line to line
 static PageGeom   page_geom[2];              // [0] without art, [1] with
 static page_art_t page_art     = PAGE_ART_NONE;
 static char       page_pi[ART_ID_MAX + 1]     = "";   // the page's picture; "" none
 static char       page_art_id[ART_ID_MAX + 1] = "";   // the picture on the square now
 static bool       page_pi_warned = false;             // a pi the board will not fetch has been logged
+
+// The square at w by h, centred in its room at the card's top left.
+static void page_art_square(int w, int h) {
+    lv_obj_set_size(page_art_box, w, h);
+    lv_obj_set_pos(page_art_box, (page_art_room - w) / 2, (page_art_room - h) / 2);
+}
 
 static void page_art_layout(bool art) {
     const PageGeom& g = page_geom[art ? 1 : 0];
@@ -823,10 +833,12 @@ static void page_art_sync(void) {
     const page_art_t want = pic ? PAGE_ART_SHOWN : coming ? PAGE_ART_COMING : PAGE_ART_NONE;
     if (want == page_art && (!pic || strcmp(page_art_id, page_pi) == 0)) return;
     if (pic) {
+        page_art_square((int)pic->header.w, (int)pic->header.h);   // the square is its picture: no frame round it
         lv_image_set_src(page_art_img, pic);
         lv_obj_clear_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
         strlcpy(page_art_id, page_pi, sizeof(page_art_id));
     } else {
+        page_art_square(page_art_px, page_art_px);
         lv_obj_add_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
         page_art_id[0] = '\0';
     }
@@ -853,24 +865,27 @@ static void page_art_set(const char* pi) {
 }
 
 // The layout with art, worked out from the one without (init_page_overlay's
-// numbers) and L. The square, ART_PX, is the creature's size (L.idle_px, 160
-// on the 480 px boards) or half the width beside it when that is less. The
-// title sits level with the square's top and the three lines end level with
-// its bottom; on a square too short for both the lines stack under the title.
-// Makes the square and starts art.cpp at its size. No room for the band under
-// it: no art layout, the card goes without.
+// numbers) and L. The room for the square is the creature's size (L.idle_px,
+// 160 on the 480 px boards) or half the width beside it when that is less; the
+// text lays out around the room. The title sits level with the room's top and
+// the three lines end level with its bottom; on a room too short for both the
+// lines stack under the title. The square itself is ART_PX (the art comes 128
+// px on both paths), no more than the room, centred in it. Makes the square and
+// starts art.cpp at its size. No room for the band under it: no art layout,
+// the card goes without.
 static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y,
                           int band_y, int band_h, int line0_y) {
     page_pitch = pitch;
     page_geom[0] = { 0, L.content_w, (int16_t)line0_y, (int16_t)band_y, (int16_t)band_h };
 
     const int half    = (L.content_w - gap) / 2;
-    const int px      = L.idle_px < half ? L.idle_px : half;
-    const int text_x  = px + gap;
+    const int room    = L.idle_px < half ? L.idle_px : half;
+    const int px      = ART_PX < room ? ART_PX : room;
+    const int text_x  = room + gap;
     const int lines_h = line_h + 2 * pitch;
-    int a_line0 = px - lines_h;
+    int a_line0 = room - lines_h;
     if (a_line0 < title_h + gap) a_line0 = title_h + gap;
-    const int top_h    = a_line0 + lines_h > px ? a_line0 + lines_h : px;
+    const int top_h    = a_line0 + lines_h > room ? a_line0 + lines_h : room;
     const int a_band_y = top_h + gap;
     const int a_band_h = bar_y - gap - a_band_y;
     if (px <= 0 || a_band_h <= 0) {
@@ -881,11 +896,12 @@ static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y
                      (int16_t)a_band_y, (int16_t)a_band_h };
     // The one mini creature keeps the size it was made at: small enough for both bands.
     if (a_band_h < page_creature_px) page_creature_px = a_band_h;
+    page_art_room = room;
+    page_art_px   = px;
 
     // Panel colour while empty, no border; not clickable, so a tap still lands on the page.
     page_art_box = lv_obj_create(page_group);
-    lv_obj_set_pos(page_art_box, 0, 0);
-    lv_obj_set_size(page_art_box, px, px);
+    page_art_square(px, px);
     lv_obj_set_style_bg_color(page_art_box, COL_PANEL, 0);
     lv_obj_set_style_bg_opa(page_art_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(page_art_box, 0, 0);
