@@ -28,6 +28,17 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   (timeout is 30 min). Suspect: RGB panel refresh stall under BLE traffic + 5 s page updates (the plan's
   known risk; bounce buffer). The reflash reset cleared it. Operator's answer (solid black vs frozen)
   pending; if it recurs, capture `iox` + `fbshot` first, then look at the bounce-buffer path in display.cpp.
+- **2026-09-30 ~20:15:** Wi-Fi art is parked (operator is on public campus Wi-Fi: captive portal, client
+  isolation; never mark it Private). Album art moves to BLE (Increment 2b): host half shipped (daemon
+  4ab5e74, engine 5e38b71, engine restarted on 128 px art), firmware half building in workflow
+  wf_a7f1cb5b-3d9. Mushroom HD flashed (64e34d5 + media): `echo mushroom hd` (60 lattice, black
+  dilated pupils) in the idle rotation on lcd_4 via the new **big tier** (`tier: 'big'` in anims.js,
+  compiled only with `-DSPLASH_BIG=1`, lcd_4 env; amoled_216 unchanged at 3308759 B). Spotify card
+  idle since ~19:40: the linked account reports no track, device "Heart monitor.ble7294"; asked the
+  operator to check Private Session / which account. 3CHO is the new name for the Meeting Copilot
+  (rename queued, its own increment). Next after 2b: flash, tray restart, play an unseen album,
+  expect `art: <id> from ble` on serial; then Increment 3 (notification centre, no sounds, the alien
+  clicks play on the PC).
 - **2026-09-30 ~04:30, INCREMENT 2 ON THE 4 INCH BOARD, waiting on Wi-Fi:** workflow wf_f62c2d86-d89
   (13 agents, GO). Board side 4d27b53, engine c5dafe1, docs 6340532. Flashed lcd_4 (Flash 54.1 %; the
   hung lane build tree was ended by PID first, logged). Tray and engine restarted on the new code; the
