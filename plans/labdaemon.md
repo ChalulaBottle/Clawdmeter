@@ -200,6 +200,19 @@ must not depend on a LAN: **art travels over the bonded BLE link, like everythin
   at the link's write pace, resend on miss), per board, never blocking the tick loop (asyncio task
   per transfer, one at a time per board); logs one line per transfer with bytes and ms.
 - Bring-up: play a track on campus, expect `art: <id> from ble, N bytes in M ms` on serial.
+- **Host half SHIPPED 2026-09-30 (daemon 4ab5e74, 584 tests; engine 5e38b71, 590 tests).** Contract
+  details the FIRMWARE half must match (settled by the daemon lane and its reviewer):
+  the board sends `miss` 3 s after the HEADER (and, in a resend round, 3 s after the miss it last
+  sent); the daemon waits 4 s. Chunk k = 2 byte little endian index + payload; every chunk but the
+  last carries min(MTU minus 5, 510) bytes. Characteristic `...0005` is registered ONLY in
+  FEATURE_PICTURE builds (its absence is how the daemon knows a board has no art). A header naming
+  the id the board already shows is answered at once with `{"art":"<id>","ok":1}` and no chunks
+  follow. A second header for a different id drops the half-built picture and starts the new one.
+  Chunks may arrive before the main loop has parsed the header: store them. The daemon leaves
+  0.25 s between the header and chunk 0. Art is 128 px on both paths (BLE and Wi-Fi); the card
+  layout sizes the square from the decoded image. Bring-up order: restart the engine (128 px files)
+  before the tray, flash lcd_4, restart the tray, then play an album not seen before (the 160 px
+  files already cached keep their ids until their track plays again).
 
 ## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
 
