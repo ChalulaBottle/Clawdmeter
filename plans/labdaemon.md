@@ -28,6 +28,14 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   (timeout is 30 min). Suspect: RGB panel refresh stall under BLE traffic + 5 s page updates (the plan's
   known risk; bounce buffer). The reflash reset cleared it. Operator's answer (solid black vs frozen)
   pending; if it recurs, capture `iox` + `fbshot` first, then look at the bounce-buffer path in display.cpp.
+- **2026-10-01 ~00:40:** BLE art firmware flashed (efd5f1f) but the first run is blocked by the
+  Windows GATT cache (re-pair pending, operator). Dance floor firmware committed (5ebe84f, not flashed).
+  On the bench and committed: echo breakdance hd (+ hd b), echo acrobat hd (6ee96b1); rave bunny and
+  moonwalk workflows running (wf_8d4449dd-433, wf_a097ecee-878). **Exact next action:** when both
+  land, commit their bench files, run `tools/add_echo_anims.py` (big tier rows), build lcd_4 and
+  amoled_216 (216 must stay under 3342336 B; big rows do not touch it), flash lcd_4, `page
+  Test|a|b|c|40|dance` or a real track, expect `page: dance feature <name>`, capture, update README
+  (dance pools, serial `dance`), plan. Then the re-pair + art test, then Increment 3.
 - **2026-09-30 ~20:15:** Wi-Fi art is parked (operator is on public campus Wi-Fi: captive portal, client
   isolation; never mark it Private). Album art moves to BLE (Increment 2b): host half shipped (daemon
   4ab5e74, engine 5e38b71, engine restarted on 128 px art), firmware half building in workflow
