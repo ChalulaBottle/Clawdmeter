@@ -225,6 +225,15 @@ must not depend on a LAN: **art travels over the bonded BLE link, like everythin
   before the tray, flash lcd_4, restart the tray, then play an album not seen before (the 160 px
   files already cached keep their ids until their track plays again).
 
+**2b firmware SHIPPED efd5f1f, flashed 2026-09-30 ~23:00; FIRST BRING-UP BLOCKED BY THE WINDOWS GATT
+CACHE:** daemon.log says `Board has no album art characteristic (older firmware)` while `art status` on
+the board shows the BLE art state live. Windows keeps the service table it cached at pairing for a
+bonded device, and bleak's `use_cached_services=False` does not refresh it. Fix now: remove and
+re-pair ECHO_LabDaemon in Windows, restart the tray. Fix for good (follow-up): the firmware should
+indicate GATT Service Changed after a table change (NimBLE `ble_svc_gatt_changed(start, end)` once
+on the first connection after a flash whose characteristic set differs from the one stored in NVS),
+so Windows re-reads the table without a re-pair.
+
 ## Increment 2c: the dance floor (operator 2026-09-30 ~20:40, firmware, after 2b lands)
 
 Operator: dances on the music card "last like 1.5 minutes before having a transition into something
