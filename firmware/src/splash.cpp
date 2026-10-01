@@ -461,6 +461,10 @@ static const splash_anim_def_t* anim_named(const char *name) {
     return NULL;
 }
 
+bool splash_anim_known(const char *anim_name) {
+    return anim_named(anim_name) != NULL;
+}
+
 // Show `a` from its first frame. The canvas takes the edge this animation needs
 // at mini_px; the buffer was made for the largest one, so it always fits.
 static void mini_point_at(const splash_anim_def_t *a) {

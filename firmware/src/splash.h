@@ -68,3 +68,6 @@ lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px);
 bool splash_mini_set_anim(const char *anim_name);
 // Advance its frame when due; does nothing while it is hidden.
 void splash_mini_tick(void);
+// True when this board's table has an animation of that name (the lookup the
+// mini creature uses), without pointing anything at it.
+bool splash_anim_known(const char *anim_name);

@@ -748,30 +748,35 @@ static void page_click_cb(lv_event_t* e) {
     ui_page_leave();
 }
 
-// The dancing daemon: pa "dance" puts a random dance from DANCE_NAMES on the
-// band and changes it every 12 to 25 s. One change in four the creature steps
-// off the band for 4 to 8 s first and comes back with another dance. Its clock
-// runs only while the page is on top (ui_tick_anim); names the table lacks are
-// skipped.
-static const char* const DANCE_NAMES[] = {
-    "echo dj", "echo rave", "echo mixer", "echo notes",
-    "echo headphones", "echo hop", "echo swing", "echo cartwheel",
+// The dance floor: pa "dance" puts the two pools on the band in turn, a
+// feature for 90 s, then a clip (a short repeating move) for 30 s, then
+// another feature. Each pick is random within its pool and never the pool's
+// last pick while the pool has another. Between two dancers the creature
+// shrinks to a dot and comes back up as the next one (LVGL scale on the mini
+// canvas, DANCE_HALF_MS each way). The clock runs only while the page is on
+// top (ui_tick_anim). Names this board's table lacks are skipped at pick time,
+// so the same pools serve every board.
+#define DANCE_N       6
+#define DANCE_HALF_MS 600
+#define DANCE_DOT     8    // scale at the swap, of 256: a dot of a few px
+
+static const char* const DANCE_POOL[2][DANCE_N] = {
+    { "echo breakdance hd", "echo acrobat hd", "echo rave bunny hd",    // features
+      "echo dj", "echo rave", "echo mixer" },
+    { "echo moonwalk hd", "echo hop", "echo swing",                      // clips
+      "echo headphones", "echo notes", "echo cartwheel" },
 };
-#define DANCE_COUNT       ((int)(sizeof(DANCE_NAMES) / sizeof(DANCE_NAMES[0])))
-#define DANCE_MIN_MS      12000
-#define DANCE_MAX_MS      25000
-#define DANCE_AWAY_MIN_MS 4000
-#define DANCE_AWAY_MAX_MS 8000
+static const char* const DANCE_KIND[2] = { "feature", "clip" };
+static const uint32_t    DANCE_MS[2]   = { 90000, 30000 };
 
-static bool     dance_on   = false;   // pa is "dance"
-static int8_t   dance_cur  = -1;      // the DANCE_NAMES entry on the band; -1 none
-static bool     dance_away = false;   // off the band for a moment
-static uint32_t dance_left = 0;       // page on top ms before the next change
-static uint32_t dance_last = 0;       // lv_tick when that was last counted down
+enum dance_phase_t : uint8_t { DANCE_PLAY, DANCE_DOWN, DANCE_UP };
 
-static uint32_t random_ms(uint32_t lo, uint32_t hi) {
-    return lo + esp_random() % (hi - lo + 1);
-}
+static bool          dance_on      = false;      // pa is "dance" and a dancer is on the band
+static uint8_t       dance_pool    = 0;          // the pool of the dancer on the band, 0 or 1
+static int8_t        dance_prev[2] = { -1, -1 }; // each pool's last pick; [dance_pool] is on the band
+static dance_phase_t dance_phase   = DANCE_PLAY; // dancing, shrinking to the dot, growing back
+static uint32_t      dance_left    = 0;          // page on top ms left in this phase
+static uint32_t      dance_last    = 0;          // lv_tick when that was last counted down
 
 #ifdef FEATURE_PICTURE
 // ---- Album art (art.h) ----
@@ -1013,64 +1018,107 @@ static void page_place_creature(lv_obj_t* c) {
     }
 }
 
-// On to a dance other than the one on the band, picked at random, with the
-// creature back on the band if it was away. When the table has no other dance
-// the one there stays.
-static void dance_next(void) {
-    const bool had = dance_cur >= 0;
-    int k = (int)(esp_random() % (uint32_t)(DANCE_COUNT - (had ? 1 : 0)));
-    if (had && k >= dance_cur) k++;   // even odds for each of the others
-    lv_obj_t* c = nullptr;
-    for (int i = 0; i < DANCE_COUNT && !c; i++) {
-        const int n = (k + i) % DANCE_COUNT;
-        if (n == dance_cur) continue;
-        c = page_creature_at(DANCE_NAMES[n]);
-        if (c) dance_cur = (int8_t)n;
+// A random entry of `pool` that this board's table has, other than the pool's
+// last pick while it has another. That last pick again when it is the only
+// one; -1 when the table has none of the pool.
+static int8_t dance_pick(uint8_t pool) {
+    const int8_t prev = dance_prev[pool];
+    int8_t cand[DANCE_N];
+    int n = 0;
+    for (int i = 0; i < DANCE_N; i++) {
+        if (i != prev && splash_anim_known(DANCE_POOL[pool][i])) cand[n++] = (int8_t)i;
     }
-    if (!c && had) c = page_creature;
-    dance_away = false;
+    return n ? cand[esp_random() % (uint32_t)n] : prev;
+}
+
+// The next dancer on the band, logged: from the other pool, or from this one
+// again when the table has none of the other. False, with the band as it was,
+// when the table has none of either or the band has no room for a creature.
+static bool dance_switch(void) {
+    uint8_t p = dance_pool ^ 1;
+    int8_t  k = dance_pick(p);
+    if (k < 0) {
+        p ^= 1;
+        k = dance_pick(p);
+    }
+    lv_obj_t* c = k >= 0 ? page_creature_at(DANCE_POOL[p][k]) : nullptr;
+    if (!c) return false;
+    dance_pool    = p;
+    dance_prev[p] = k;
     page_place_creature(c);
-    if (c) Serial.printf("page: dance %s\n", DANCE_NAMES[dance_cur]);
+    Serial.printf("page: dance %s %s\n", DANCE_KIND[p], DANCE_POOL[p][k]);
+    return true;
 }
 
 // Count the dance clock down by the time the page has been on top since the
-// last call; at zero the creature steps away (one time in four) or dances on.
+// last call. A dancer has its pool's time, then shrinks to the dot, where the
+// next one takes its place and grows back to full size; its time starts there.
 static void dance_tick(void) {
     const uint32_t now = lv_tick_get();
     const uint32_t dt  = now - dance_last;
     dance_last = now;
     if (dt < dance_left) {
         dance_left -= dt;
-        return;
+    } else if (dance_phase == DANCE_PLAY) {
+        dance_phase = DANCE_DOWN;
+        dance_left  = DANCE_HALF_MS;
+    } else if (dance_phase == DANCE_DOWN) {
+        dance_switch();   // a dancer is on, so its own pool always has one to give
+        dance_phase = DANCE_UP;
+        dance_left  = DANCE_HALF_MS;
+    } else {
+        dance_phase = DANCE_PLAY;
+        dance_left  = DANCE_MS[dance_pool];
     }
-    if (!dance_away && dance_cur >= 0 && esp_random() % 4 == 0) {
-        page_place_creature(nullptr);
-        dance_away = true;
-        dance_left = random_ms(DANCE_AWAY_MIN_MS, DANCE_AWAY_MAX_MS);
-        Serial.printf("page: dancer away %lu ms\n", (unsigned long)dance_left);
-        return;
+    // Full size while dancing. On the way down and back up the size follows
+    // the clock, never under the dot; set after the switch, so the next
+    // dancer comes in at the dot.
+    uint32_t s = LV_SCALE_NONE;
+    if (dance_phase != DANCE_PLAY) {
+        const uint32_t t = dance_phase == DANCE_DOWN ? dance_left : DANCE_HALF_MS - dance_left;
+        s = LV_SCALE_NONE * t / DANCE_HALF_MS;
+        if (s < DANCE_DOT) s = DANCE_DOT;
     }
-    dance_next();
-    dance_left = random_ms(DANCE_MIN_MS, DANCE_MAX_MS);
+    lv_image_set_scale(page_creature, s);
 }
 
 // Point the page's creature at `anim`: a creature name (that one, fixed),
-// "dance", or "" for none.
+// "dance" (the dance floor, from its first feature), or "" for none.
 static void page_set_creature(const char* anim) {
     if (strcmp(anim, page_anim) == 0) return;   // unchanged, including none to none and a dance going on
     strlcpy(page_anim, anim, sizeof(page_anim));
-    dance_on   = strcmp(anim, "dance") == 0;
-    dance_cur  = -1;
-    dance_away = false;
+    // Full size again: a dance stopped halfway through a change leaves it small.
+    if (page_creature) lv_image_set_scale(page_creature, LV_SCALE_NONE);
+    dance_pool    = 1;   // so the first pick is a feature
+    dance_prev[0] = dance_prev[1] = -1;
+    dance_phase   = DANCE_PLAY;
+    dance_on      = strcmp(anim, "dance") == 0 && dance_switch();
     if (dance_on) {
-        dance_next();
-        dance_left = random_ms(DANCE_MIN_MS, DANCE_MAX_MS);
+        dance_left = DANCE_MS[dance_pool];
         dance_last = lv_tick_get();
         return;
     }
+    // A fixed creature or none; "dance" with no dancer in the table ends up here too.
     lv_obj_t* c = *anim ? page_creature_at(anim) : nullptr;
     if (*anim && !c) Serial.printf("page: no creature '%s'\n", anim);
     page_place_creature(c);
+}
+
+void ui_dance_serial(const char* arg) {
+    const bool next = strcmp(arg, "next") == 0;
+    if (!next && strcmp(arg, "status") != 0) {
+        Serial.println("usage: dance next|status");
+    } else if (!dance_on) {
+        Serial.println("dance: off");
+    } else {
+        // next: the change starts on the next pass with the page on top; one under way carries on.
+        if (next && dance_phase == DANCE_PLAY) dance_left = 0;
+        // Seconds until the next change starts; while a dancer grows in, all its time is still ahead.
+        const uint32_t ms = dance_left + (dance_phase == DANCE_UP ? DANCE_MS[dance_pool] : 0);
+        Serial.printf("dance: %s %s, %lu s left%s\n", DANCE_KIND[dance_pool],
+                      DANCE_POOL[dance_pool][dance_prev[dance_pool]],
+                      (unsigned long)((ms + 999) / 1000), dance_phase == DANCE_PLAY ? "" : ", changing");
+    }
 }
 
 void ui_page_show(const char* pg, const char* title, const char* l1, const char* l2,

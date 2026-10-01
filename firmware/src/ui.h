@@ -58,6 +58,10 @@ bool ui_page_visible(void);
 bool ui_page_live(void);
 // Leave the page for the creature; the page stays live, out of sight.
 void ui_page_leave(void);
+// The dance floor (pa "dance") from the serial console: "next" moves on to the
+// next dancer, through the shrink to the dot and back; "status" prints the pool
+// (feature or clip), the dancer and the seconds until the next change.
+void ui_dance_serial(const char* arg);
 
 // The screen cycle: creature, usage, the live page when there is one, creature.
 // PWR on every board, and a tap on every board with touch.

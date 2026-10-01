@@ -465,6 +465,8 @@ static void check_serial_cmd() {
             else if (strcmp(cmd_buf, "msgclr") == 0)    ui_notify_clear();
             else if (strncmp(cmd_buf, "page ", 5) == 0) serial_page(cmd_buf + 5);
             else if (strcmp(cmd_buf, "pageclr") == 0)   ui_page_clear();
+            // The page's dance floor: `dance next`, `dance status` (ui_dance_serial).
+            else if (strncmp(cmd_buf, "dance ", 6) == 0) ui_dance_serial(cmd_buf + 6);
             // PWR and aux taps from the bench, down the button path (serial_btn).
             else if (strncmp(cmd_buf, "btn ", 4) == 0)  serial_btn(cmd_buf + 4);
 #ifdef FEATURE_PICTURE
