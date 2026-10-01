@@ -225,6 +225,24 @@ must not depend on a LAN: **art travels over the bonded BLE link, like everythin
   before the tray, flash lcd_4, restart the tray, then play an album not seen before (the 160 px
   files already cached keep their ids until their track plays again).
 
+## Increment 2c: the dance floor (operator 2026-09-30 ~20:40, firmware, after 2b lands)
+
+Operator: dances on the music card "last like 1.5 minutes before having a transition into something
+else", plus "little 30 s clips of repetitive dance moves before it switches to another dance move,
+moonwalking". Replaces the 12 to 25 s random rotation of increment 2.
+- Two pools in `ui.cpp` (names absent from the table are skipped, so the same lists serve every
+  board): **FEATURES** (90 s each): echo breakdance hd, echo acrobat hd, echo rave bunny hd (queued),
+  echo dj, echo rave, echo mixer; **CLIPS** (30 s each, repetitive moves): echo moonwalk hd (queued),
+  echo hop, echo swing, echo headphones, echo notes, echo cartwheel.
+- Sequence while `pa` is "dance": feature 90 s → transition → clip 30 s → transition → next feature,
+  never the same feature twice in a row, random order within a pool; the clock runs only while the
+  page is on top. **Transition** = 1.2 s: the creature shrinks to a dot and pops back as the next
+  one (the mini canvas scales; no new frames needed), no hide-for-seconds any more.
+- A track change does not reset the sequence; a page clear does. Serial `dance next` skips.
+- Creature queue (bench first, then the big tier): echo breakdance hd (running), echo acrobat hd
+  (running), echo rave bunny hd (bunny ears on the antenna, dilated black pupils like mushroom HD,
+  glow sticks, strobe), echo moonwalk hd (a 30 s clip: four moonwalk steps that loop seamlessly).
+
 ## Increment 3: notification centre (queued 2026-09-30 ~05:00; NO SOUNDS, operator rule)
 
 Operator: "I dont like beeps, they hurt animals ear drums. We designed the alien clickings for this
