@@ -269,6 +269,30 @@
     "tier": "big"
   },
   {
+    "filename": "echo_breakdance_hd.html",
+    "name": "echo breakdance hd",
+    "category": "Active",
+    "frame_count": 44,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_breakdance_hd_b.html",
+    "name": "echo breakdance hd b",
+    "category": "Active",
+    "frame_count": 34,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_acrobat_hd.html",
+    "name": "echo acrobat hd",
+    "category": "Active",
+    "frame_count": 41,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
     "filename": "echo_breathe.html",
     "name": "echo breathe",
     "category": "Idle",

@@ -3249,6 +3249,801 @@
     };
   })();
 
+  // 3x. Breakdance HD, the headspin (operator, 2026-09-30: more music animations, a break dancing creature).
+  // 60 cell lattice, 8 px cells on the 480 panel.
+  // Built differently from summon demon HD and mushroom HD on purpose: a headspin turns the body round its own upright
+  // axis, which a 20 cell pose repeated 3 times cannot do, so here the family's own shapes are boxes in 3D (the body 33
+  // x 30 cells and 18 deep, the shoulders, the arms, the four legs, the antenna, and the visor band and the eyes on the
+  // face) and every frame is one ray a cell into them, nearest face wins. At rest and at every quarter turn each box
+  // edge sits on a cell edge, so the rest frame is upscale(echoPing(true), 3) cell for cell and the upside down body is
+  // that grid turned through 180 exactly (the runner under the snippet checks both); between the quarter turns the
+  // boxes are sampled at the cell centres. Self contained: it reads nothing from this file's scope.
+  //   rock     a bar of top rock on the beat: rest with a ping on the one, a bounce with the knees out, a step with an
+  //            arm up and a kick out, a bounce with the other arm up.
+  //   drop     on three, a crouch with both arms up; a tumble, tucked, 45 degrees a step, the antenna whipped 45 degrees
+  //            back by the turn (the creature's diagonal is 56 rows untucked, the panel has 50 over the floor); on four a
+  //            handstand, the arms stretched to the floor with the hands turned out, the antenna tip lit just clear of it.
+  //   plant    the head comes down two rows and the antenna takes the weight: it bends from its root at the head's corner
+  //            in a J to a tip planted on the pivot, rows 48..50, cols 30..32, and the tip stays there for the spin.
+  //   spin     three turns, 8 frames a turn, 45 degrees a step: the face slides across and the dark side of the body comes
+  //            round. The visor band runs right round the head and carries the eyes on the back as well as the front, so
+  //            two eyes are in sight in every frame (the brief: eyes readable in every frame), and an eye seen at a slant
+  //            is kept 2 cells wide with a cell of band outside it. The legs open into a V (outer 30 degrees, inner 12)
+  //            each time the face comes round, on the beat, and close between, with the legs of half a step ago behind
+  //            them in blur; the arms swing round with the near one crossing the body; a little dust kicks off the tip on
+  //            every beat. The antenna's root rides round with the head while the tip stays put, so the antenna bends
+  //            hard, up to 14 cells across its 6 rows of stalk, and turns to shade while its root is behind the head.
+  //   exit     a tucked kick out through the other half turn, the antenna whipped back again; a touchdown, arms up.
+  //   land     on four, a deep crouch, arms up, a puff of dust each side; then the dust settles thin while an arm winds up.
+  //   freeze   the whole last bar: crouched, the fist thrust straight at the viewer with its fingertip lit in the
+  //            antenna's ping, a wink; a burst round the fingertip and an antenna ping on the one, a glint and a ping on
+  //            the three. The loop closes on it and cuts back to rest.
+  // Palette: 0..5 the ECHO palette unchanged (5 is also the shade on a turned side and the floor line, as the cartwheel's
+  // floor); 6 white (dust tops, the burst, the glint), 7 dust, 8 blur (the legs a moment ago), 9 the visor band seen on
+  // the side of the head. Index 6 is not ping here, so nothing in it goes through echoGlitch.
+  // Big tier: 44 frames of 3600 cells are 158 KB of firmware table, too much for the stock 2.16 partition.
+  // One closure, so echoBreakdanceHd is the only name it adds to this scope; list it in BENCH.anims or the bench and the
+  // export never see it.
+  // Constants: 60 cells of 8 px; step 125 ms, 4 a beat, 16 a bar (120 bpm), 64 steps, 4 bars, 8 s, 44 frames; body 33 x 30
+  // x 18; spin 8 frames a turn, 45 degrees a step, 3 turns, legs open 30 and 12 degrees, closed 4 in; antenna bend up to
+  // 14 cells, pivot cols 30..32; tumble 45 degrees a step, antenna lag 45; floor row 51.
+  const echoBreakdanceHd = (() => {
+    const N = 60;
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, SHADE = 5, WHITE = 6, DUST = 7, BLUR = 8, SIDE = 9;
+    const STEP = 125;                                              // ms a step: 4 steps a beat, 16 a bar, 120 bpm
+    const CX = 31.5, CY = 27;                                      // the body centre at rest
+    const FLOOR = 51;                                              // the floor line; feet, hands and the antenna tip stand on row 50
+    const PIVOT = 31.5;                                            // the antenna tip's column through the spin
+
+    // ---- turning things ----
+    // Rotations about z (in the panel), y (upright) and x, exact at the quarter turns so those frames land on the lattice.
+    const cs = d => { const k = ((d % 360) + 360) % 360; if (k === 0) return [1, 0]; if (k === 90) return [0, 1]; if (k === 180) return [-1, 0]; if (k === 270) return [0, -1]; const t = d * Math.PI / 180; return [Math.cos(t), Math.sin(t)]; };
+    const rotZ = d => { const [c, s] = cs(d); return [c, -s, 0, s, c, 0, 0, 0, 1]; };
+    const rotY = d => { const [c, s] = cs(d); return [c, 0, s, 0, 1, 0, -s, 0, c]; };
+    const rotX = d => { const [c, s] = cs(d); return [1, 0, 0, 0, c, -s, 0, s, c]; };
+    const mirror = s => [s, 0, 0, 0, 1, 0, 0, 0, 1];
+    const ID = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const mul = (a, b) => { const o = []; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) o.push(a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j]); return o; };
+    const app = (m, v) => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+    const tr = m => [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+
+    // ---- the creature as boxes ----
+    // Body space: x right, y down, z toward the viewer, origin at the body centre, one unit a cell.
+    const DEPTH = 9;                                               // half the body's depth
+    const BAND = [-9, -3], BAND_X = 13.5, EYE_C = 9;               // the visor band's rows and half width; each eye's centre
+    const ARCH = ['..kkkkk..', '.kk...kk.', 'kk.....kk'];          // a shut happy eye, mushroom HD's
+    // f: screen cells a unit of the face's own x. An eye seen at a slant is kept 2 cells wide with a cell of band outside it.
+    function eyeAt(mode, x, y, f) {
+      const ax = Math.abs(x);
+      if (mode === 'shut') {
+        const row = Math.floor(y - BAND[0]) - 2, col = Math.floor(ax - EYE_C + 4.5);
+        return row >= 0 && row <= 2 && col >= 0 && col <= 8 && ARCH[row][x < 0 ? 8 - col : col] === 'k';
+      }
+      const hw = Math.max(1.5, 1 / f), c = Math.min(EYE_C, BAND_X - 1 / f - hw);
+      return Math.abs(ax - c) < hw;
+    }
+    const bodyPaint = eyes => (axis, p, f) => {
+      const band = p[1] > BAND[0] && p[1] < BAND[1];
+      if (axis === 0) return band ? SIDE : SHADE;                  // the sides: shade, the band running round
+      if (axis !== 2 || !band || Math.abs(p[0]) > BAND_X) return BODY;
+      return eyeAt(eyes[p[0] < 0 ? 0 : 1], p[0], p[1], f) ? EYE : VISOR;   // the front, and the back in the spin
+    };
+    // Limbs are lit where a face looks toward the viewer and shaded where it turns away, so a limb in front of the body
+    // keeps an edge.
+    const LIT = 0.35;
+    const limbPaint = (axis, p, f, nz) => (nz > LIT ? BODY : SHADE);
+
+    // pose: roll and yaw in degrees, at the body centre, arms [left, right] {a out from hanging, b toward the viewer, len,
+    // hand: out or point, fist}, legs [left outer, left inner, right inner, right outer] {a out, len}, tip lit, eyes
+    // [left, right] open or shut, antenna rigid or bent, lag (the rigid antenna whipped back, degrees).
+    function rig(pose) {
+      const R = mul(rotY(pose.yaw || 0), rotZ(pose.roll || 0));
+      const at = pose.at || [CX, CY], P = [at[0], at[1], 0];
+      const parts = [];
+      const part = (Q, J, box, paint) => {
+        const M = mul(R, Q), Rj = app(R, J);
+        parts.push({M, Mi: tr(M), T: [P[0] + Rj[0], P[1] + Rj[1], Rj[2]], box, paint, f: Math.hypot(M[0], M[3])});
+      };
+      part(ID, [0, 0, 0], [-16.5, 16.5, -15, 15, -DEPTH, DEPTH], bodyPaint(pose.eyes || ['open', 'open']));
+      for (const s of [-1, 1]) part(mirror(s), [0, 0, 0], [16.5, 19.5, -6, 3, -3, 3], axis => (axis === 0 ? SHADE : BODY));   // shoulders
+      if (pose.antenna !== 'bent') part(rotZ(pose.lag || 0), [15, -15, 0], [-1.5, 1.5, -9, 0, -1.5, 1.5], (axis, p) => (p[1] < -6 ? (pose.tip ? PING : BODY) : axis === 0 ? SHADE : BODY));
+      (pose.arms || [{}, {}]).forEach((arm, k) => {
+        const s = k ? 1 : -1, L = arm.len || 10.5, J = [s * 21, -4.5, 0];
+        const Q = mul(mirror(s), mul(rotZ(-(arm.a || 0)), rotX(arm.b || 0)));
+        part(Q, J, [-1.5, 1.5, -1.5, L, -1.5, 1.5], limbPaint);
+        if (arm.hand === 'out') part(Q, J, (arm.a || 0) > 90 ? [-4.5, -1.5, L - 3, L, -1.5, 1.5] : [1.5, 4.5, L - 3, L, -1.5, 1.5], limbPaint);
+        if (arm.hand === 'point') {                                // a fist, and the finger at the viewer, its tip lit
+          const h = (arm.fist || 5) / 2;
+          part(Q, J, [-h, h, L - 1, L - 1 + 2 * h, -h, h], limbPaint);
+          part(Q, J, [-1.5, 1.5, L - 1 + 2 * h, L + 1 + 2 * h, -1.5, 1.5], (axis, p, f, nz) => (axis === 1 ? PING : nz > LIT ? BODY : SHADE));
+        }
+      });
+      const legs = pose.legs || [{}, {}, {}, {}];
+      [[-1, 15], [-1, 6], [1, 6], [1, 15]].forEach(([s, jx], k) => {
+        const lg = legs[k];
+        part(mul(mirror(s), rotZ(-(lg.a || 0))), [s * jx, 15, 0], [-1.5, 1.5, 0, lg.len || 9, -1.5, 1.5], () => SHADE);
+      });
+      return {parts, R, P};
+    }
+    // One ray a cell, straight into the panel; the nearest box face wins.
+    function cast(parts) {
+      const g = Array.from({length: N}, () => new Array(N).fill(0));
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        let best = Infinity, hit = null;
+        for (const pt of parts) {
+          const o = app(pt.Mi, [c + 0.5 - pt.T[0], r + 0.5 - pt.T[1], 1000 - pt.T[2]]), d = [-pt.Mi[2], -pt.Mi[5], -pt.Mi[8]];
+          let tn = -Infinity, tf = Infinity, ax = -1, ok = true;
+          for (let i = 0; i < 3 && ok; i++) {
+            const lo = pt.box[2 * i], hi = pt.box[2 * i + 1];
+            if (Math.abs(d[i]) < 1e-9) { if (o[i] <= lo || o[i] >= hi) ok = false; continue; }
+            const t1 = Math.min((lo - o[i]) / d[i], (hi - o[i]) / d[i]), t2 = Math.max((lo - o[i]) / d[i], (hi - o[i]) / d[i]);
+            if (t1 > tn) { tn = t1; ax = i; }
+            if (t2 < tf) tf = t2;
+          }
+          if (ok && tn <= tf && tn < best) { best = tn; hit = {pt, ax, p: [o[0] + tn * d[0], o[1] + tn * d[1], o[2] + tn * d[2]]}; }
+        }
+        if (hit) g[r][c] = hit.pt.paint(hit.ax, hit.p, hit.pt.f, Math.abs(hit.pt.M[hit.ax + 6]));
+      }
+      return g;
+    }
+    // The bent antenna: from its root on the head, wherever the spin has carried it, a J down and across to the tip on
+    // the pivot (rows 48..50, cols 30..32), drawn with a round brush 3 cells across so the stroke keeps its width on the
+    // slant; body while the root is in front of the head, shade while it is behind, and only on empty cells, so it never
+    // covers the head.
+    function bentAntenna(g, R, P, lit) {
+      const root = app(R, [15, -15, 0]), x0 = P[0] + root[0], y0 = P[1] + root[1], v = root[2] < 0 ? SHADE : BODY;
+      const K = [PIVOT, y0 + 2.5];                                 // the bend's two control points, both here: a J
+      for (let i = 0; i <= 120; i++) {
+        const t = i / 120, u = 1 - t;
+        const x = u * u * u * x0 + 3 * u * t * K[0] + t * t * t * PIVOT;
+        const y = u * u * u * y0 + 3 * u * t * K[1] + t * t * t * 48;
+        for (let r = Math.floor(y - 2); r <= Math.ceil(y + 2); r++) for (let c = Math.floor(x - 2); c <= Math.ceil(x + 2); c++) {
+          if (r >= 42 && r < 48 && c >= 0 && c < N && !g[r][c] && Math.hypot(r + 0.5 - y, c + 0.5 - x) <= 1.5) g[r][c] = v;
+        }
+      }
+      for (let r = 48; r <= 50; r++) for (let c = 30; c <= 32; c++) g[r][c] = lit ? PING : BODY;
+      return g;
+    }
+    // Dust puffs, drawn for the right foot and mirrored for the left: w white tops, d dust; empty cells only, so they sit
+    // behind the feet. The impact is low and wide on the floor, the settle thinner as it drifts out.
+    const PUFF = [
+      ['....ww....', '..wwwwwww.', '.dwwdwwwd.', 'dddddddddd', '.dddddddd.'],
+      ['...w..w...', '..wwwwww..', '.wwdwwwdw.', 'dddddddd..', 'd.dd.dd.d.', '.d.d.d.d..'],
+    ];
+    function puff(g, k) {
+      const art = PUFF[k], top = FLOOR - art.length;
+      art.forEach((line, dr) => [...line].forEach((ch, dc) => {
+        if (ch === '.') return;
+        for (const c of [49 + dc, 62 - (49 + dc)]) if (!g[top + dr][c]) g[top + dr][c] = ch === 'w' ? WHITE : DUST;
+      }));
+      return g;
+    }
+    function render(pose, fx) {
+      const {parts, R, P} = rig(pose);
+      const g = cast(parts);
+      if (pose.antenna === 'bent') bentAntenna(g, R, P, pose.tip);
+      if (pose.trail) {                                            // the legs a moment ago, in blur, behind
+        const ghost = cast(rig({...pose, yaw: pose.yaw - pose.trail}).parts.slice(-4));
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (ghost[r][c] && !g[r][c]) g[r][c] = BLUR;
+      }
+      if (fx) fx(g);
+      for (let c = 0; c < N; c++) if (!g[FLOOR][c]) g[FLOOR][c] = SHADE;
+      return g;
+    }
+
+    // ---- the routine ----
+    const A = (a, len, more) => ({a, len, ...more});
+    const STRAIGHT = [A(0, 9), A(0, 9), A(0, 9), A(0, 9)];
+    const BENT = [A(25, 6.5), A(10, 6), A(10, 6), A(25, 6.5)];     // knees out, the bounce
+    const CROUCH = [A(60, 5), A(30, 3.5), A(30, 3.5), A(60, 5)];   // deep: the drop, the landing, the freeze
+    const TUCK = [A(25, 4), A(10, 4), A(10, 4), A(25, 4)];         // the tumbles
+    const IN = [A(0), A(0)];
+    const UP = (len = 16.5) => [A(180, len, {hand: 'out'}), A(180, len, {hand: 'out'})];
+    const frames = [];
+    const F = (steps, pose, fx) => frames.push({hold: steps * STEP, grid: render(pose, fx)});
+
+    // Bar 1: top rock, the drop on three, a tucked tumble and the handstand on four. A quarter turn lands on the
+    // lattice only with the centre on a whole column and a half row, hence 31 and 32 there.
+    F(2, {tip: true});                                                                   // rest, ping on the one
+    F(2, {at: [CX, 30], arms: [A(30), A(30)], legs: BENT});                             // bounce
+    F(2, {arms: [A(175), A(30)], legs: [A(0, 9), A(0, 9), A(18, 9), A(50, 9)]});        // step: an arm up, a kick out
+    F(2, {at: [CX, 30], arms: [A(30), A(175)], legs: BENT});                            // bounce, the other arm up
+    F(1, {at: [CX, 33], arms: UP(), legs: CROUCH});                                      // the drop
+    F(1, {roll: 45, lag: -45, at: [CX, 25], arms: IN, legs: TUCK});                     // tumble, the antenna whipped back
+    F(1, {roll: 90, lag: -45, at: [31, 25.5], arms: IN, legs: TUCK});
+    F(1, {roll: 135, lag: -45, at: [CX, 27], arms: IN, legs: TUCK});
+    F(2, {roll: 180, at: [CX, 25], tip: true, arms: UP(21.5), legs: STRAIGHT});         // handstand
+    F(2, {roll: 180, antenna: 'bent', tip: true, arms: UP(19.5), legs: STRAIGHT});      // head down, the antenna takes it
+    // Bars 2 and 3, first half: three turns on the antenna, 8 frames a turn; the legs open as the face comes round on
+    // every beat and close between, and the floor kicks up a little dust at the tip on the beat, one side then the other.
+    for (let k = 0; k < 24; k++) {
+      const open = k % 4 === 0 || k % 4 === 3;
+      const legs = open ? [A(30, 9), A(12, 9), A(12, 9), A(30, 9)] : [A(-4, 9), A(0, 9), A(0, 9), A(-4, 9)];
+      const kick = k % 4 ? null : g => {
+        const s = (k / 4) % 2 ? 1 : -1;
+        for (const [r, dc, v] of [[50, 3, DUST], [50, 4, DUST], [49, 4, WHITE], [50, 5, DUST], [49, 6, DUST]]) {
+          const c = Math.round(PIVOT - 0.5 + s * dc);
+          if (!g[r][c]) g[r][c] = v;
+        }
+        return g;
+      };
+      F(1, {roll: 180, yaw: 22.5 + 45 * k, antenna: 'bent', tip: true, arms: [A(20), A(20)], legs, trail: 22.5}, kick);
+    }
+    // Bar 3, second half: the kick out, tucked, the touchdown and the landing on four, dust both sides.
+    F(1, {roll: 225, lag: -45, at: [CX, 27], arms: IN, legs: TUCK});
+    F(1, {roll: 270, lag: -45, at: [32, 25.5], arms: IN, legs: TUCK});
+    F(1, {roll: 315, lag: -45, at: [CX, 24.5], arms: IN, legs: [A(0, 6), A(0, 6), A(0, 6), A(0, 6)]});
+    F(1, {arms: UP(), legs: STRAIGHT});                                                   // touchdown
+    F(2, {at: [CX, 33], arms: [A(150), A(150)], legs: CROUCH}, g => puff(g, 0));        // land, arms up, dust
+    F(2, {at: [CX, 33], arms: [A(25), A(175)], legs: CROUCH}, g => puff(g, 1));         // the dust settles, wind up
+    // Bar 4: the freeze, crouched, the fist straight at the viewer with a wink; the fingertip lit, a burst round it and an
+    // antenna ping on the one, a glint and a ping on the three.
+    const tipAt = g => {                                           // the lit fingertip's centre
+      let n = 0, y = 0, x = 0;
+      for (let r = 15; r < 46; r++) for (let c = 0; c < N; c++) if (g[r][c] === PING) { n++; y += r; x += c; }
+      return [y / n, x / n];
+    };
+    const burst = (g, d = [4, 5]) => {                             // short rays round the fingertip
+      const [cy, cx] = tipAt(g);
+      for (const [dy, dx] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-0.7, -0.7], [-0.7, 0.7], [0.7, -0.7], [0.7, 0.7]]) for (const k of d) {
+        const r = Math.round(cy + dy * k), c = Math.round(cx + dx * k);
+        if (r >= 1 && r <= 50 && c >= 1 && c <= 58 && !g[r][c]) g[r][c] = WHITE;
+      }
+      return g;
+    };
+    const point = tip => ({at: [CX, 33], tip, eyes: ['open', 'shut'], arms: [A(25), A(-15, 4, {b: 88, hand: 'point', fist: 7})], legs: CROUCH});
+    F(4, point(true), g => burst(g)); F(4, point(false)); F(4, point(true), g => burst(g, [5])); F(4, point(false));
+
+    return {
+      name: 'ECHO · breakdance HD', key: 'echo_breakdance_hd', fwname: 'echo breakdance hd', category: 'Active', size: N,
+      // Big tier, like the other HD cells: 44 frames of 3600 bytes (158 KB) ship only on boards built with SPLASH_BIG.
+      tier: 'big',
+      intent: 'Proposal, the headspin, 60 cell lattice (8 px cells, the creature at 3x built as boxes so it can really turn): on a 125 ms step at 120 bpm it top rocks a bar with bounces, an arm up and a kick out, drops on three, tumbles tucked through a half turn with its antenna whipped back and lands a handstand on four, lowers its head until the antenna takes its weight, bent in a J and planted on one floor point, and spins on it three turns at 45 degrees a step, the face sliding across and its dark side coming round, the visor band running round the head and carrying the eyes front and back so two are always in sight, the legs opening into a V each time the face comes round on the beat and closing between with a blur behind them, a puff of dust off the tip on every beat, then kicks out tucked through the other half turn, touches down with its arms up, lands in a crouch on four in two puffs of dust, winds up and freezes for the last bar with its fist thrust straight at the viewer, the fingertip lit like the antenna, a wink, a burst on the one and a glint on the three; judge whether the turn reads as a spin rather than a wobble, whether the bent antenna reads as the pivot, and whether it is still this creature upside down.',
+      // 0 transparent, 1 body, 2 eyes, 3 visor, 4 ping (antenna tip, fingertip), 5 feet, turned sides and the floor line,
+      // 6 white (dust tops, burst, glint), 7 dust, 8 blur, 9 the visor band on the side of the head
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#8fa7a2', '#2f6f66', '#25a88f'],
+      frames,
+    };
+  })();
+
+  // ECHO · breakdance HD, take b: the windmill (operator, 2026-09-30: more music animations, a break dancing creature).
+  // A 60 cell lattice, 8 px cells on the 480 panel, built the way summon demon HD and mushroom HD are built: every body is
+  // a 20 cell pose repeated exactly 3 times across and down, so the silhouette, the visor, the eyes and the arm stubs are
+  // the family's own, and the new detail is drawn at 8 px. The body is never redrawn for the spin: the 3x sprite is turned
+  // whole about its own centre, each screen cell sampling the sprite cell under it through the inverse turn, so every
+  // quarter turn is the family's own pixels exactly and the eighth turns between are clean rasters of the same cells.
+  // The legs and the antenna are limbs drawn on the fine lattice from roots hidden inside the body (3 cells across, and
+  // in the spin a leg shows 8 out, a cell short of the family's 9), so they can splay, tuck, trail and bend where the
+  // body cannot. The last two cells of each leg are white: sneakers.
+  //   top rock  three beats on the floor line: a dip with a step out to the left and the right fist pumped up, back up,
+  //             a dip with a step out to the right and the left fist up, back up, a dip with both fists up, a crouch
+  //             with the eyes down.
+  //   drop      on beat four it sits down onto the floor with the legs splayed flat, and tips over to its right.
+  //   windmill  two full turns, an eighth turn a pulse, clockwise: on its back with its four legs fanned up, rolling onto
+  //             its right arm, onto its base with the legs whipped flat along the floor, onto its left arm, onto its back
+  //             again. The rigid part (body and arm stubs) always rests its lowest cell on the floor, so the back and the
+  //             base thump the floor on every beat with a puff of dust either side, and between them it rides up on a
+  //             corner or an arm. The legs fan out (inner pair 25 degrees off the body's axis, outer pair 50) and a leg
+  //             that would go through the floor turns up until it lies along it. The antenna tip glows ping through the
+  //             spin and flashes white on every beat; the antenna trails the spin by 20 degrees and lies flat along the
+  //             floor whenever the head is down. Thin arcs behind the two outer feet and the antenna tip, the path they
+  //             swept since the last pulse, are the motion blur.
+  //   freeze    on the next bar's one it stops dead on its back, the legs opened wider, the tip flashing: the hit.
+  //   pop up    the turn carries it up off the floor with the legs closed and tucked, it lands on its feet with a squash
+  //             and a puff, and on beat three it hits a b boy stance: arms folded across the chest in a lighter teal with
+  //             the elbows out, the eyes half lidded, a ping, held to the end of the loop.
+  // Music: one pulse of 125 ms, four a beat, four beats a bar (120 bpm); every hold is a whole number of pulses and the
+  // loop is three bars, so the moves land on the beat: the dips on beats one to three, the drop on four, the back on
+  // beats one and three of the windmill bar and the base on two and four, the freeze on the next one, the stance on three.
+  // Palette: 0..5 are the ECHO palette unchanged; 6 white (sneakers, dust, the tip's flash), 7 the floor line and the
+  // settling dust, 8 the blur arcs, 9 the folded forearms. Index 6 is not ping here, so nothing in it goes through
+  // echoGlitch. One closure, so echoBreakdanceHdB is the only name it adds to this scope; list it in BENCH.anims or the
+  // bench and the export never see it.
+  const echoBreakdanceHdB = (() => {
+    const N = 60, K = 3;                                           // lattice; a 20 cell pose repeated K times across and down
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, LEG = 5, WHITE = 6, FLOOR = 7, BLUR = 8, ARM = 9;
+    // Constants: 60 cells of 8 px; pulse 125 ms, beat 500, bar 2000, loop 3 bars (6 s, 34 frames); floor on row 55; the spin 45 degrees a pulse, a turn every two beats; legs 3 across and 8 out in the spin, fanned 25 and 50 degrees (35 and 65 on the freeze); antenna trails 20 degrees; blur arcs 6 to 34 degrees back.
+    const STEP = 125;                                              // ms, the pulse
+    const FLOOR_ROW = 55;                                          // the floor line; standing, the feet end on row 54
+    const DROP = 4;                                                // rows the standing creature sits below the family's 3x frame
+    const C0 = [27, 31.5];                                         // the body's centre in the 3x frame (rows 12..41, cols 15..47)
+    const TURN = 45;                                               // degrees a pulse in the windmill
+    const FAN = [25, 50];                                          // the legs' splay off the body's axis: inner pair, outer pair
+    const FREEZE = [35, 65];                                       // the same on the freeze, opened up for the hit
+    const LAG = 20;                                                // degrees the antenna trails the spin
+    const BLUR_ARC = 34;                                           // degrees back in the turn the blur arcs reach
+    const LEG_OUT = 8;                                             // cells a leg shows outside the body
+    const HIP_IN = 1.5;                                            // cells a leg root sits inside the body, hidden
+    const HIPS = [16.5, 25.5, 37.5, 46.5];                         // the family's leg columns at 3x, left to right
+    const ANT = [13.5, 46.5];                                      // the antenna root: its column, 1.5 rows inside the head
+    const STALK = 7.5, TIP = 3;                                    // the stalk's length from the root, then the 3 x 3 tip
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+    const rad = d => d * Math.PI / 180;
+    const dir = a => [-Math.cos(rad(a)), Math.sin(rad(a))];       // a unit step at a degrees clockwise from up: [down, right]
+    // A point of the 3x frame to the screen: the body turned th degrees clockwise about C0, C0 landing on T.
+    const toScreen = ([y, x], th, T) => {
+      const dy = y - C0[0], dx = x - C0[1], cs = Math.cos(rad(th)), sn = Math.sin(rad(th));
+      return [T[0] + dx * sn + dy * cs, T[1] + dx * cs - dy * sn];
+    };
+
+    // The 20 cell poses.
+    const BASE = echoPing(false);                                  // the antenna is drawn as a limb, so the pose's own tip never shows
+    const EYES = [[6, 7], [7, 7], [6, 13], [7, 13]];
+    const eyes = (g, cells) => { const b = clone(g); for (const [r, c] of EYES) set(b, r, c, VISOR); for (const [r, c] of cells) set(b, r, c, EYE); return b; };
+    const look = (g, dc) => eyes(g, EYES.map(([r, c]) => [r, c + dc]));   // both eyes a cell along the visor
+    const lidded = g => eyes(g, [[7, 7], [7, 13]]);                        // the lower half only: cool, or eyes down
+    const lookUp = g => eyes(g, [[6, 7], [6, 13]]);
+    // An arm stub and its hand taken off (side 1 the right one, side 0 both, otherwise the left), to be drawn again on
+    // the fine lattice.
+    const noArm = (g, side = 0) => {
+      const b = clone(g), cols = side === 1 ? [16, 17] : side === 0 ? [3, 4, 16, 17] : [3, 4];
+      for (let r = 7; r <= 10; r++) for (const c of cols) set(b, r, c, 0);
+      return b;
+    };
+
+    // The body sprite: the pose at 3x with the antenna and the legs lifted out (they are drawn as limbs).
+    const sprite = pose => {
+      const g = upscale(pose, K);
+      for (let r = 0; r < 12; r++) for (let c = 45; c <= 47; c++) g[r][c] = 0;
+      for (let r = 42; r < N; r++) g[r].fill(0);
+      return g;
+    };
+    // Paint the sprite turned th degrees about C0 with C0 on T: every screen cell samples the sprite cell under it.
+    const paintBody = (g, spr, th, T) => {
+      const cs = Math.cos(rad(th)), sn = Math.sin(rad(th));
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const sy = r + 0.5 - T[0], sx = c + 0.5 - T[1];
+        const pr = Math.floor(C0[0] - sx * sn + sy * cs + 1e-6), pc = Math.floor(C0[1] + sx * cs + sy * sn + 1e-6);
+        if (pr >= 0 && pr < N && pc >= 0 && pc < N && spr[pr][pc]) g[r][c] = spr[pr][pc];
+      }
+      return g;
+    };
+    // A limb: the cells whose centres fall in a bar w across, from point a along angle ang for len cells, each with its
+    // distance along the bar.
+    const bar = (a, ang, len, w = 3) => {
+      const [uy, ux] = dir(ang), out = [];
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const dy = r + 0.5 - a[0], dx = c + 0.5 - a[1], t = dy * uy + dx * ux;
+        if (t >= 0 && t <= len && Math.abs(dy * ux - dx * uy) <= w / 2) out.push([r, c, t]);
+      }
+      return out;
+    };
+    const clear = cells => cells.every(([r]) => r < FLOOR_ROW);
+    let puffAt = [];                                               // where the last dust hit puffed out, for the fade after it
+
+    // One frame. Options:
+    //   pose   the 20 cell pose (default the family's own)
+    //   th     degrees the body is turned clockwise (default 0)
+    //   stand  [dy, dx]: standing on its legs, the torso dy rows down and dx across, the feet planted at feet
+    //   air    rows off the floor (turning frames: otherwise the rigid part rests its lowest cell on the floor)
+    //   fan    [inner, outer] splay of the legs off the body's axis, degrees (turning frames); tuck, cells out instead of 8
+    //   bend   degrees the antenna is turned off the body's up, before the floor and the body push it
+    //   lit    the antenna tip's index (default body: unlit)
+    //   blur   true: thin arcs behind the outer feet and the antenna tip, the path swept since the last pulse
+    //   dust   'hit' or 'fade': a puff either side of everything touching the floor, or the fade where the last hit was
+    //   over   a function (g, T) painting fine detail over the creature
+    function frame(o) {
+      const th = o.th || 0, spr = sprite(o.pose || BASE), g = blank();
+      let T;
+      if (o.stand) T = [C0[0] + DROP + o.stand[0], C0[1] + o.stand[1]];
+      else {
+        const odd = ((th % 180) + 180) % 180 === 90;               // a quarter turn: the body 33 tall, 30 across
+        // The hub sits one cell left of the sprite's centre so the fanned legs stay on the panel; the half cells keep
+        // every quarter turn sampling cell centres.
+        T = odd ? [30.5, 30] : [30, 30.5];
+        let low = -1;
+        paintBody(blank(), spr, th, T).forEach((row, r) => { if (row.some(v => v)) low = r; });
+        T = [T[0] + FLOOR_ROW - 1 - low - (o.air || 0), T[1]];
+      }
+      const body = paintBody(blank(), spr, th, T);
+      // Legs and antenna at turn a with the hub on T: cell lists [r, c, index], and the far ends of the outer legs and of
+      // the antenna, which the blur traces.
+      const limbs = (a, T0) => {
+        const cells = [], ends = [];
+        HIPS.forEach((hx, k) => {
+          const hip = toScreen([42 - HIP_IN, hx], a, T0);
+          let ang, len;
+          if (o.stand) {                                           // standing: from the hip to the foot on the floor
+            const foot = [FLOOR_ROW, (o.feet || HIPS)[k]];
+            len = Math.hypot(foot[0] - hip[0], foot[1] - hip[1]) - 0.01;
+            ang = Math.atan2(foot[1] - hip[1], -(foot[0] - hip[0])) * 180 / Math.PI;
+          } else {
+            const fan = (o.fan || FAN)[k === 0 || k === 3 ? 1 : 0], side = k < 2 ? 1 : -1;
+            ang = a + 180 + side * fan;
+            len = (o.tuck || LEG_OUT) + HIP_IN;
+            // through the floor: turn the leg up toward the floor's horizontal on its own side until it clears
+            const s = Math.sin(rad(ang)), turn = Math.abs(s) < 1e-6 ? side : (s < 0 ? 1 : -1);
+            for (let i = 0; i < 60 && !clear(bar(hip, ang, len)); i++) ang += 3 * turn;
+          }
+          for (const [r, c, t] of bar(hip, ang, len)) cells.push([r, c, t > len - 2 ? WHITE : LEG]);
+          if (k === 0 || k === 3) { const [uy, ux] = dir(ang); ends.push([hip[0] + uy * (len - 0.5), hip[1] + ux * (len - 0.5)]); }
+        });
+        // The antenna: trails the spin, then turns the least it can to stay above the floor with its tip clear of the
+        // body and most of its stalk showing.
+        const root = toScreen(ANT, a, T0);
+        const want = a + (o.bend || 0);
+        const ok = cs => clear(cs) && cs.every(([r, c, t]) => t <= STALK || !body[r][c]) &&
+          cs.filter(([r, c, t]) => t <= STALK && !body[r][c]).length >= 9;
+        let best = [want, bar(root, want, STALK + TIP)];
+        for (let i = 0; i <= 36; i++) {
+          const hit = (i ? [want + 5 * i, want - 5 * i] : [want]).map(x => [x, bar(root, x, STALK + TIP)]).find(([, cs]) => ok(cs));
+          if (hit) { best = hit; break; }
+        }
+        for (const [r, c, t] of best[1]) cells.push([r, c, t > STALK ? (o.lit || BODY) : BODY]);
+        const [uy, ux] = dir(best[0]);
+        ends.push([root[0] + uy * (STALK + TIP / 2), root[1] + ux * (STALK + TIP / 2)]);
+        return {cells, ends};
+      };
+      // Limbs first, the body over them, so every root tucks in; then the detail over the body.
+      for (const [r, c, v] of limbs(th, T).cells) if (r < FLOOR_ROW) put(g, r, c, v);
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (body[r][c]) g[r][c] = body[r][c];
+      if (o.over) o.over(g, T);
+      // A dust hit puffs out either side of everything touching the floor (the creature's ends on row 54).
+      if (o.dust === 'hit') {
+        const cs = g[FLOOR_ROW - 1].map((v, c) => (v ? c : -1)).filter(c => c >= 0);
+        puffAt = [[cs[0], -1], [cs[cs.length - 1], 1]];
+      }
+      // The blur: a cell every 2 degrees along the path of each outer foot and of the antenna tip, only on empty cells.
+      if (o.blur) for (let back = 6; back <= BLUR_ARC; back += 2) for (const [y, x] of limbs(th - back, T).ends) {
+        const r = Math.floor(y), c = Math.floor(x);
+        if (r >= 0 && r < FLOOR_ROW && c >= 0 && c < N && !g[r][c]) g[r][c] = BLUR;
+      }
+      // The dust, [rows up, cells out, index] from each end: the hit white and grey, the fade rising and settling grey.
+      if (o.dust) {
+        const PUFF = o.dust === 'hit'
+          ? [[1, 2, WHITE], [1, 3, WHITE], [1, 5, FLOOR], [2, 3, WHITE], [2, 4, FLOOR], [2, 6, FLOOR], [3, 4, FLOOR]]
+          : [[2, 4, FLOOR], [3, 3, FLOOR], [3, 6, FLOOR], [4, 5, FLOOR], [5, 7, FLOOR]];
+        for (const [c0, s] of puffAt) for (const [up, out, v] of PUFF) {
+          const r = FLOOR_ROW - up, c = c0 + s * out;
+          if (r >= 0 && c >= 0 && c < N && !g[r][c]) g[r][c] = v;
+        }
+      }
+      for (let c = 0; c < N; c++) g[FLOOR_ROW][c] = FLOOR;
+      return g;
+    }
+
+    // Fine detail over a standing creature, placed from the torso's T.
+    // A fist pump: the arm (6 across, the stub's own width) from the shoulder at the body's edge up and out ang degrees
+    // off upright, 13 long, with a rounded fist 8 across on the end, clear of the antenna; it never paints over the
+    // visor or the eyes.
+    const FIST = ['.bbbbbb.', 'bbbbbbbb', 'bbbbbbbb', 'bbbbbbbb', 'bbbbbbbb', '.bbbbbb.'];
+    const skin = (g, r, c) => { if (r >= 0 && r < N && c >= 0 && c < N && (g[r][c] === 0 || g[r][c] === BODY)) g[r][c] = BODY; };
+    const pump = (g, T, side, ang = 32) => {
+      const a = side * ang, sh = toScreen([25.5, side < 0 ? 15 : 48], 0, T);
+      for (const [r, c] of bar(sh, a, 13, 6)) if (r < sh[0]) skin(g, r, c);    // nothing below the shoulder
+      const [uy, ux] = dir(a), fy = Math.round(sh[0] + uy * 14 - 3), fx = Math.round(sh[1] + ux * 14 - 4);
+      FIST.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch === 'b') skin(g, fy + dr, fx + dc); }));
+    };
+    // Folded arms: the left forearm across on top with its elbow out to the left, the right one under it with its elbow
+    // out to the right, both a lighter teal than the body so they sit in front of it, creased in the leg teal.
+    const FOLD = [
+      '..kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk..........',
+      '.kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk.........',
+      'kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk........',
+      'kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk........',
+      '.kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk.........',
+      '..kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk..',
+      '..........kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk.',
+      '.........kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk',
+      '.........kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk',
+      '..........kbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbk.',
+      '...........kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk..',
+    ];
+    const fold = (g, T) => {
+      const r0 = Math.round(T[0] - C0[0]) + 25, c0 = Math.round(T[1] - C0[1]) + 8;   // top crease on the 3x row 25, left end col 8
+      FOLD.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') put(g, r0 + dr, c0 + dc, ch === 'k' ? LEG : ARM); }));
+    };
+
+    // The frames.
+    const frames = [], F = (pulses, grid) => frames.push({hold: pulses * STEP, grid});
+    const HOME = HIPS;
+    // 1. Top rock, beats one to three: a dip and a step on each beat with a fist pumped up on the other side, back up on
+    // the off beat; both fists on beat three, then the crouch. The tip pings on the one.
+    F(2, frame({pose: look(noArm(BASE, 1), -1), lit: PING, stand: [3, -2], feet: [HOME[0] - 4, HOME[1], HOME[2], HOME[3]], bend: 10, over: (g, T) => pump(g, T, 1)}));
+    F(2, frame({stand: [0, 0]}));
+    F(2, frame({pose: look(noArm(BASE, -1), 1), stand: [3, 2], feet: [HOME[0], HOME[1], HOME[2], HOME[3] + 4], bend: -10, over: (g, T) => pump(g, T, -1)}));
+    F(2, frame({stand: [0, 0]}));
+    F(2, frame({pose: lookUp(noArm(BASE)), stand: [3, 0], feet: [HOME[0] - 4, HOME[1], HOME[2], HOME[3] + 4], over: (g, T) => { pump(g, T, -1, 25); pump(g, T, 1, 25); }}));
+    F(2, frame({pose: lidded(BASE), stand: [6, 0], feet: [HOME[0] - 6, HOME[1] - 2, HOME[2] + 2, HOME[3] + 6], bend: -8}));
+    // 2. The drop on beat four, and the windmill: two full turns from its back (bar two). The tip flashes white on every
+    // beat, where the back or the base hits the floor, and the dust fades on the pulse after.
+    for (let th = 0; th < 900; th += TURN) {
+      const flat = th % 180 === 0;
+      F(1, frame({th, lit: flat ? WHITE : PING, fan: th === 0 ? [70, 85] : FAN, bend: th ? -LAG : 0, blur: th > 0, dust: flat ? 'hit' : (th % 180 === 45 ? 'fade' : null)}));
+    }
+    // 3. The freeze: on its back on the next one, the legs opened up, the tip flashing; held for the beat.
+    F(1, frame({th: 900, lit: WHITE, fan: FREEZE, dust: 'hit'}));
+    F(3, frame({th: 900, lit: PING, fan: FREEZE, dust: 'fade'}));
+    // 4. Pop up: the turn carries it off the floor, the legs close and tuck as it flips, then reach for the floor; it
+    // lands on its feet with a squash and a puff.
+    F(1, frame({th: 945, lit: PING, air: 4, fan: [16, 30], tuck: 6, bend: -LAG, blur: true}));
+    F(1, frame({th: 990, lit: PING, air: 5, fan: [8, 16], tuck: 5, bend: -LAG, blur: true}));
+    F(1, frame({th: 1035, lit: PING, air: 4, fan: [0, 6], tuck: 8, bend: -10, blur: true}));
+    F(1, frame({stand: [4, 0], bend: 12, dust: 'hit'}));
+    // 5. The stance on beat three: arms folded, elbows out, eyes half lidded, a ping; held to the end of the loop.
+    const stance = lit => frame({pose: lidded(noArm(BASE)), lit, stand: [1, 0], feet: [HOME[0] - 3, HOME[1] - 1, HOME[2] + 1, HOME[3] + 3], bend: 8, over: fold});
+    F(1, stance(PING));
+    F(7, stance(0));
+
+    return {
+      name: 'ECHO · breakdance HD (windmill)', key: 'echo_breakdance_hd_b', fwname: 'echo breakdance hd b', category: 'Active', size: N,
+      // Big tier, like mushroom HD: the firmware table keeps size x size bytes a frame, so this is 34 frames of 3600 bytes
+      // (122 KB), and it ships only on boards built with SPLASH_BIG (the 4 inch board, 16 MB layout).
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells, the creature at 3x as in summon demon HD), take b, the windmill, in white sneakers on a floor line to a 125 ms pulse (120 bpm, three bars): three beats of top rock, a dip and a step out with a fist pumped up on each beat and both fists on the third, then a crouch, and on beat four it drops onto the floor and windmills two full turns clockwise, the 3x body turned whole an eighth turn every pulse so every quarter turn is the family\'s own pixels, on its back with its four legs fanned up, onto its right arm, onto its base with the legs whipped flat, onto its left arm, the back and the base thumping the floor on every beat with a puff of dust, the antenna tip glowing ping through the spin and flashing white on the beat, the antenna trailing the spin and lying flat along the floor whenever the head is down, thin blur arcs behind the outer feet and the tip; on the next bar\'s one it freezes on its back with the legs opened up, flips up off the floor with the legs tucked, lands with a puff and on beat three hits a b boy stance, arms folded in a lighter teal with the elbows out, eyes half lidded, a ping; judge whether the visor, the eyes and the antenna read through every quarter turn and upside down, and whether the moves land on the beat.',
+      // 0 transparent, 1 body, 2 eyes, 3 visor, 4 ping (the antenna tip on the one and through the spin), 5 legs and the
+      // folded arms' creases, 6 white (sneakers, dust, the tip's flash on the beat), 7 the floor line and the settling
+      // dust, 8 the blur arcs, 9 the folded forearms
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#3a4a4c', '#0d4a40', '#21a088'],
+      frames,
+    };
+  })();
+
+  // 3x. Acrobat HD, the gymnast (operator, 2026-09-30: "one where the creature is jumping and doing backflips and
+  // cartwheels"). A floor routine on the 60 cell lattice, 8 px cells on the 480 panel: it salutes the viewer, runs, throws
+  // a cartwheel, a back handspring and a back layout with a half twist, sticks the landing, presents with both arms up while
+  // sparkles twinkle round it, hops for joy and lowers its arms where it started, so the loop closes on the rest.
+  // Scale: the creature tumbles here, so it is drawn at 2x, two thirds of its 3x HD size (the share echo mushroom b keeps
+  // on its 30 lattice). At 3x it stands 48 rows tall and 45 cols wide and cannot turn inside 60 cells; at 2x it stands 32
+  // rows tall with 31 rows of air over its head, and its widest pose, the cartwheel star at 45 degrees, spans 48 cols,
+  // so every frame keeps the whole creature on the lattice. The HD detail is the 8 px cell's:
+  // limbs posed at any angle a cell at a time, a shading row under the torso that shows which way is down while it turns,
+  // the mat, a shadow that narrows with height, dotted trails behind the turning limbs, dust and sparkles.
+  // Two views, each a figure in a 48 cell sprite box that turns about the torso centre, the lattice point (24, 24):
+  //   front  the family pose itself. Torso, visor, eyes and antenna are read straight from echoBase at 2x (cell R, C of
+  //          the 20 cell pose covers sprite rows 2R + 6 and 2R + 7, cols 2C + 3 and 2C + 4), so upright it is the
+  //          family's own creature cell for cell but for the shading row; arms and legs are swapped for posed limbs
+  //          only where a pose moves them (arms 3 cells thick, legs 2, both rounded at the ends).
+  //   side   the same face turned to the right: the torso 18 wide, the visor band pushed flush to the face edge
+  //          (sprite cols 24..32), the near eye 2 wide and the far eye 1 wide in it, the antenna on the back corner;
+  //          the far arm is drawn in the feet teal behind the torso, the near arm in front of it, and the band and
+  //          both eyes over the near arm, so the face shows whatever the arm does. Mirrored to face left.
+  // Turning: every lattice cell asks which body point its centre covers (turned back about the pivot) and paints what
+  // is there, so a figure turns to any angle without holes and every quarter turn is exact. On the floor a figure sits
+  // with its lowest cell on row 56; in the air its pivot rides an arc. Both eyes show in every frame (two eye blobs in
+  // each of the 41), and the antenna, visor band and shading row turn with the body.
+  //   salute     rest; the left arm goes straight up with happy eyes and a ping (the gymnast's salute); the eyes slide
+  //              right, toward the run.
+  //   run        three side view running frames leaning in, arms pumping, then a hurdle hop with the arms thrown up.
+  //   cartwheel  the front view in a star (arms in a long V, the hands reaching past the antenna tip, the four legs
+  //              split in two pairs) turns clockwise 45 degrees a frame across 11 cols, a hand and the feet on the
+  //              floor in turn, a dust kick round the hands when both plant.
+  //   handspring it turns to face right, sits back, springs backwards over its hands (planted upside down with a dust
+  //              kick, the antenna hanging clear of the floor) and snaps down onto its feet with its arms reaching up.
+  //   layout     a back layout with a half twist: nine airborne frames on a parabola, 36 degrees a frame, counter
+  //              clockwise throughout; at the apex, 20 rows up, it is the front view upside down with the antenna lit,
+  //              held 180 ms (the twist: the visor faces the viewer on its way round); it comes out facing left and
+  //              keeps turning the same way, which from its own side is now forward, as a real twisting back does.
+  //   stick      it lands facing left, knees bent, arms forward, a dust puff either side; on the held frame the dust
+  //              spreads and five sparkles light round it.
+  //   present    arms up in a V, happy eyes and a ping, the sparkles twinkling on (white cores that grow amber rays);
+  //              a little hop of joy with the knees tucked; the arms come down in two steps, halfway and then most
+  //              of the way, and the rest takes over.
+  // Constants: 60 cells of 8 px; the creature at 2x, 32 rows tall, torso 22 x 20 front and 18 x 20 side; floor row 56,
+  // mat rows 57..59; cartwheel 45 degrees and backflip 36 degrees a frame, rotation frames 80 to 100 ms, apex 180 ms,
+  // stuck landing 480 ms; apex 20 rows over the standing line; a shadow on every frame, 24 cols under it on the floor
+  // and narrower the higher it flies; 41 frames, 5.84 s a cycle.
+  // Palette: 0..5 the ECHO palette unchanged (2 is also the shadow, 5 also the shading row and the trails); 6 white
+  // (sparkle cores), 7 mat, 8 amber (sparkle rays), 9 dust. Index 6 is not the duplicate ping here, so no frame goes
+  // through echoGlitch. One closure, so echoAcrobatHd is the only name this adds to the scope.
+  const echoAcrobatHd = (() => {
+    const N = 60;
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, SHADE = 5, WHITE = 6, MAT = 7, AMBER = 8, DUST = 9;
+    const FLOOR = 56;                                              // the lowest row it stands on; the mat is rows 57..59
+    const P = 24;                                                  // the pivot, sprite row and col: the torso centre
+    const STAND = 41;                                              // the lattice row of the pivot while it stands
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+    const putEmpty = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N && !g[r][c]) g[r][c] = v; return g; };
+
+    // Figures: layers painted back to front, each a function of a sprite point (y, x) that answers a palette index
+    // or 0. Limbs are polylines of [row, col] points; a point is in a limb when it lies within r of one of its segments.
+    const segDist = (y, x, [ay, ax], [by, bx]) => {
+      const vy = by - ay, vx = bx - ax, wy = y - ay, wx = x - ax;
+      const L = vy * vy + vx * vx, t = L ? Math.max(0, Math.min(1, (wy * vy + wx * vx) / L)) : 0;
+      return Math.hypot(wy - t * vy, wx - t * vx);
+    };
+    const limb = (pts, r, v) => (y, x) => { for (let i = 0; i + 1 < pts.length; i++) if (segDist(y, x, pts[i], pts[i + 1]) <= r) return v; return 0; };
+    const arm = (pts, v) => limb(pts, 1.6, v);                     // 3 cells thick
+    const leg = pts => limb(pts, 1.2, SHADE);                      // 2 cells thick, in the feet teal
+    const rect = (y0, y1, x0, x1, v) => (y, x) => (y >= y0 && y < y1 && x >= x0 && x < x1 ? v : 0);
+    const box = (r0, r1, c0, c1) => { const o = []; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) o.push([r, c]); return o; };
+    const cellSet = list => { const s = new Set(list.map(([r, c]) => r * 100 + c)); return (y, x) => s.has(Math.floor(y) * 100 + Math.floor(x)); };
+    const paint = (layers, y, x) => { for (let i = layers.length - 1; i >= 0; i--) { const v = layers[i](y, x); if (v) return v; } return 0; };
+
+    // Front: the family pose at 2x. Eyes in sprite cells: open (the family's own), slid right two cells, or happy arches.
+    const famCell = (y, x) => [Math.floor((y - 6) / 2), Math.floor((x - 3) / 2)];
+    const EYES = {
+      open: [...box(18, 21, 17, 18), ...box(18, 21, 29, 30)],
+      right: [...box(18, 21, 19, 20), ...box(18, 21, 31, 32)],
+      happy: [[18, 16], [18, 17], [18, 18], [18, 19], [19, 15], [19, 16], [19, 19], [19, 20], [20, 15], [20, 20],
+              [18, 28], [18, 29], [18, 30], [18, 31], [19, 27], [19, 28], [19, 31], [19, 32], [20, 27], [20, 32]],
+    };
+    const FAM_ARM_L = (R, C) => R >= 7 && R <= 10 && C <= 4, FAM_ARM_R = (R, C) => R >= 7 && R <= 10 && C >= 16;
+    function front({armL = null, armR = null, legs = null, eyes = 'open', ping = false} = {}) {
+      const L = [], isEye = cellSet(EYES[eyes]);
+      if (legs) for (const pts of legs) L.push(leg(pts));
+      for (const pts of [armL, armR]) if (pts) L.push(arm(pts, BODY));
+      L.push((y, x) => {
+        const [R, C] = famCell(y, x);
+        if (R < 0 || R >= 20 || C < 0 || C >= 20) return 0;
+        const v = echoBase[R][C];
+        if (!v || (armL && FAM_ARM_L(R, C)) || (armR && FAM_ARM_R(R, C)) || (legs && R >= 14)) return 0;
+        if (R === 1 && C === 15) return ping ? PING : BODY;      // the antenna tip
+        if (R >= 4 && R <= 13 && C >= 5 && C <= 15) {             // the torso: visor band, eyes, the shading row 33
+          if ((R === 6 || R === 7) && C >= 6 && C <= 14) return isEye(y, x) ? EYE : VISOR;
+          return Math.floor(y) === 33 ? SHADE : BODY;
+        }
+        return v;
+      });
+      return L;
+    }
+    // Side, facing right: torso sprite rows 14..33, cols 15..32; band rows 18..21 from col 24 to the face edge; near eye
+    // cols 26..27, far eye col 31; antenna cols 15..16, stalk rows 10..13, tip rows 8..9.
+    const isSideEye = cellSet([...box(18, 21, 26, 27), ...box(18, 21, 31, 31)]);
+    function side({near = null, far = null, legs = [], ping = false} = {}) {
+      const L = [];
+      if (far) L.push(arm(far, SHADE));
+      for (const pts of legs) L.push(leg(pts));
+      L.push((y, x) => {
+        if (y < 14 || y >= 34 || x < 15 || x >= 33) return 0;
+        const r = Math.floor(y), c = Math.floor(x);
+        if (r >= 18 && r <= 21 && c >= 24) return isSideEye(y, x) ? EYE : VISOR;
+        return r === 33 ? SHADE : BODY;
+      });
+      L.push(rect(10, 14, 15, 17, BODY));
+      L.push(rect(8, 10, 15, 17, ping ? PING : BODY));
+      if (near) L.push(arm(near, BODY));
+      L.push((y, x) => (y >= 18 && y < 22 && x >= 24 && x < 33 ? (isSideEye(y, x) ? EYE : VISOR) : 0));   // the band and eyes over the near arm
+      return L;
+    }
+    // The figure turned theta degrees clockwise (counter clockwise when negative) about the pivot, mirrored when mirror
+    // is minus one: every cell within 34 of the pivot paints the body point its centre covers. Answers [row, col, value]
+    // offsets from the pivot.
+    function turned(fig, theta, mirror = 1) {
+      const t = theta * Math.PI / 180, cs = Math.cos(t), sn = Math.sin(t), out = [];
+      for (let dr = -34; dr < 34; dr++) for (let dc = -34; dc < 34; dc++) {
+        const dy = dr + 0.5, dx = dc + 0.5;
+        const v = paint(fig, P + dy * cs - dx * sn, P + mirror * (dx * cs + dy * sn));
+        if (v) out.push([dr, dc, v]);
+      }
+      return out;
+    }
+    const lowest = cells => Math.max(...cells.map(([r]) => r));
+
+    // Poses, in sprite coordinates. Shoulders front (21, 12) and (21, 36); side near (22, 24) and far (22, 27); side hips
+    // (33, 19.5) and (33, 28.5).
+    const SH_L = [21, 12], SH_R = [21, 36], NEAR = [22, 24], FAR = [22, 27];
+    const V_L = [SH_L, [12, 9.5]], V_R = [SH_R, [12, 38.5]];      // arms up in a V
+    const REST = front(), READY = front({eyes: 'right'});
+    const SALUTE = front({armL: [SH_L, [9.5, 10.5]], eyes: 'happy', ping: true});
+    const PRESENT = ping => front({armL: V_L, armR: V_R, eyes: 'happy', ping});
+    const LOWER = front({armL: [SH_L, [16, 8]], armR: [SH_R, [16, 40]], eyes: 'happy'});
+    const HURDLE = front({armL: V_L, armR: V_R});
+    const STAR = front({armL: [SH_L, [6, 8]], armR: [SH_R, [6, 40]], legs: [[[33, 13.5], [38.5, 9]], [[33, 19.5], [39.5, 14.5]], [[33, 28.5], [39.5, 33.5]], [[33, 34.5], [38.5, 39]]]});
+    const HOP = front({armL: V_L, armR: V_R, eyes: 'happy', ping: true,
+      legs: [[[33, 13.5], [36, 11], [37.5, 13]], [[33, 19.5], [36, 18], [37.5, 20]], [[33, 28.5], [36, 30], [37.5, 28]], [[33, 34.5], [36, 37], [37.5, 35]]]});
+    const TWIST = front({armL: [SH_L, [28, 11.5]], armR: [SH_R, [28, 36.5]], ping: true});   // arms pulled in to turn
+    const LEGS = [[[33, 19.5], [39.5, 19.5]], [[33, 28.5], [39.5, 28.5]]];
+    const LAYOUT = side({legs: LEGS});
+    const STRIDE = [[[33, 19.5], [38.5, 14.5]], [[33, 28.5], [38.5, 33.5]]];
+    const RUN_A = side({near: [NEAR, [28.5, 16]], far: [FAR, [28.5, 34]], legs: STRIDE});
+    const RUN_B = side({near: [NEAR, [28, 28]], far: [FAR, [28, 22]], legs: [[[33, 20.5], [36, 25], [37.5, 21]], [[33, 27.5], [39.5, 27.5]]]});
+    const RUN_C = side({near: [NEAR, [28.5, 33]], far: [FAR, [28.5, 17]], legs: STRIDE});
+    const BENT = [[[33, 19.5], [36, 24], [39.5, 20]], [[33, 28.5], [36, 33], [39.5, 29]]];   // knees forward
+    const SET = side({near: [NEAR, [30, 13]], far: [FAR, [30, 16]], legs: BENT});
+    const REACH = side({near: [NEAR, [8.5, 31]], far: [FAR, [8.5, 34]], legs: LEGS});
+    const HAND = side({near: [NEAR, [5, 30]], far: [FAR, [5, 33]], legs: LEGS});            // longer than the antenna
+    const PIKE = side({near: [NEAR, [6, 30]], far: [FAR, [6, 33]], legs: [[[33, 19.5], [38.5, 25]], [[33, 28.5], [38.5, 34]]]});
+    const LAND = side({near: [NEAR, [25, 36.5]], far: [FAR, [25, 39]], legs: [[[33, 19.5], [36, 25], [38.5, 20]], [[33, 28.5], [36, 34], [38.5, 29]]]});
+
+    // A frame: the mat, effects under, the figures, effects over. A part is a figure at pivot col pc, turned th,
+    // either on the floor (lifted lift rows off it) or with its pivot on row pr.
+    function frameOf(parts, fx = []) {
+      const g = blank();
+      for (let r = FLOOR + 1; r < N; r++) for (let c = 0; c < N; c++) g[r][c] = MAT;
+      for (const f of fx) if (f.under) f.under(g);
+      for (const {fig, th = 0, mir = 1, pc, pr = null, lift = 0} of parts) {
+        const cells = turned(fig, th, mir);
+        const row = pr !== null ? pr : FLOOR - lowest(cells) - lift;
+        for (const [r, c, v] of cells) put(g, row + r, pc + c, v);
+      }
+      for (const f of fx) if (f.over) f.over(g);
+      return g;
+    }
+    // The shadow on the mat's top row, 24 cols on the floor and narrower the higher it flies.
+    const shadow = (pc, lift) => ({shadow: true, under: g => { const w = Math.max(3, Math.round(12 - lift / 2.5)); for (let c = pc - w; c < pc + w; c++) put(g, FLOOR + 1, c, EYE); }});
+    // A dotted trail at radius rad round the pivot from angle a0 to a1 (0 points down, angles run clockwise), where the
+    // feet or hands just were; empty cells only, so it passes behind.
+    const trail = (pr, pc, rad, a0, a1) => ({over: g => {
+      const n = Math.max(2, Math.round(Math.abs(a1 - a0) * Math.PI * rad / 180 / 2.2));
+      for (let k = 1; k < n; k++) {
+        const a = (a0 + (a1 - a0) * k / n) * Math.PI / 180;
+        putEmpty(g, Math.floor(pr + rad * Math.cos(a)), Math.floor(pc - rad * Math.sin(a)), SHADE);
+      }
+    }});
+    // Landing dust either side of the feet: a puff, then the same spread thin and further out.
+    const PUFF = [['.dd..', 'dddd.', 'ddddd'], ['..d.d..', '.d.d.d.', 'd.d.d.d']];
+    const dust = (pc, k) => ({over: g => {
+      for (const s of [-1, 1]) PUFF[k].forEach((line, dr) => [...line].forEach((ch, dc) => {
+        if (ch === 'd') putEmpty(g, FLOOR - PUFF[k].length + 1 + dr, pc + s * (11 + k * 3 + dc) - (s < 0 ? 1 : 0), DUST);
+      }));
+    }});
+    // A kick of dust either side of every patch of the creature on the floor row (the hands, where it plants them).
+    const plant = {over: g => {
+      const row = g[FLOOR], on = c => row[c] >= BODY && row[c] <= SHADE, runs = [];
+      for (let c = 0; c < N; c++) if (on(c) && !(c > 0 && on(c - 1))) { let e = c; while (e + 1 < N && on(e + 1)) e++; runs.push([c, e]); }
+      for (const [a, b] of runs) { putEmpty(g, FLOOR, a - 1, DUST); putEmpty(g, FLOOR, b + 1, DUST); putEmpty(g, FLOOR - 1, a - 2, DUST); putEmpty(g, FLOOR - 1, b + 2, DUST); }
+    }};
+    // Five sparkles round the presenting creature, each a white core that grows amber rays and shrinks again, staggered.
+    const SPARKS = [[14, 8], [6, 28], [16, 52], [36, 2], [28, 56]];
+    const sparkle = k => ({over: g => SPARKS.forEach(([r, c], i) => {
+      const ph = (k + i) % 3;
+      putEmpty(g, r, c, WHITE);
+      if (ph >= 1) for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) putEmpty(g, r + a, c + b, AMBER);
+      if (ph === 2) for (const [a, b] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) putEmpty(g, r + a, c + b, AMBER);
+    })});
+
+    // The frames. F gives every frame that brings no shadow of its own one under its first part.
+    const frames = [];
+    const F = (hold, parts, fx = []) => frames.push({hold, grid: frameOf(parts, fx.some(f => f.shadow) ? fx : [shadow(parts[0].pc, parts[0].lift || 0), ...fx])});
+    // 1. The salute, the run and the hurdle.
+    F(700, [{fig: REST, pc: 20}]);                                 // rest, the loop anchor
+    F(520, [{fig: SALUTE, pc: 20}]);                               // the salute: left arm up, happy eyes, ping
+    F(220, [{fig: READY, pc: 20}]);                                // the eyes slide toward the run
+    F(100, [{fig: RUN_A, th: 10, pc: 21}]);
+    F(100, [{fig: RUN_B, th: 10, pc: 23, lift: 2}]);
+    F(100, [{fig: RUN_C, th: 10, pc: 25}]);
+    F(90, [{fig: HURDLE, pc: 26, lift: 3}], [shadow(26, 3)]);    // the hurdle: arms thrown up, off the floor
+    // 2. The cartwheel: clockwise, 45 degrees a frame, cols 27 to 38; trails behind both hands.
+    for (let i = 0; i <= 8; i++) {
+      const th = i * 45, pc = 27 + Math.round(i * 11 / 8), pr = FLOOR - lowest(turned(STAR, th));
+      const fx = i ? [trail(pr, pc, 20, 131 + th - 45, 131 + th - 8), trail(pr, pc, 20, th - 131 - 45, th - 131 - 8)] : [];
+      if (i === 4) fx.unshift(plant);                              // upside down on both hands; the dust before the trails
+      F(i === 0 || i === 8 ? 130 : i === 4 ? 100 : 90, [{fig: STAR, th, pc}], fx);
+    }
+    // 3. The back handspring: sit back, over the hands, snap down. [figure, angle, pivot col, lift]
+    F(150, [{fig: SET, th: -8, pc: 39}]);
+    let prev = -8;
+    for (const [fig, th, pc, lift] of [[REACH, -55, 37, 5], [REACH, -115, 35, 6], [HAND, -180, 33, 0], [PIKE, -250, 31, 4], [PIKE, -315, 30, 1]]) {
+      const pr = FLOOR - lowest(turned(fig, th)) - lift;
+      F(th === -180 ? 100 : 80, [{fig, th, pc, pr}], [shadow(pc, lift), trail(pr, pc, 16, prev - 4, th + 8), ...(lift ? [] : [plant])]);
+      prev = th;
+    }
+    F(90, [{fig: REACH, th: -6, pc: 29}]);                         // on its feet, arms reaching: the punch
+    // 4. The back layout with a half twist: lift 0.8 t (10 minus t) rows at frame t of 10, the front view upside down at
+    // the apex, mirrored after it.
+    prev = -6;
+    [-36, -72, -108, -144, -180, -216, -252, -288, -324].forEach((th, i) => {
+      const t = i + 1, lift = Math.round(0.8 * t * (10 - t)), pc = 28 - i;
+      const fig = i === 0 ? REACH : i === 4 ? TWIST : LAYOUT, mir = i > 4 ? -1 : 1;
+      F(i === 4 ? 180 : 80, [{fig, th, mir, pc, pr: STAND - lift}], [shadow(pc, lift), trail(STAND - lift, pc, 19, prev + 10, th + 10)]);
+      prev = th;
+    });
+    // 5. The stuck landing, the presentation with sparkles, the hop of joy, the arms coming down.
+    F(160, [{fig: LAND, mir: -1, pc: 20}], [dust(20, 0)]);         // the impact
+    F(320, [{fig: LAND, mir: -1, pc: 20}], [dust(20, 1), sparkle(0)]);   // stuck: held, and the sparkles come
+    for (let k = 1; k <= 3; k++) F(200, [{fig: PRESENT(k === 1), pc: 20}], [sparkle(k)]);
+    F(140, [{fig: HOP, pc: 20, lift: 5}], [shadow(20, 5), sparkle(4)]);
+    F(130, [{fig: PRESENT(false), pc: 20}]);
+    F(160, [{fig: LOWER, pc: 20}]);                                // arms halfway down
+    F(120, [{fig: front({armL: [SH_L, [24, 9]], armR: [SH_R, [24, 39]], eyes: 'happy'}), pc: 20}]);   // nearly down (loops to rest)
+    return {
+      name: 'ECHO · acrobat HD', key: 'echo_acrobat_hd', fwname: 'echo acrobat hd', category: 'Active', size: N,
+      // Big tier, like the mushroom HD cells: 41 frames of 3600 cells are 147600 bytes of firmware table, so it ships
+      // only on boards built with SPLASH_BIG (the 4 inch board, 16 MB layout).
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells, the creature at 2x so it can tumble): a gymnast\'s floor routine in which it salutes the viewer with the left arm up and a ping, runs three steps in a side view (the visor band pushed to the face edge, both eyes in it, the antenna on the back corner), hurdles into a cartwheel that turns its front view clockwise in a star of V arms and split legs 45 degrees a frame across 11 cols with a dust kick on the hand plant, turns to face right for a back handspring over its planted hands, then punches into a back layout with a half twist, nine frames on a parabola 36 degrees apiece and counter clockwise throughout, showing its front view upside down with the antenna lit at the apex 20 rows up for 180 ms before it comes out facing left, sticks the landing facing left with knees bent, a dust puff that spreads and five sparkles that light on the held frame, then presents with both arms up and happy eyes while the sparkles twinkle, hops for joy and lowers its arms where it started, all over a slate mat with a shadow that narrows with height and dotted trails behind the turning limbs; judge whether the side view still reads as this creature, whether the backflip reads as a flip backwards and not a cartwheel, and whether the twist at the apex reads.',
+      // 0 transparent, 1 body, 2 eyes and the shadow, 3 visor, 4 ping (antenna tip), 5 feet, the shading row and the
+      // trails, 6 white (sparkle cores), 7 mat, 8 amber (sparkle rays), 9 dust
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#1f3038', '#e0b25a', '#8e9c9a'],
+      frames,
+    };
+  })();
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -3256,7 +4051,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, echoBreakdanceHd, echoBreakdanceHdB, echoAcrobatHd, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;
