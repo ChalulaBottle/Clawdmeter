@@ -16,6 +16,23 @@ the same text tools/convert_to_c.js writes). A header written before that field
 existed gets the struct put in, and its table rows without a size get 20, the
 lattice they always had.
 
+Tiers: an animation whose JSON says "tier": "big" (tier: 'big' in
+docs/bench/anims.js) is too large for the stock 2.16 board's partition. Its
+palette, frames and holds go inside #ifdef SPLASH_BIG at the end of the block,
+its row inside #ifdef SPLASH_BIG at the end of the table, and the count is
+written twice, the one with the big rows first:
+    #ifdef SPLASH_BIG
+    #define SPLASH_ANIM_COUNT 76
+    #else
+    #define SPLASH_ANIM_COUNT 73
+    #endif
+so every other row keeps its index on every board and a board built without
+SPLASH_BIG (only the waveshare_lcd_4 env defines it) compiles the table it had
+before. The big count comes first because daemon/tests/test_windows_hooks.py
+reads the first define and counts every row. "bench_only" wins over "tier": a
+bench only animation ships on no board. With no big rows the table keeps the
+single define it always had.
+
 Source: tools/echo_anims/*.json (claudepix format) written by
     node tools/bench_to_json.js
 Run:
@@ -32,6 +49,8 @@ END = "// ==== ECHO-ANIMATIONEN ENDE ===="
 CATEGORY_MARK = '"ECHO'   # our rows carry a category starting with ECHO
 DEFAULT_SIZE = 20         # the lattice of every row written before the size field
 PALETTE_MAX = 10          # SPLASH_PALETTE_SIZE; cells index 0..9
+TIERS = ("big",)          # "tier": "big" ships only where SPLASH_BIG is defined
+BIG_IF, BIG_ENDIF = "#ifdef SPLASH_BIG", "#endif"
 
 # Keep identical to TYPEDEF in tools/convert_to_c.js.
 TYPEDEF = """// One animation. frames holds frame_count frames of size by size cells, one
@@ -57,6 +76,13 @@ typedef struct {
 TYPEDEF_RE = re.compile(r"(?://[^\n]*\n)*typedef struct \{\n.*?\n\} splash_anim_def_t;\n", re.S)
 # A table row without a size: name, category, count, palette, frames, holds.
 ROW_WITHOUT_SIZE = re.compile(r'^(\s*\{"[^"]*", "[^"]*", \d+, \w+, \w+, \w+)\},$')
+# The table, with the single count define every generator writes or the pair
+# this script writes when there are big rows (see Tiers above).
+TABLE_RE = re.compile(r"(?:" + re.escape(BIG_IF) + r"\n#define SPLASH_ANIM_COUNT \d+\n#else\n)?"
+                      r"#define SPLASH_ANIM_COUNT (\d+)\n"
+                      r"(?:" + re.escape(BIG_ENDIF) + r"\n)?"
+                      r"static const splash_anim_def_t splash_anims\[SPLASH_ANIM_COUNT\] = \{\n"
+                      r"(.*?)\n\};", re.S)
 
 
 def rgb565(hex_color: str) -> int:
@@ -135,6 +161,9 @@ def main() -> int:
         if d.get("bench_only"):
             print("bench only, not shipped:", d["name"])
             continue
+        if d.get("tier") is not None and d["tier"] not in TIERS:
+            print(f"ERROR: {d['name']}: tier {d['tier']!r} is not one of {', '.join(TIERS)}")
+            return 1
         # category "ECHO ..." marks our rows so a rerun can find and replace them
         cat = d.get("category", "ECHO")
         if not cat.startswith("ECHO"):
@@ -147,15 +176,24 @@ def main() -> int:
     # the kept rows below) or one of ours (dropped here, e.g. the orange Clawd coffee).
     def _as_list(v):
         return [v] if isinstance(v, str) else list(v or [])
+    # A big row exists only where SPLASH_BIG is defined, so it may not take another row's place:
+    # the replaced row would leave every board.
+    big_replacing = [n for n, _, d in anims if d.get("tier") == "big" and _as_list(d.get("replaces"))]
+    if big_replacing:
+        print("ERROR: a big tier animation cannot replace another:", ", ".join(big_replacing))
+        return 1
     replaced_names = {n for _, _, d in anims for n in _as_list(d.get("replaces"))}
     dropped = [n for n, _, _ in anims if n in replaced_names]
     anims = [a for a in anims if a[0] not in replaced_names]
     if dropped:
         print("replaced, not shipped:", ", ".join(dropped))
+    base = [a for a in anims if a[2].get("tier") != "big"]
+    big = [a for a in anims if a[2].get("tier") == "big"]
 
     # Everything is checked and emitted before the header is touched.
     try:
-        emitted = [emit(name, cat, d) for name, cat, d in anims]
+        emitted = [emit(name, cat, d) for name, cat, d in base]
+        emitted_big = [emit(name, cat, d) for name, cat, d in big]
     except ValueError as err:
         print("ERROR:", err)
         return 1
@@ -169,25 +207,28 @@ def main() -> int:
         return 1
     src = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", "", src, flags=re.S)
 
-    m = re.search(r"#define SPLASH_ANIM_COUNT (\d+)\n"
-                  r"static const splash_anim_def_t splash_anims\[SPLASH_ANIM_COUNT\] = \{\n"
-                  r"(.*?)\n\};", src, re.S)
+    m = TABLE_RE.search(src)
     if not m:
         print("ERROR: animation table not found; format changed?")
         return 1
     rows = m.group(2).splitlines()
-    names = {n for n, _, _ in anims}
+    names = {n for n, _, _ in base}
+    big_names = {n for n, _, _ in big}
     # stock rows an ECHO animation replaces (the "replaces" field, docs/bench/anims_replace.js) leave
     # the table; their data arrays stay in the header but nothing references them, so the linker drops them
     replaced = replaced_names
     keep = []
     sized = 0
     for ln in rows:
-        if not ln.strip():
+        # blank lines, and the #ifdef SPLASH_BIG and #endif round the big rows of an earlier run
+        if not ln.strip() or ln.lstrip().startswith("#"):
             continue
         mm = re.match(r'\s*\{"([^"]+)",\s*"([^"]+)"', ln)
         if mm and (mm.group(2).startswith("ECHO") or mm.group(1) in names or mm.group(1) in replaced):
             continue
+        if mm and mm.group(1) in big_names:
+            print(f"ERROR: big tier {mm.group(1)!r} has the name of a row the other boards keep")
+            return 1
         # rows from the other generators that predate the size field: say 20,
         # the lattice they always had, so every row in the table carries one
         rs = ROW_WITHOUT_SIZE.match(ln)
@@ -198,24 +239,43 @@ def main() -> int:
 
     defs = [dd for dd, _ in emitted]
     new_rows = [r for _, r in emitted]
+    big_defs = [dd for dd, _ in emitted_big]
+    big_rows = [r for _, r in emitted_big]
 
     block = (BEGIN + "\n"
              + "// Generated from tools/echo_anims/*.json (docs/bench/anims.js via\n"
              + "// tools/bench_to_json.js). Do not edit by hand; rerun tools/add_echo_anims.py.\n"
-             + "\n".join(defs) + "\n" + END)
+             + "\n".join(defs) + "\n"
+             + (BIG_IF + "\n"
+                + "// The big tier (tier: 'big' in docs/bench/anims.js): boards built with SPLASH_BIG only.\n"
+                + "\n".join(big_defs) + "\n" + BIG_ENDIF + "\n" if big_defs else "")
+             + END)
     total = len(keep) + len(new_rows)
-    table = ("#define SPLASH_ANIM_COUNT " + str(total) + "\n"
-             "static const splash_anim_def_t splash_anims[SPLASH_ANIM_COUNT] = {\n"
-             + "\n".join(keep) + "\n" + "\n".join(new_rows) + "\n};")
+    total_big = total + len(big_rows)
+    if big_rows:   # the count with the big rows first (see Tiers above)
+        count = (f"{BIG_IF}\n#define SPLASH_ANIM_COUNT {total_big}\n#else\n"
+                 f"#define SPLASH_ANIM_COUNT {total}\n{BIG_ENDIF}\n")
+    else:
+        count = f"#define SPLASH_ANIM_COUNT {total}\n"
+    table = (count
+             + "static const splash_anim_def_t splash_anims[SPLASH_ANIM_COUNT] = {\n"
+             + "\n".join(keep) + "\n" + "\n".join(new_rows)
+             + ("\n" + BIG_IF + "\n" + "\n".join(big_rows) + "\n" + BIG_ENDIF if big_rows else "")
+             + "\n};")
     src = src[:m.start()] + block + "\n" + table + src[m.end():]
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(src)
 
-    frames = sum(len(d["frames"]) for _, _, d in anims)
     size_of = {n: lattice(n, d) for n, _, d in anims}
-    kb = sum(len(d["frames"]) * size_of[n] ** 2 for n, _, d in anims) / 1024
-    print(f"{len(anims)} ECHO animations ({frames} frames, {kb:.1f} KB): "
-          + ", ".join(n for n, _, _ in anims) + f" -> SPLASH_ANIM_COUNT {total}")
+    frames = sum(len(d["frames"]) for _, _, d in base)
+    kb = sum(len(d["frames"]) * size_of[n] ** 2 for n, _, d in base) / 1024
+    print(f"{len(base)} ECHO animations ({frames} frames, {kb:.1f} KB): "
+          + ", ".join(n for n, _, _ in base) + f" -> SPLASH_ANIM_COUNT {total}")
+    if big:
+        frames_big = sum(len(d["frames"]) for _, _, d in big)
+        kb_big = sum(len(d["frames"]) * size_of[n] ** 2 for n, _, d in big) / 1024
+        print(f"big tier inside {BIG_IF}: {len(big)} ({frames_big} frames, {kb_big:.1f} KB): "
+              + ", ".join(n for n, _, _ in big) + f" -> SPLASH_ANIM_COUNT {total_big} with SPLASH_BIG")
     fine = [f"{n} ({s} cells)" for n, s in size_of.items() if s != DEFAULT_SIZE]
     if fine:
         print("lattices other than 20: " + ", ".join(fine))

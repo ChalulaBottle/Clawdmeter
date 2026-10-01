@@ -63,7 +63,16 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // Group 0 — idle / sleepy. The ECHO edition's own creatures (tools/add_echo_anims.py)
     // live here too, listed first so they come up in normal rotation and not only on
     // request; names missing from the table are skipped by resolve_group_lists().
-    { "echo idle", "echo mushroom", "echo breathe", "echo wink", "echo coffee", "echo happy", "echo headphones", "echo morning", "echo pizza",
+    // "echo mushroom hd" is big tier (SPLASH_BIG boards only) and takes the dead
+    // "echo breathe" slot there; elsewhere the slot keeps the old name, because the
+    // longer literal alone added 16 bytes to the stock 2.16 binary (2026-09-30).
+    { "echo idle", "echo mushroom",
+#ifdef SPLASH_BIG
+      "echo mushroom hd",
+#else
+      "echo breathe",
+#endif
+      "echo wink", "echo coffee", "echo happy", "echo headphones", "echo morning", "echo pizza",
       "echo doze", "echo breath", "echo blink", "echo winky", "echo done" },
     // Group 1 — normal pace
     { "echo look around", "echo think", "echo loading", "echo eye spin", "fable gaze", "echo glance", "echo ponder", "echo code", "echo bubble", "echo ask" },

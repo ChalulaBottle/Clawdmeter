@@ -13,6 +13,12 @@
  * animation holds back the whole export on purpose: a partial set would drop that animation's
  * row from the firmware table on the next tools/add_echo_anims.py run.
  *
+ * Tiers: an animation with tier 'big' (too large for the stock 2.16 partition) carries
+ * "tier": "big" in its JSON and its _index.json entry; tools/add_echo_anims.py puts its data and
+ * table row inside #ifdef SPLASH_BIG. benchOnly still writes "bench_only": true, which keeps an
+ * animation out of the firmware table on every board. A tier other than 'big' holds back the
+ * export like any other problem.
+ *
  * Usage: node tools/bench_to_json.js [--out DIR]
  */
 const fs = require('fs');
@@ -25,6 +31,7 @@ for (const f of fs.readdirSync(BENCH_DIR).filter(n => /^anims_.*\.js$/.test(n)).
 const PANEL = 480;          // the panel is 480 px square: a lattice must divide it into whole pixel cells
 const SIZE_MAX = 255;       // the firmware table keeps size in one byte (splash_anim_def_t, tools/convert_to_c.js)
 const PALETTE_MAX = 10;     // SPLASH_PALETTE_SIZE in the firmware; cells index 0..9
+const TIERS = ['big'];      // tier 'big': firmware rows inside #ifdef SPLASH_BIG (tools/add_echo_anims.py)
 
 const args = process.argv.slice(2);
 const i = args.indexOf('--out');
@@ -42,6 +49,7 @@ function problems(a, size, frames) {
     return out;
   }
   if (a.palette.length > PALETTE_MAX) out.push(`palette has ${a.palette.length} colours, the firmware takes ${PALETTE_MAX}`);
+  if (a.tier !== undefined && !TIERS.includes(a.tier)) out.push(`tier ${JSON.stringify(a.tier)} is not one of ${TIERS.join(', ')}`);
   frames.forEach((f, k) => {
     const g = f.grid;
     const ok = Array.isArray(g) && g.length === size && g.every(row => Array.isArray(row) && row.length === size);
@@ -80,8 +88,11 @@ for (const a of BENCH.anims) {
     size,                      // lattice: frames are size x size cells
     ...(a.replaces ? { replaces: a.replaces } : {}),   // a stock animation this one takes the place of
     // bench and website only: exported for the GIFs, skipped by tools/add_echo_anims.py, so the
-    // firmware table stays the same on every board (the stock 2.16 partition has no room for big variants)
+    // firmware table stays the same on every board
     ...(a.benchOnly ? { bench_only: true } : {}),
+    // big tier: in the firmware table only where SPLASH_BIG is defined (the stock 2.16 partition
+    // has no room for big variants); bench_only wins over it
+    ...(a.tier ? { tier: a.tier } : {}),
     frame_count: a.frames.length,
     frames,
   } });
@@ -96,8 +107,8 @@ const index = [];
 for (const { a, size, json } of exported) {
   fs.writeFileSync(path.join(OUT, a.key + '.json'), JSON.stringify(json, null, 1));
   index.push({ filename: json.filename, name: json.name, category: json.category, frame_count: json.frame_count, palette_size: a.palette.length,
-               ...(json.bench_only ? { bench_only: true } : {}) });
-  console.log(`${a.key}: ${a.frames.length} frames, palette ${a.palette.length}, ${size} x ${size} cells`);
+               ...(json.bench_only ? { bench_only: true } : {}), ...(json.tier ? { tier: json.tier } : {}) });
+  console.log(`${a.key}: ${a.frames.length} frames, palette ${a.palette.length}, ${size} x ${size} cells${json.tier ? `, tier ${json.tier}` : ''}`);
 }
 fs.writeFileSync(path.join(OUT, '_index.json'), JSON.stringify(index, null, 2));
 console.log(`wrote ${index.length} animations to ${OUT}`);

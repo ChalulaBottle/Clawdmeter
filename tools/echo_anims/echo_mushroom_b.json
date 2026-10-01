@@ -16,7 +16,7 @@
   "#e0665a"
  ],
  "size": 30,
- "bench_only": true,
+ "tier": "big",
  "frame_count": 77,
  "frames": [
   {

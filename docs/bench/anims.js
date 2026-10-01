@@ -8,6 +8,10 @@
 // size (optional on an animation, default BENCH.G = 20): every frame is size x size cells and the
 // 480 px panel draws each cell at 480 divided by size, so 40 gives 12 px cells and 60 gives 8 px
 // cells, both exact. BENCH.sizeOf(anim) reads it with the default applied.
+// tier (optional): 'big' marks an animation too large for the stock 2.16 board's partition. The bench and the GIFs
+// show it like any other; tools/add_echo_anims.py writes its firmware data and table row inside #ifdef SPLASH_BIG,
+// which only the waveshare_lcd_4 env defines (firmware/platformio.ini). benchOnly: true keeps an animation out of the
+// firmware table on every board and wins over tier.
 // upscale(grid, k) repeats every cell k times across and down: a 60 cell animation starts from
 // upscale(echoBase, 3), the creature at 3x exactly, and paints its fine detail on top with set().
 // The posing helpers (blink, shut, echoPing, echoGlitch, skinFrame) stay on the 20 cell lattice.
@@ -2746,12 +2750,501 @@
     F(500, rest);                                                          // rest (loops to frame 0)
     return {
       name: 'ECHO · mushroom (big sky)', key: 'echo_mushroom_b', fwname: 'echo mushroom b', category: 'Idle', size: N,
-      // Bench and website only: 69 KB of frames on the 30 lattice, and the stock 2.16 board's
-      // partition overflowed by 34 KB with it in the table (2026-09-30). Lift this once that env
-      // moves to the 16 MB layout.
-      benchOnly: true,
+      // Big tier: 69 KB of frames on the 30 lattice, so it ships only on boards built with
+      // SPLASH_BIG (the 4 inch board, 16 MB layout); the stock 2.16 board's partition overflowed
+      // by 34 KB with it in the table (2026-09-30).
+      tier: 'big',
       intent: 'Proposal, 30 cell lattice (16 px cells, the creature at 1x and two thirds of its usual size so the sky can fill the panel): a red spotted mushroom rises out of the ground beside the creature, which glances at it, opens a mouth and swallows it as it hops in over four frames, shrinking on the last two, chews and gulps; its eyes grow into round white eyeballs four cells across, set in a visor band grown to their height with an open grin under them; the pupils wobble a step apart while the eyeballs pulse between round and tall, then roll up together as it rises onto tiptoe, and the sky opens out of the zenith above it as a growing circle with a white rim (deep blue over light blue with one checker row between, an aqua glow on the horizon), two near clouds drifting a cell every 400 ms up high and two far ones a cell every 800 ms passing behind it; after 28 ticks of gazing, pupils up with a glance right and a glance left every six ticks, the sky closes back into the zenith, the eyes shrink back and it rests with happy eyes; judge whether it still reads as ECHO at two thirds size, whether the eyes read as delighted rather than startled, and whether the sky is beautiful enough to be the point.',
       palette: [...echo.palette.slice(0, 6), '#3b8bff', '#7cc4ff', '#eafffb', '#e0665a'],   // 6 sky, 7 light sky, 8 cloud white, 9 mushroom red
+      frames,
+    };
+  })();
+
+  // 3x. Mushroom HD, the dilated pupils (operator, 2026-09-30, after summon demon HD: "very good, wow, really detailed";
+  // do the same for the mushroom, and the eyes become large black pupils, not wide white eyeballs). The echo mushroom
+  // story on a 60 cell lattice, 8 px cells on the 480 panel, built the way summon demon HD is: every pose is a 20 cell
+  // pose repeated exactly 3 times across and down, so the silhouette, the antenna and the legs are the family's own, and
+  // the new detail is painted on top at 8 px; the sky, like the summon ground, takes only empty cells, so it passes behind.
+  //   mushroom  a red toadstool with white spots on a white stem sprouts out of the ground under the left hand, pops a
+  //             row clear and lands; the eyes slide to it and the antenna pings.
+  //   eat       four frames: the mouth opens round and the mushroom hops up past the hand, it goes in small, a chomp with
+  //             the eyes shut happy, a gulp (the torso bobs a row onto its legs) with a ping.
+  //   dilate    the slits open round and the pupils dilate frame by frame, 6, 10, 12 and 14 cells across, the white socket
+  //             a frame ahead of the black (10, 14, 16, 16 across), so the ring stays 2 cells while the eyes grow and then
+  //             the black eats it down to one. Each socket ends 16 across (rows 17..32, cols 15..30 and 32..47), the visor
+  //             band grows to their height across the head, so it frames them like goggles, and an open grin with a red
+  //             tongue and two rosy cheeks comes up under them. One small white highlight sits high on the left of each eye.
+  //   wiggle    the pupils drift round a small loop, a cell each way, the right eye a step behind the left; the highlight
+  //             is fixed to the socket, so it stays put while the pupil moves and, against the pupil, slides the opposite
+  //             way; the torso sways a cell each way on planted legs.
+  //   sky       rises from the horizon (row 50, where the feet stand) in four frames with a soft dithered edge: deep blue
+  //             over light blue with three tone bands between; two near clouds high up and two far ones low at the sides,
+  //             each a white lit top over a light blue belly, drift left at two speeds on the sky clock (the holds summed
+  //             from the sky's first frame, so a long hold and a short one drift alike).
+  //   gaze      the dominant state: the face tips back a row, the pupils roll up and keep drifting round the same small
+  //             loop at the top of the eye, its lower half held on the middle row so they never sink back to level,
+  //             the sway slows, the clouds keep drifting, one ping.
+  //   back      the sky sinks below the horizon, the pupils shrink back to the slits, happy eyes and a ping, rest.
+  // Palette: 0..5 are the ECHO palette unchanged; 6 white (eye ring, highlight, cloud tops, spots, stem), 7 mushroom red
+  // (cap, tongue, cheeks), 8 sky blue, 9 light sky (the lower sky, cloud bellies). Index 6 is not ping here, so nothing
+  // in it goes through echoGlitch. One closure, so echoMushroomHd is the only name this adds to the scope.
+  const echoMushroomHd = (() => {
+    const N = 60, K = 3;                                           // lattice; a 20 cell pose repeated K times across and down
+    const BODY = 1, EYE = 2, VISOR = 3, WHITE = 6, RED = 7, SKY = 8, LIGHT = 9;
+    // Constants the cell is judged on.
+    const HIPS = 41;                                               // torso rows 0..41 sway and bob; the legs (42..50) stay planted
+    const HORIZON = 50;                                            // last sky row, where the feet stand; rows 51..59 stay black
+    const EYE_TOP = 17, EYE_COLS = [22.5, 39.5];                   // top row of every socket; eye centres, mirrored about col 31
+    const SOCKET = 16, PUPIL = 14;                                 // cells across at full dilation: a one cell white ring
+    const DILATE = [[10, 6], [14, 10], [16, 12], [16, 14]];        // socket and pupil across, frame by frame: rings 2, 2, 2, 1
+    const CONSTRICT = [[16, 12], [12, 8]];                         // and on the way back, before the slits
+    const LOOP = [[-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1]];   // pupil drift [dy, dx], clockwise from the top
+    const UP_LOOP = LOOP.map(([dy, dx]) => [Math.min(dy, 0) - 2, dx]);   // rolled up two cells, the lower half held level
+    const STEP = 150, GAZE = 400, SKY_STEP = 180;                  // ms: a pupil step level, a gaze frame, a rise or set frame
+    const NEAR_MS = 400, FAR_MS = 800;                             // ms a cell of drift: the near clouds, the far clouds
+    const DEEP_TO = 20, LIGHT_FROM = 33;                           // deep blue rows 0..20, three tone bands 21..32, light 33..50
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const copy = g => g.map(row => row.slice());
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+    // Sprites are rows of letters: r red, w white, k dark, s light blue; a dot leaves the cell alone. Nothing is ever
+    // stamped below the horizon, so the ground stays black and a sprite can rise out of it.
+    const INK = {r: RED, w: WHITE, k: EYE, s: LIGHT};
+    const stamp = (g, art, r0, c0) => {
+      art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.' && r0 + dr <= HORIZON) put(g, r0 + dr, c0 + dc, INK[ch]); }));
+      return g;
+    };
+
+    // The creature: the 20 cell pose at 3x.
+    const pose = (ping = false) => upscale(echoPing(ping), K);
+    // The torso (antenna, head and arms, rows 0..HIPS) dx cells across and dy rows down; the legs stay where they are.
+    function torso(g, dx, dy = 0) {
+      if (!dx && !dy) return g;
+      const b = blank();
+      for (let r = HIPS + 1; r < N; r++) b[r] = g[r].slice();
+      for (let r = 0; r <= HIPS; r++) for (let c = 0; c < N; c++) if (g[r][c]) put(b, r + dy, c + dx, g[r][c]);
+      return b;
+    }
+    // The family's visor band (rows 18..23, cols 18..44), plain.
+    const band = g => { const b = copy(g); for (let r = 18; r <= 23; r++) for (let c = 18; c <= 44; c++) b[r][c] = VISOR; return b; };
+    // The family's slit eyes, 3 x 6 each in the band, slid dx cells along it.
+    const slits = (g, dx) => { const b = band(g); for (let r = 18; r <= 23; r++) for (const c0 of [21, 39]) for (let c = c0; c < c0 + 3; c++) b[r][c + dx] = EYE; return b; };
+    // Shut and smiling: an arch 9 x 3 over each eye's place, in the band.
+    const ARCH = ['..kkkkk..', '.kk...kk.', 'kk.....kk'];
+    const arches = g => stamp(stamp(band(g), ARCH, 19, 18), ARCH, 19, 36);
+    // Mouths, centred on col 31: open to eat (rows 29..34), a shut smile (rows 31..32 under the slits, 35..36 under the
+    // round eyes), and the open grin with a red tongue under the round eyes (rows 34..40).
+    const MOUTH_O = ['..kkk..', '.kkkkk.', 'kkkkkkk', 'kkkkkkk', '.kkkkk.', '..kkk..'];
+    const SMILE = ['k.......k', '.kkkkkkk.'];
+    const GRIN = ['k...........k', 'kk.........kk', 'kkkkkkkkkkkkk', '.kkkkkkkkkkk.', '..kkkrrrkkk..', '...kkrrrkk...', '.....kkk.....'];
+    const CHEEK = ['.rr.', 'rrrr'];                                // rosy, beside the grin while the pupils are huge
+    const mouth = (g, art, r0) => stamp(copy(g), art, r0, 31 - (art[0].length - 1) / 2);
+
+    // The trip eyes.
+    // A disc d cells across round (cy, cx), cell centres; a little over d squared over 4 so the rims come out round.
+    const disc = (r, c, cy, cx, d) => (r - cy) ** 2 + (c - cx) ** 2 <= d * d / 4 + d / 4;
+    const SHINE = [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 1]];   // the highlight, six cells
+    const SHINE_S = [[0, 0], [0, 1], [1, 0]];                        // the same while the pupil is small
+    // The trip face on pose g. The slits and the old band go back to body; the band grows to the sockets' height and
+    // width; each eye is a white socket `sock` across with a black pupil `pup` across, offset [dy, dx] from the middle and
+    // clipped a cell inside the socket, so a white ring always shows; then the highlight, placed by the socket and the
+    // pupil's size only (never by the offset), so it stays put while the pupil drifts; then the cheeks and the mouth.
+    // lift raises the whole face that many rows: the head tipping back.
+    function trip(g, sock, pup, offs, {lift = 0, mouthArt = GRIN, mouthRow = 34} = {}) {
+      const b = copy(g);
+      for (let r = 18; r <= 23; r++) for (let c = 18; c <= 44; c++) b[r][c] = BODY;
+      const top = EYE_TOP - lift, cy = top + sock / 2 - 0.5;
+      const left = EYE_COLS[0] - sock / 2 + 0.5, right = EYE_COLS[1] + sock / 2 - 0.5;
+      for (let r = Math.min(18, top); r <= Math.max(23, top + sock - 1); r++) for (let c = Math.min(18, left); c <= Math.max(44, right); c++) b[r][c] = VISOR;
+      EYE_COLS.forEach((cx, k) => {
+        const inS = (r, c) => disc(r, c, cy, cx, sock);
+        const inner = (r, c) => inS(r - 1, c) && inS(r + 1, c) && inS(r, c - 1) && inS(r, c + 1);
+        const [dy, dx] = offs[k];
+        for (let r = top; r < top + sock; r++) for (let c = cx - sock / 2 + 0.5; c <= cx + sock / 2 - 0.5; c++) {
+          if (inS(r, c)) b[r][c] = inner(r, c) && disc(r, c, cy + dy, cx + dx, pup) ? EYE : WHITE;
+        }
+        const hr = Math.round(cy - 0.2 * pup), hc = Math.round(cx - 0.2 * pup);
+        for (const [i, j] of (pup >= 10 ? SHINE : SHINE_S)) b[hr + i][hc + j] = WHITE;
+      });
+      if (pup === PUPIL) for (const c0 of [17, 42]) stamp(b, CHEEK, 34 - lift, c0);
+      return stamp(b, mouthArt, mouthRow - lift, 31 - (mouthArt[0].length - 1) / 2);
+    }
+    const level = [[0, 0], [0, 0]];
+
+    // The mushroom.
+    const MUSH = ['....rrrrr....', '..rrrwwrrrr..', '.rrrwwwrrrrr.', 'rrrrrwrrrwwrr', 'rwwrrrrrrwwrr', 'rwwrrrrwrrrrr', '.rrrrrrrrrrr.',
+                  '....wwwww....', '....wwwww....', '...wwwwwww...', '....wwwww....', '....wwwww....', '...wwwwwww...'];   // 13 x 13
+    const MUSH_S = ['..rrr..', '.rrwrr.', 'rrrrrwr', '.rrrrr.', '..www..', '..www..'];                                 // sprouting, 7 x 6
+    const MUSH_M = ['...rrr...', '.rrrwwrr.', 'rrwrrrrrr', 'rwwrrrwrr', '.rrrrrrr.', '...www...', '...www...', '..wwwww..'];   // in flight, 9 x 8
+    const MUSH_T = ['.rrr.', 'rrwrr', '..w..'];                                                                       // at the mouth, 5 x 3
+
+    // The sky.
+    // The gradient: deep blue down to DEEP_TO, light blue from LIGHT_FROM, and between them three tone bands of light cells
+    // in a quarter, a half and three quarters of the cells (staggered dots, a checker, the dots inverted), so the light
+    // thickens in steps toward the horizon. A smooth ramp at 8 px reads as noise; even steps read as a gradient.
+    const TONES = [(r, c) => (c + 2 * (r % 2)) % 4 === 0, (r, c) => (r + c) % 2 === 0, (r, c) => (c + 2 * (r % 2)) % 4 !== 0];
+    const TONE_ROWS = (LIGHT_FROM - DEEP_TO - 1) / TONES.length;   // rows a band
+    const skyCell = (r, c) => (r <= DEEP_TO ? SKY : r >= LIGHT_FROM ? LIGHT : TONES[Math.floor((r - DEEP_TO - 1) / TONE_ROWS)](r, c) ? LIGHT : SKY);
+    // Clouds: a white lit top over a light blue belly, all in the deep blue rows. The near two cross high up; the far two,
+    // small and slower, sit low enough to pass behind the head and show at the sides.
+    const CLOUDS = [
+      {row: 1, col: 34, ms: NEAR_MS, art: ['.......www........', '....wwwwwwww.www..', '..wwwwwwwwwwwwwww.', '.wwwwwwwwwwwwwwwww', 'wwwwwwwwwwwwwwwwww', 'ssssssssssssssssss', '.ssssssssssssssss.']},
+      {row: 6, col: 8, ms: NEAR_MS, art: ['...www......', '.wwwwww.www.', 'wwwwwwwwwwww', 'ssssssssssss', '.ssssssssss.']},
+      {row: 14, col: 52, ms: FAR_MS, art: ['..ww...', '.wwwww.', 'sssssss']},
+      {row: 18, col: 6, ms: FAR_MS, art: ['...www...', '.wwwwwww.', 'sssssssss']},
+    ];
+    // Left col of a cloud w wide at sky time t: a cell further left every ms, back in at the right once wholly off the left.
+    const cloudCol = (w, c0, ms, t) => { const span = N + w; return ((((c0 - Math.floor(t / ms) + w) % span) + span) % span) - w; };
+    function skyLayer(t) {
+      const s = blank();
+      for (let r = 0; r <= HORIZON; r++) for (let c = 0; c < N; c++) s[r][c] = skyCell(r, c);
+      for (const {row, col, ms, art} of CLOUDS) stamp(s, art, row, cloudCol(art[0].length, col, ms, t));
+      return s;
+    }
+    // The sky behind g at sky time t, risen to row `front` (0: all of it). Only empty cells take it, so the creature stays
+    // in front; the two rows over the front take every other cell and every fourth, a soft edge.
+    function withSky(g, t, front) {
+      const s = skyLayer(t), b = copy(g);
+      for (let r = 0; r <= HORIZON; r++) for (let c = 0; c < N; c++) {
+        if (b[r][c]) continue;
+        const d = front - r;
+        if (d <= 0 || (d === 1 && (r + c) % 2 === 0) || (d === 2 && (c + 2 * r) % 4 === 0)) b[r][c] = s[r][c];
+      }
+      return b;
+    }
+
+    // The frames.
+    const frames = [], F = (hold, grid) => frames.push({hold, grid});
+    // 1. The mushroom sprouts under the left hand and the eyes find it.
+    F(900, pose());                                                                     // rest, the loop anchor
+    F(130, stamp(pose(), MUSH_S, 45, 4));                                               // a sprout breaks the ground
+    F(110, stamp(pose(), MUSH, 37, 1));                                                 // full size, a row clear: pop
+    F(240, stamp(slits(pose(true), -3), MUSH, 38, 1));                                  // it lands; the eyes slide to it, ping
+    F(560, stamp(slits(pose(), -3), MUSH, 38, 1));
+    // 2. It eats it: four frames.
+    F(140, stamp(mouth(slits(pose(), -2), MOUTH_O, 29), MUSH_M, 25, 13));               // the mouth opens, it hops up past the hand
+    F(120, stamp(mouth(slits(pose(), 0), MOUTH_O, 29), MUSH_T, 30, 29));                // and goes in, small
+    F(220, mouth(arches(pose()), SMILE, 31));                                           // chomp, the eyes shut happy
+    F(300, torso(mouth(slits(pose(true), 0), SMILE, 31), 0, 1));                        // gulp: the torso bobs a row, ping
+    // 3. The pupils dilate, the socket a frame ahead of the black; the grin and the cheeks come up on the last.
+    DILATE.forEach(([sock, pup], i) => {
+      const last = i === DILATE.length - 1;
+      F(last ? 220 : 100 + 5 * i, trip(pose(last), sock, pup, level, last ? {} : {mouthArt: SMILE, mouthRow: 35}));
+    });
+    // 4. The wiggle: the pupils drift round the loop, the right eye a step behind; the torso sways a cell each way.
+    const SWAY = [0, 0, 1, 1, 0, 0, -1, -1];
+    for (let i = 0; i < 8; i++) F(STEP, torso(trip(pose(), SOCKET, PUPIL, [LOOP[i], LOOP[(i + 7) % 8]]), SWAY[i]));
+    // 5. The sky rises from the horizon while the pupils roll up and the face tips back: [front, left pupil, right pupil,
+    // sway, lift] a frame.
+    let t = 0;                                                                          // the sky clock
+    const S = (hold, g, front) => { F(hold, withSky(g, t, front)); t += hold; };
+    const RISE = [[38, [-1, 0], [-1, -1], 0, 0], [25, [-2, 0], [-2, -1], 1, 0], [12, [-3, 0], [-2, 0], 1, 1], [0, [-3, 0], [-3, 0], 0, 1]];
+    for (const [front, pl, pr, dx, lift] of RISE) S(SKY_STEP, torso(trip(pose(), SOCKET, PUPIL, [pl, pr], {lift}), dx), front);
+    // 6. The gaze: pupils up, drifting round the top of the eye; the sway slows; one ping.
+    const SWAY_SLOW = [0, -1, -1, -1, 0, 1, 1, 1];
+    for (let i = 0; i < 8; i++) S(GAZE, torso(trip(pose(i === 4), SOCKET, PUPIL, [UP_LOOP[i], UP_LOOP[(i + 7) % 8]], {lift: 1}), SWAY_SLOW[i]), 0);
+    // 7. The sky sinks back below the horizon as the pupils come level, the pupils shrink, happy eyes, rest.
+    const SET = [[12, [-2, 0], 1], [25, [-1, 0], 0], [38, [0, 0], 0]];
+    for (const [front, p, lift] of SET) S(SKY_STEP, trip(pose(), SOCKET, PUPIL, [p, p], {lift}), front);
+    for (const [sock, pup] of CONSTRICT) F(110, trip(pose(), sock, pup, level, {mouthArt: SMILE, mouthRow: 35}));
+    F(120, mouth(pose(), SMILE, 31));                                                   // the slits again
+    F(700, mouth(arches(pose(true)), SMILE, 31));                                       // happy eyes, antenna ping (loops to rest)
+    return {
+      name: 'ECHO · mushroom HD', key: 'echo_mushroom_hd', fwname: 'echo mushroom hd', category: 'Idle', size: N,
+      // Big tier, like echo mushroom b: the firmware table keeps size x size bytes a frame, so this is 40 frames of
+      // 3600 bytes (144 KB), and it ships only on boards built with SPLASH_BIG (the 4 inch board, 16 MB layout); the
+      // stock 2.16 partition overflowed by 34 KB with a 69 KB animation in the table (2026-09-30).
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells, the creature at 3x as in summon demon HD). A red spotted toadstool sprouts under the left hand, pops and lands, the eyes slide to it and the antenna pings; in four frames the mouth opens round, the mushroom hops up past the hand and goes in, a chomp with the eyes shut happy and a gulp; then the slits open round and the pupils dilate frame by frame, 6, 10, 12 and 14 cells across, until only a one cell white ring is left round each, in a visor band grown round the eyes like goggles, with one small white highlight high on the left of each eye, an open grin with a red tongue and rosy cheeks; for 1.2 s the pupils drift round a small loop a cell each way, the right eye a step behind, while the highlight stays put (so against the pupil it slides the opposite way) and the torso sways a cell each way on planted legs; then a sky of two blues rises from the horizon behind it (deep over light, three tone bands between) with two near and two far clouds, white lit tops over light blue bellies, drifting left at 400 and 800 ms a cell, the face tips back a row and the pupils roll up and keep drifting round the top of the eye for 3.2 s, before the sky sinks back, the pupils shrink to the slits and it rests with happy eyes; judge whether the huge black pupils read as delighted rather than scary, whether the band still reads as the visor, and whether it is still this creature.',
+      palette: [...ECHO_PALETTE.slice(0, 6), '#eafffb', '#e0665a', '#3b8bff', '#7cc4ff'],   // 6 white, 7 mushroom red, 8 sky, 9 light sky
+      frames,
+    };
+  })();
+
+  // 3x. Mushroom HD, sky bloom (faithful): echoMushroom's story on the 60 cell lattice (size 60, 8 px cells on the 480
+  // panel), built the way summon HD is built. Every creature pose is a 20 cell pose made with the family's own helpers
+  // (echoPing, eyesToward, squint, echoBlinkFrame) and repeated exactly 3 times across and down, so the silhouette, the
+  // antenna and the resting eyes are the family's own; the new detail lives in front of it (the mushroom, the mouths,
+  // the big eyes, the grin) and behind it (the sky and the clouds, painted only on empty cells). A shading row in the
+  // feet teal under the torso and under each arm gives the body a second tone without moving its outline.
+  // The eyes (operator, 2026-09-30: not wide white eyeballs): each big eye is a round disc 14 cells across in a visor
+  // band grown to the whole face (rows 15..30 while level, cols 15..47: a row of band over and under the eyes, a column
+  // at each edge and three between them), filled by a black pupil 12 cells across out to a white ring one cell thick,
+  // with one 2 x 2 white highlight at the top that never moves inside the eye. The pupils drift a cell each way round
+  // a small eight point loop, the right eye the mirror of the left so they cross and uncross, and the ring stays one
+  // cell on the near side and fattens on the far side under the still highlight, so the drift reads.
+  // The story and its timing are echoMushroom's, frame for frame (57 frames, 12.5 s):
+  //   sprout  a white nub breaks the ground left of the creature, a little toadstool, then the whole one: a domed red
+  //           cap with white spots over white gills on a stem shaded light blue; the eyes find it and the antenna pings.
+  //   eat     a round mouth opens and the toadstool hops up past the left arm, across the chest and into the mouth,
+  //           smaller every hop, then the last red bite; three chews with the eyes squinting over a closed smile, a
+  //           gulp, a blink.
+  //   trip    the eyes pop round with a ping, pupils 8 cells across, overshoot square with the pupils dilated to 12 as
+  //           the sky opens out of the eyes, and settle round, still 12; then for 2.4 s the pupils run the eight point
+  //           loop twice, the whole creature sways three cells each way and an open grin with a red tongue laughs under
+  //           the band; once a turn the antenna pings (the throb: the pupils are at 12 already).
+  //   gaze    the head tips back (eyes, band and grin rise three rows, the head's top row stays body so the antenna
+  //           never stands on the band), the pupils roll up two rows to the top of the eyes and look slowly round it for
+  //           4 s, the sway slowed, the antenna pinging at each end of the look.
+  //   back    the head comes level, the sky folds back into the eyes, the pupils shrink, the eyes close down to the
+  //           family's own, a ping, a blink, rest.
+  // The sky fills rows 0..50 (rows 51..59 stay panel black, the ground): deep blue to row 8, a 4 x 4 ordered dither
+  // through rows 9..17, light blue below. It opens as a disc round the bridge between the eyes with a rim of ping and
+  // white. The clouds drift left at two speeds on the sky clock (the holds summed from the sky's first frame), so a long
+  // hold and a short one drift alike: a big near cumulus up high at 150 ms a cell, white with a light blue rim and
+  // underside, and two far ones at 240 ms a cell, a small hazy one up high and a low bun that starts behind the left
+  // hand; a cloud that leaves the left edge comes back in at the right.
+  // Index 6 is white here (eye rings, highlights, clouds, spots, gills, stem), not the family's duplicate ping, so no
+  // frame goes through echoGlitch. Big tier, like echoMushroomB: 57 frames of 3600 cells are 205 KB of firmware
+  // table, so it ships only on boards built with SPLASH_BIG; the stock 2.16 partition already overflowed by 34 KB
+  // with that cell's 69 KB in it (2026-09-30).
+  // One closure, so echoMushroomHdB is the only name it adds to this scope; list it in BENCH.anims or the bench and
+  // the export never see it.
+  const echoMushroomHdB = (() => {
+    const N = 60, K = 3;                                           // the lattice; a 20 cell pose lands at 3x
+    const EYE = 2, VISOR = 3, PING = 4, SHADE = 5, WHITE = 6, RED = 7, SKY = 8, LIGHT = 9;   // 1 is the body
+    // Constants: 60 cells of 8 px; eye 14, pupil 12 (pop 8; overshoot and throb 12 as well), ring 1, highlight 2 x 2; drift 1 cell round an eight point loop, 150 ms a step, 1.2 s a turn; gaze rolled up 2 rows, 330 ms a step; sway 3 cells; clouds 150 and 240 ms a cell; sky rows 0..50.
+    const EYE_D = 14, PUPIL_D = 12, POP_EYE_D = 10, POP_PUPIL_D = 8, OVER_PUPIL_D = 12, THROB_D = 12;
+    const STEP = 150, STARE = 330, NEAR_MS = 150, FAR_MS = 240;
+    const TOP = 16, TOP_UP = 13;                                   // top row of the eye boxes: level, head tipped back
+    const EYE_C0 = [16, 33];                                       // left col of each 14 x 14 eye box: cols 16..29, 33..46
+    const SKY_BOTTOM = 50, DEEP_TO = 8, LIGHT_FROM = 18;           // sky rows; deep blue to row 8, light from row 18
+    const BLOOM = [15, 24, 33], CR = 22.5, CC = 31;                // the sky disc's radius as it opens, and its centre
+    // The drift loop: the pupil's centre off the eye's centre, eight points clockwise from the top (each side and the
+    // corner after it), one step on each, so a turn takes 1.2 s as echoMushroom's ring does and the pupil moves against
+    // the eye on every step; the right eye mirrors the columns. With the pupil 12 across in an eye of 14 the corners
+    // cost nothing: the pupil still covers the still highlight at every point and the ring never breaks.
+    const LOOP = [[-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1]];
+    const SWAY8 = [0, -2, -3, -2, 0, 2, 3, 2];                     // cells across per loop step: 1.2 s a sway
+    // The gaze, rolled up two rows: echoMushroom's look round the top of the ring (its ring positions 1, 0, 7 and 2) as
+    // offsets, the pupils pressed to the top of the ring, both eyes the same way, and the slower sway, 4 s.
+    const LOOK = {1: [-2, 1], 0: [-2, -1], 7: [-2, -2], 2: [-2, 2]};
+    const SCAN12 = [1, 1, 0, 0, 7, 7, 0, 0, 1, 1, 2, 2];
+    const SWAY12 = [0, -1, -2, -3, -2, -1, 0, 1, 2, 3, 2, 1];
+    // Pixel circles: the radius each diameter is drawn with (cells whose centres lie within it of the box centre).
+    const RAD = {6: 3, 8: 4, 10: 5, 12: 6, 14: 6.9};
+    // The highlight: cells off the eye's centre, the top of the pupil. Kept where every drift, roll and throb leaves
+    // it wholly inside the pupil, so it never touches the ring.
+    const HL = [[-2.5, -0.5], [-2.5, 0.5], [-1.5, -0.5], [-1.5, 0.5]];
+    const HL_POP = [[-1.5, -0.5], [-1.5, 0.5], [-0.5, -0.5], [-0.5, 0.5]];
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const put = (g, r, c, v) => { if (r >= 0 && r < N && c >= 0 && c < N) g[r][c] = v; return g; };
+    const copy = g => g.map(row => row.slice());
+    const shift = (g, dr, dc) => {
+      if (!dr && !dc) return g;
+      const b = blank();
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (g[r][c]) put(b, r + dr, c + dc, g[r][c]);
+      return b;
+    };
+    // Sprites in letters: R red, W white, L light blue, D dark; '.' leaves the cell alone.
+    const INK = {R: RED, W: WHITE, L: LIGHT, D: EYE};
+    const stamp = (g, spr, r0, c0) => {
+      const b = copy(g);
+      spr.forEach((line, dr) => [...line].forEach((ch, dc) => { if (ch !== '.') put(b, r0 + dr, c0 + dc, INK[ch]); }));
+      return b;
+    };
+
+    // ---- the creature: a 20 cell pose at 3x, then the shading rows ----
+    // The torso's last row and the underside of each arm, recoloured only where they are body, so the outline stays.
+    const SHADE_ROWS = [[41, 15, 47], [29, 12, 14], [29, 48, 50], [32, 9, 11], [32, 51, 53]];
+    const body = pose => {
+      const b = upscale(pose, K);
+      for (const [r, c0, c1] of SHADE_ROWS) for (let c = c0; c <= c1; c++) if (b[r][c] === 1) b[r][c] = SHADE;
+      return b;
+    };
+
+    // ---- the big eyes ----
+    const round = d => (y, x) => y * y + x * x <= RAD[d] * RAD[d];
+    const squircle = d => (y, x) => (Math.abs(y) / (d / 2)) ** 4 + (Math.abs(x) / (d / 2)) ** 4 <= 1;
+    // One eye: a disc d across in the box at (r0, c0), white, with a black pupil p across whose centre sits (dr, dc) off
+    // the eye's centre. Only cells whose four neighbours are all eye can take pupil, so the white ring is never broken
+    // (at its thinnest it is a one cell line joined corner to corner, as pixel outlines are) and a pupil pushed to the
+    // rim flattens against it; then the highlight, fixed in the box.
+    function eye(b, r0, c0, d, p, dr, dc, shape, hl) {
+      const h = (d - 1) / 2, inEye = (r, c) => shape(r - h, c - h), R2 = RAD[p] * RAD[p];
+      const inner = (r, c) => inEye(r - 1, c) && inEye(r + 1, c) && inEye(r, c - 1) && inEye(r, c + 1);
+      for (let r = 0; r < d; r++) for (let c = 0; c < d; c++) {
+        if (!inEye(r, c)) continue;
+        put(b, r0 + r, c0 + c, inner(r, c) && (r - h - dr) ** 2 + (c - h - dc) ** 2 <= R2 ? EYE : WHITE);
+      }
+      for (const [hr, hc] of hl) put(b, r0 + h + hr, c0 + h + hc, WHITE);
+      return b;
+    }
+    // The open grin, 15 wide under the band, a red tongue in its round bottom.
+    const GRIN = [
+      'DDDDDDDDDDDDDDD',
+      'DDDDDDDDDDDDDDD',
+      '.DDDDDDDDDDDDD.',
+      '..DDDRRRRRDDD..',
+      '...DRRRRRRRD...',
+      '.....RRRRR.....',
+    ];
+    // The big eyed face: the band across the whole face, one row over and under the eye boxes (with the head tipped back
+    // the head's top row, 12, stays body), both eyes (the right one's drift mirrored unless same), the grin 17 rows under
+    // the box tops. ping lights the antenna tip.
+    function face(top, [dr, dc], {ping = false, pupil = PUPIL_D, shape = round(EYE_D), same = false} = {}) {
+      const b = body(echoPing(ping));
+      for (let r = Math.max(13, top - 1); r <= top + 14; r++) for (let c = 15; c <= 47; c++) put(b, r, c, VISOR);
+      EYE_C0.forEach((c0, k) => eye(b, top, c0, EYE_D, pupil, dr, k && !same ? -dc : dc, shape, HL));
+      return stamp(b, GRIN, top + 17, 24);
+    }
+    const THROB = {ping: true, pupil: THROB_D};
+    // The pop, on the way in and out: each eye a disc 10 across round the big eye's centre with a pupil 8 across, in a
+    // band on rows 17..28, cols 16..46.
+    function popFace(ping) {
+      const b = body(echoPing(ping));
+      for (let r = 17; r <= 28; r++) for (let c = 16; c <= 46; c++) put(b, r, c, VISOR);
+      for (const c0 of [18, 35]) eye(b, 18, c0, POP_EYE_D, POP_PUPIL_D, 0, 0, round(POP_EYE_D), HL_POP);
+      return b;
+    }
+
+    // ---- the toadstool: painted over whatever is there ----
+    const MUSH = [                                                 // 14 x 12, its home top left (39, 0), stem on the ground
+      '.....RRRR.....',
+      '...RRRRRRWR...',
+      '..RRWWRRRRRR..',
+      '.RRWWWRRRRWWR.',
+      '.RRRWRRRRRWWR.',
+      'RRRRRRRRRRRRRR',
+      'RWWRRRRWWRRRWR',
+      '.LWWWWWWWWWWL.',
+      '.....WWWL.....',
+      '.....WWWL.....',
+      '.....WWWL.....',
+      '....WWWWWL....',
+    ];
+    const MUSH_S = [                                               // 9 x 6: sprouting, and the first hop
+      '..RRRRR..',
+      '.RRWWRRR.',
+      'RRRRRRWRR',
+      '.LWWWWWL.',
+      '...WWL...',
+      '...WWL...',
+    ];
+    const MUSH_M = [                                               // 7 x 5: across the chest
+      '.RRRRR.',
+      'RRWRRWR',
+      '.LWWWL.',
+      '..WWL..',
+      '..WWL..',
+    ];
+    const MUSH_T = ['.RRR.', 'RRWRR', '.WWL.', '..W..'];           // 5 x 4: in the mouth
+    const LAST = ['.R.', 'RRR', '.R.'];                            // the last bite
+    const NUB = ['.W.', 'WWW', 'WWW'];                             // the first thing out of the ground
+    const MOUTH = ['..DDDDD..', '.DDDDDDD.', 'DDDDDDDDD', 'DDDDDDDDD', '.DDDDDDD.', '..DDDDD..'];   // open, rows 30..35
+    const CHEW = ['D.....D', '.DDDDD.'];                           // a closed smile, rows 32..33
+
+    // ---- the sky ----
+    const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    const skyAt = (r, c) => {
+      if (r <= DEEP_TO) return SKY;
+      if (r >= LIGHT_FROM) return LIGHT;
+      return BAYER[r % 4][c % 4] < Math.round(16 * (r - DEEP_TO) / (LIGHT_FROM - DEEP_TO)) ? LIGHT : SKY;
+    };
+    // Clouds: [top row, sprite, ms a cell, start col]. Far ones first, so the near one passes in front of them.
+    const CLOUDS = [
+      [4, [                                                        // far, small and hazy, up high
+        '....LLLL.....',
+        '..LLWWWWLL...',
+        '.LWWWWWWWWLL.',
+        'LLLLLLLLLLLLL',
+      ], FAR_MS, 3],
+      [30, [                                                       // far, the low bun, behind the left hand
+        '...WWW..WWW...',
+        '.WWWWWWWWWWWW.',
+        'WWWWWWWWWWWWWW',
+        '.WWWWWWWWWWWW.',
+      ], FAR_MS, 9],
+      [1, [                                                        // near, the big cumulus
+        '.........LWWL.........',
+        '......LWWWWWWL..LWL...',
+        '....LWWWWWWWWWWLWWWL..',
+        '..LLWWWWWWWWWWWWWWWWL.',
+        '.LWWWWWWWWWWWWWWWWWWWL',
+        'LWWWWWWWWWWWWWWWWWWWWL',
+        '.LLLLLLLLLLLLLLLLLLLL.',
+      ], NEAR_MS, 36],
+    ];
+    // Left col of a cloud at sky time t: a cell further left every ms of sky time, wrapping over the lattice plus its
+    // own width, so it comes back in at the right one step after its last column has left col 0.
+    const cloudCol = (w, ms, c0, t) => { const span = N + w; return (((c0 - Math.floor(t / ms) + w) % span) + span) % span - w; };
+    // The sky behind g at sky time t inside a disc of radius rad round the bridge (Infinity: all of it, no rim). Only empty
+    // cells of rows 0..50 take sky or cloud, so the creature always stays in front; the rim is ping outside, white inside.
+    function sky(g, t, rad) {
+      const b = copy(g), d = (r, c) => Math.hypot(r - CR, c - CC);
+      const open = (r, c) => r <= SKY_BOTTOM && !g[r][c] && d(r, c) <= rad;
+      for (let r = 0; r <= SKY_BOTTOM; r++) for (let c = 0; c < N; c++) if (open(r, c)) b[r][c] = skyAt(r, c);
+      for (const [top, spr, ms, c0] of CLOUDS) {
+        const left = cloudCol(spr[0].length, ms, c0, t);
+        spr.forEach((line, dr) => [...line].forEach((ch, dc) => {
+          const r = top + dr, c = left + dc;
+          if (ch !== '.' && c >= 0 && c < N && open(r, c)) b[r][c] = INK[ch];
+        }));
+      }
+      if (rad !== Infinity) for (let r = 0; r <= SKY_BOTTOM; r++) for (let c = 0; c < N; c++) {
+        if (open(r, c) && d(r, c) > rad - 2) b[r][c] = d(r, c) > rad - 1 ? PING : WHITE;
+      }
+      return b;
+    }
+
+    // ---- the frames ----
+    const rest = body(echoPing(false)), lit = body(echoPing(true)), blinked = body(echoBlinkFrame(echoPing(false)));
+    const look = ping => body(eyesToward(echoPing(ping), -1));     // the family's eyes a cell toward the toadstool
+    const mouth = g => stamp(g, MOUTH, 30, 27);
+    const chew = up => shift(stamp(body(squint(echoPing(false))), CHEW, 32, 28), up ? -K : 0, 0);
+    const frames = [];
+    const F = (hold, grid) => frames.push({hold, grid});
+    // 1. The toadstool sprouts and the eyes find it.
+    F(900, rest);                                                  // rest, the loop anchor
+    F(120, stamp(rest, NUB, 48, 6));                               // a white nub breaks the ground
+    F(120, stamp(rest, MUSH_S, 45, 3));                            // a little toadstool
+    F(520, stamp(look(false), MUSH, 39, 0));                       // full size; the eyes find it
+    F(140, stamp(look(true), MUSH, 39, 0));                        // antenna ping: noticed
+    // 2. It eats it.
+    F(380, stamp(mouth(look(false)), MUSH, 39, 0));                // the mouth opens
+    F(120, stamp(mouth(look(false)), MUSH_S, 24, 0));              // it hops up past the arm, smaller
+    F(120, stamp(mouth(rest), MUSH_M, 24, 15));                    // across the chest
+    F(120, stamp(mouth(rest), MUSH_T, 31, 29));                    // into the mouth
+    F(110, stamp(mouth(rest), LAST, 31, 30));                      // the last bite
+    F(150, chew(true)); F(150, chew(false)); F(150, chew(true));   // three chews
+    F(520, rest);                                                  // gulp
+    F(80, blinked); F(240, rest);                                  // a blink, and here it comes
+    // 3. The pupils dilate and the sky opens out of the eyes; the loop, the throb, the sway.
+    let t = 0;                                                     // the sky clock
+    const S = (hold, g, rad) => { F(hold, sky(g, t, rad)); t += hold; };
+    F(100, popFace(true));                                         // pop: round eyes, pupils 8 across, a ping
+    S(110, face(TOP, [0, 0], {ping: true, pupil: OVER_PUPIL_D, shape: squircle(EYE_D)}), BLOOM[0]);   // overshoot square, pupils 12
+    S(STEP, face(TOP, [0, 0]), BLOOM[1]);                          // settles round, pupils 12
+    for (let k = 0; k < 16; k++) {                                 // two turns of the loop
+      const p = k % 8;
+      S(STEP, shift(face(TOP, LOOP[p], p === 0 ? THROB : {}), 0, SWAY8[p]), k === 0 ? BLOOM[2] : Infinity);
+    }
+    // 4. The head tips back and it gazes: a slow look round the top of the eyes, a throb at each end.
+    S(200, face(TOP_UP, LOOK[1], {same: true}), Infinity);         // eyes up three rows, pupils roll up
+    for (let k = 0; k < 12; k++) {
+      const p = SCAN12[k], end = p !== SCAN12[k - 1] && (p === 2 || p === 7);
+      S(STARE, shift(face(TOP_UP, LOOK[p], {same: true, ...(end ? THROB : {})}), 0, SWAY12[k]), Infinity);
+    }
+    // 5. The head comes level, the sky folds back into the eyes, the eyes close down.
+    S(200, face(TOP, [0, 0]), Infinity);
+    for (const rad of [...BLOOM].reverse()) S(90, face(TOP, [0, 0]), rad);   // the bloom backwards
+    F(120, face(TOP, [0, 0]));                                     // the sky is in the eyes now
+    F(110, popFace(false));                                        // pupils 8, eyes 10
+    F(160, lit);                                                   // the family's eyes, antenna ping
+    F(80, blinked);
+    F(700, rest);                                                  // rest (loops to frame 0)
+    return {
+      name: 'ECHO · mushroom HD (sky bloom)', key: 'echo_mushroom_hd_b', fwname: 'echo mushroom hd b', category: 'Idle', size: N,
+      // Big tier, like echoMushroomB: 57 frames of 3600 cells are 205 KB of firmware table, so it ships only on
+      // boards built with SPLASH_BIG (the 4 inch board, 16 MB layout); the stock 2.16 partition already overflowed
+      // by 34 KB with echoMushroomB's 69 KB in it (2026-09-30).
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells), faithful: echoMushroom frame for frame at 3x with every new shape redrawn fine; a red toadstool with white spots, white gills and a shaded stem sprouts beside the creature and hops into a round open mouth, three chews and a gulp, then the eyes pop round in a visor band grown across the face and the pupils dilate (8 cells across in the pop, then 12, as the eyes overshoot square and settle round) into black discs inside a one cell white ring, one 2 x 2 highlight held still at the top of each eye while the pupils drift a cell round an eight point loop in mirror, 150 ms a step and 1.2 s a turn for 2.4 s, the creature swaying three cells each way under an open grin with a red tongue and an antenna ping once a turn, as the sky opens out of the eyes in a ping and white rimmed disc to fill rows 0..50 (deep #3b8bff over light #7cc4ff, a 4 x 4 dither between) with one near cumulus drifting left at 150 ms a cell and two far clouds at 240; then the head tips back three rows, the pupils roll up two rows and look slowly round the top of the eyes for 4 s before the sky folds back into the eyes and they close down to the family\'s own; judge whether the dilated black pupils read as delighted rather than spooky, and whether the drift reads with the highlight held still.',
+      // 0 transparent, 1 body, 2 pupils and mouths, 3 visor, 4 ping (antenna tip, sky rim), 5 feet and the
+      // body's shading rows, 6 white (eye rings, highlights, clouds, spots, gills, stem; replaces the duplicate ping),
+      // 7 mushroom red (cap, tongue, last bite), 8 sky blue, 9 light sky (lower sky, cloud rims, the stem's shade)
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#e0665a', '#3b8bff', '#7cc4ff'],
       frames,
     };
   })();
@@ -2763,7 +3256,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

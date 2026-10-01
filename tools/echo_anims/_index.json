@@ -250,7 +250,23 @@
     "category": "Idle",
     "frame_count": 77,
     "palette_size": 10,
-    "bench_only": true
+    "tier": "big"
+  },
+  {
+    "filename": "echo_mushroom_hd.html",
+    "name": "echo mushroom hd",
+    "category": "Idle",
+    "frame_count": 40,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_mushroom_hd_b.html",
+    "name": "echo mushroom hd b",
+    "category": "Idle",
+    "frame_count": 57,
+    "palette_size": 10,
+    "tier": "big"
   },
   {
     "filename": "echo_breathe.html",
