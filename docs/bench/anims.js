@@ -4044,6 +4044,384 @@
     };
   })();
 
+  // 3x. Moonwalk HD (operator, 2026-09-30: "little 30 s clips of repetitive dance moves before it switches
+  // to another dance move, moonwalking"). A clip rather than a routine: one move, the moonwalk, on a loop of 20 frames
+  // that closes exactly, so it can play for 30 s without a seam. Style first: the signature forward lean held all the way
+  // through, a tilted fedora, the toed foot pointed, the near arm swinging low, a dip on every second step, and a thin
+  // reflective floor. 60 cell lattice, 8 px cells on the 480 panel. Self contained: it reads nothing from this file's scope.
+  // The view: the creature seen from the side, facing right, at its 3x HD size, the way acrobat HD draws its side view at
+  // 2x. The body is 27 wide (the family's 9 cells deep) and 30 tall, the visor band runs on the front half from the
+  // shoulder to the face edge with the near eye 3 cells wide and the far eye 2 wide in it, the antenna (a stalk of 6
+  // rows and a 3 x 3 tip) stands on the back corner, and a shading row runs along the bottom.
+  // The lean: every row of the upper body slides forward by tan 12 degrees for each row it stands above the hip (a shear,
+  // not a turn), so the hip line stays level over the legs and the visor band, the eyes and the hat band stay crisp
+  // rows; the antenna leans with the body.
+  // The hat: a fedora in the legs' dark teal with a visor teal band, the crown raked down toward the front and a snap
+  // brim, tipped 8 degrees further forward and sat on the front of the head, so the antenna stands clear behind it.
+  // The legs: two, the near one in the legs' teal and the far one darker, each a thigh and a shin of 6.6 from a hip
+  // hidden 2 rows inside the body, the knee always forward, each ending in a shoe with a pointed toe: the near shoe in
+  // visor teal and the far one in a lighter teal, so the footwork reads at a glance.
+  // The moonwalk, in place: the floor scrolls forward a cell a frame, so the creature glides backward a cell a frame.
+  //   toed     one shoe stands on its toe tip, pitched 25 degrees on its first frame and 40 after, and the toe tip rides
+  //            the floor forward a cell a frame, locked to it, so that foot reads as planted.
+  //   flat     the other shoe lies flat and slides back a cell a frame, two cells a frame against the floor: the glide.
+  //   pop      after 10 frames the feet have traded places; the back shoe pops up onto its toe and the front one drops
+  //            flat (the toe tip is the one point that carries straight through), and they go again the other way.
+  //   arm      the near arm, a lighter teal creased in the legs' teal where it lies over the body, hangs from below the
+  //            visor in two bones and swings 22 degrees either side against the near foot, the forearm bent 16 degrees
+  //            and trailing the swing by up to 12; the far arm stays hidden behind the body.
+  //   accents  the antenna pings on the first step's pop (frames 0 and 1); on the second step's pop the body dips: it
+  //            drops a row for frames 10..12 and keeps its lean.
+  // The floor: the floor line on row 54 with a seam every 10 cells; under it, rows 55..59, a thin reflective floor in which
+  // the shoes show mirrored about the floor line in a dim teal (rows 58 and 59 on alternate cells, fading
+  // out), with sheen streaks on rows 56 and 58. Line, seams and streaks repeat every 20 cells and move a cell a frame, so
+  // after the 20 frames everything is back where it began and frame 0 follows frame 19 without a seam.
+  // Constants: 60 cells of 8 px; 20 frames of 100 ms, a 2.0 s cycle, 15 cycles in 30 s; 2 steps of 10 frames; the floor a
+  // cell a frame, a stride of 10 cells, texture period 20 cells; body 27 x 30, the hip pivot at row 42 col 25.5; lean 12
+  // degrees, the dip a row down on frames 10..12; hat tilt 8; toe pitch 25 then 40; thigh and shin 6.6 each;
+  // arm swing 22, bend 16, lag 12; floor line row 54, reflection rows 55..59.
+  // Palette: 0..5 the ECHO palette unchanged (3 is also the hat band and the near shoe, 5 also the hat, the shading row and
+  // the arm's crease); 6 the lighter teal (the near arm, the far shoe and the floor seams), 7 the floor line and the
+  // sheen, 8 the reflection, 9 the far leg. Index 6 is not the duplicate ping here, so no frame goes through echoGlitch.
+  // Big tier: 20 frames of 3600 cells are 72 KB of firmware table, so it ships only on boards built with SPLASH_BIG.
+  // One closure, so echoMoonwalkHd is the only name it adds to this scope; list it in BENCH.anims or the bench and the
+  // export never see it.
+  const echoMoonwalkHd = (() => {
+    const N = 60;
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, LEG = 5, ARM = 6, FLOOR = 7, MIRROR = 8, FAR = 9;
+    const HOLD = 100;                                              // ms a frame: 20 frames are 2.0 s
+    const STEP = 10, CYCLE = 2 * STEP;                             // frames a step; a cycle is two steps
+    const SURFACE = 54;                                            // the floor line; the shoes stand on row 53
+    const HIP = [42, 25.5];                                        // [row, col]: the body's bottom edge centre, the lean's pivot
+    const LEAN = 12, NOD = 0, HAT_TILT = 8;                        // degrees forward: the body, the nod's extra, the hat's extra
+    const TOE0 = -1;                                               // the toes' 10 cell range starts a cell behind the hip
+    const PITCH = [25, 40];                                        // the toed shoe: its first frame, then held
+    const SWING = 22, BEND = 16, LAG = 12;                         // the near arm, degrees
+    const THIGH = 6.6, SHIN = 6.6;
+    const BOB = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];   // rows the body drops: the dip
+    const LIT = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];   // the antenna tip in ping
+    const rad = d => d * Math.PI / 180;
+
+    // The upper body, in body space: x forward, y down, the origin on the hip pivot.
+    const HALF = 13.5, BAND = [-24, -18], BAND_X = -1.5;           // the body's half width; the visor band's rows and back end
+    const EYES = [[1.5, 4.5], [9.5, 11.5]];                        // the near eye 3 wide, the far eye 2 wide, 2 of band before the face
+    const body = (x, y) => {
+      if (x < -HALF || x >= HALF || y < -30 || y >= 0) return 0;
+      if (y >= BAND[0] && y < BAND[1] && x >= BAND_X) return EYES.some(([a, b]) => x >= a && x < b) ? EYE : VISOR;
+      return y >= -1 ? LEG : BODY;                                 // the shading row along the bottom
+    };
+    const antenna = (x, y, lit) => {                               // on the back corner: a stalk of 6 rows, then the 3 x 3 tip
+      if (x < -HALF || x >= 3 - HALF || y < -39 || y >= -30) return 0;
+      return y < -36 && lit ? PING : BODY;
+    };
+    // The fedora, facing right: h the crown and the brim, b the band. Its bottom row lies on the head's top row.
+    const HAT = [
+      '..........hhhhhhh.............',
+      '.........hhhhhhhhhhhh.........',
+      '.........hhhhhhhhhhhhhhhh.....',
+      '........hhhhhhhhhhhhhhhhhh....',
+      '........hhhhhhhhhhhhhhhhhh....',
+      '........bbbbbbbbbbbbbbbbbb....',
+      '........bbbbbbbbbbbbbbbbbb....',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhh.',
+      '.hhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+    ];
+    const HAT_X = -9, HAT_Y = -29 - HAT.length, HAT_PIVOT = [-3, -30];   // the sprite's first cell; the tilt's pivot [x, y]
+    const hat = (x, y) => {                                        // turned back about the pivot, then read off the sprite
+      const cs = Math.cos(rad(HAT_TILT)), sn = Math.sin(rad(HAT_TILT));
+      const dx = x - HAT_PIVOT[0], dy = y - HAT_PIVOT[1];
+      const r = Math.floor(HAT_PIVOT[1] - dx * sn + dy * cs - HAT_Y), c = Math.floor(HAT_PIVOT[0] + dx * cs + dy * sn - HAT_X);
+      if (r < 0 || r >= HAT.length || c < 0 || c >= HAT[0].length) return 0;
+      return HAT[r][c] === 'h' ? LEG : HAT[r][c] === 'b' ? VISOR : 0;
+    };
+    const upper = (x, y, lit) => hat(x, y) || antenna(x, y, lit) || body(x, y);
+    // Body space and the panel, leaning lean degrees with the body dropped bob rows: a shear about the hip pivot.
+    const fromPanel = (py, px, lean, bob) => { const y = py - HIP[0] - bob; return [px - HIP[1] + Math.tan(rad(lean)) * y, y]; };
+    const toPanel = (x, y, lean, bob) => [HIP[0] + bob + y, HIP[1] + x - Math.tan(rad(lean)) * y];
+
+    // The limbs, on the panel: points are [row, col].
+    const segDist = (y, x, [ay, ax], [by, bx]) => {
+      const vy = by - ay, vx = bx - ax, wy = y - ay, wx = x - ax;
+      const L = vy * vy + vx * vx, t = L ? Math.max(0, Math.min(1, (wy * vy + wx * vx) / L)) : 0;
+      return Math.hypot(wy - t * vy, wx - t * vx);
+    };
+    const inPoly = (y, x, P) => {
+      let inside = false;
+      for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+        const [yi, xi] = P[i], [yj, xj] = P[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    // The shoe, from its toe tip on the floor: a sole of 8, a heel 3.4 high, the instep sloping down to a pointed toe.
+    const SHOE = [[0, -8], [0, 0.4], [-1.4, -1.2], [-2.6, -4], [-3.4, -8]];
+    const ANKLE = [-2.8, -6];                                      // where the shin meets the shoe
+    // A point of the shoe on the panel, the shoe stood up pitch degrees on its toe tip at col toe.
+    const onFoot = ([y, x], toe, pitch) => {
+      const cs = Math.cos(rad(pitch)), sn = Math.sin(rad(pitch));
+      return [SURFACE + x * sn + y * cs, toe + x * cs - y * sn];
+    };
+    // A leg from the hip to the ankle in two bones, the knee forward, and its shoe: two cell tests.
+    function leg(hip, toe, pitch) {
+      const shoe = SHOE.map(p => onFoot(p, toe, pitch)), ank = onFoot(ANKLE, toe, pitch);
+      const dy = ank[0] - hip[0], dx = ank[1] - hip[1], d = Math.min(Math.hypot(dy, dx), THIGH + SHIN - 1e-6);
+      const a = Math.acos(Math.max(-1, Math.min(1, (THIGH * THIGH + d * d - SHIN * SHIN) / (2 * THIGH * d))));
+      const knees = [1, -1].map(s => [hip[0] + THIGH * Math.sin(Math.atan2(dy, dx) + s * a), hip[1] + THIGH * Math.cos(Math.atan2(dy, dx) + s * a)]);
+      const knee = knees[0][1] > knees[1][1] ? knees[0] : knees[1];
+      return {limb: (y, x) => segDist(y, x, hip, knee) <= 1.6 || segDist(y, x, knee, ank) <= 1.6, shoe: (y, x) => inPoly(y, x, shoe)};
+    }
+    // The near arm from the shoulder at phase ph of the cycle: a round shoulder, the upper arm, the forearm, the hand.
+    function arm(sh, ph) {
+      const alpha = -SWING * Math.cos(ph), beta = alpha + BEND + LAG * Math.sin(ph);   // degrees off hanging, forward positive
+      const elbow = [sh[0] + 6.5 * Math.cos(rad(alpha)), sh[1] + 6.5 * Math.sin(rad(alpha))];
+      const hand = [elbow[0] + 6 * Math.cos(rad(beta)), elbow[1] + 6 * Math.sin(rad(beta))];
+      const reach = (y, x) => Math.min(segDist(y, x, sh, elbow) - 1.9, segDist(y, x, elbow, hand) - 1.9,
+        Math.hypot(y - hand[0], x - hand[1]) - 2.4, Math.hypot(y - sh[0], x - sh[1]) - 2.4);
+      return reach;                                                // 0 or less is the arm, up to 1 the crease round it
+    }
+
+    // The floor: patterns 20 cells long, moved f cells forward on frame f.
+    const LINE = '77777777767777777776';                           // the floor line, a seam every 10 cells
+    const SHEEN = {56: '777.................', 58: '..........7777......'};
+    const at = (pat, c, f) => pat[((c - f) % 20 + 20) % 20];
+
+    // A frame: the far leg, the near leg, the body over their roots, the arm, the band and eyes over the arm; then the
+    // floor line and the reflection.
+    function frame(f) {
+      const s = Math.floor(f / STEP), t = f % STEP;                // step 0: the near shoe flat; step 1: the near shoe toed
+      const bob = BOB[f], lean = LEAN + (bob ? NOD : 0), pitch = PITCH[Math.min(t, 1)];
+      const toed = HIP[1] + TOE0 + t, flat = HIP[1] + TOE0 + STEP - t;   // toe tips: riding the floor, sliding back
+      const hipNear = toPanel(1, -2, lean, bob), hipFar = toPanel(-1, -2, lean, bob);
+      const near = s ? leg(hipNear, toed, pitch) : leg(hipNear, flat, 0);
+      const far = s ? leg(hipFar, flat, 0) : leg(hipFar, toed, pitch);
+      const reach = arm(toPanel(-3, -16, lean, bob), 2 * Math.PI * f / CYCLE);
+      const g = Array.from({length: N}, () => new Array(N).fill(0));
+      const legs = Array.from({length: N}, () => new Array(N).fill(0));   // the legs alone, for the reflection
+      for (let r = 0; r < SURFACE; r++) for (let c = 0; c < N; c++) {
+        const y = r + 0.5, x = c + 0.5;
+        let v = far.shoe(y, x) ? ARM : far.limb(y, x) ? FAR : 0;
+        if (near.limb(y, x)) v = LEG;
+        if (near.shoe(y, x)) v = VISOR;
+        legs[r][c] = v;
+        const [bx, by] = fromPanel(y, x, lean, bob), on = body(bx, by);
+        v = upper(bx, by, LIT[f]) || v;                            // the body over the legs' roots
+        const k = reach(y, x);
+        if (k <= 0) v = ARM;
+        else if (k <= 1 && on) v = LEG;                            // the crease, where the arm lies over the body
+        if (on === EYE || on === VISOR) v = on;                    // the visor band and the eyes stay over the arm
+        g[r][c] = v;
+      }
+      for (let c = 0; c < N; c++) g[SURFACE][c] = Number(at(LINE, c, f));
+      for (let r = SURFACE + 1; r < N; r++) for (let c = 0; c < N; c++) {
+        if (legs[2 * SURFACE - r][c] && (r < SURFACE + 4 || (r + c) % 2 === 0)) g[r][c] = MIRROR;
+        else if (SHEEN[r] && at(SHEEN[r], c, f) === '7') g[r][c] = FLOOR;
+      }
+      return g;
+    }
+    const frames = [];
+    for (let f = 0; f < CYCLE; f++) frames.push({hold: HOLD, grid: frame(f)});
+
+    return {
+      name: 'ECHO · moonwalk HD', key: 'echo_moonwalk_hd', fwname: 'echo moonwalk hd', category: 'Active', size: N,
+      // Big tier, like the other HD cells: 20 frames of 3600 bytes (72 KB) ship only on boards built with SPLASH_BIG.
+      tier: 'big',
+      intent: 'Proposal, 60 cell lattice (8 px cells, the creature at 3x seen from the side, a 2.0 s clip of 20 frames that loops without a seam for 30 s): the moonwalk in place, the creature facing right with its signature forward lean held throughout and a dark teal fedora with a visor teal band tipped down over its brow, its antenna standing up behind the hat, while the floor line and a thin glossy floor under it scroll forward a cell a frame so that it glides backward, one bright teal shoe standing on its pointed toe and riding the floor forward while the other slides back flat against it, the two trading places and swapping with a pop every second, the near arm hanging low and loose and swinging against the feet, the antenna pinging on the first step and the body dipping a row on the second, the shoes mirrored dim in the glossy floor; judge whether it reads as gliding backward rather than walking on a treadmill, whether the lean and the tipped hat read as style rather than falling over, and whether it is still this creature in profile.',
+      // 0 transparent, 1 body, 2 eyes, 3 visor (also the hat band and the near shoe), 4 ping (the antenna tip), 5 the near
+      // leg, the hat, the shading row and the arm's crease, 6 the lighter teal (the near arm, the far shoe and the floor
+      // seams), 7 the floor line and the sheen, 8 the reflection, 9 the far leg
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#26a98f', '#3a4a4c', '#124a42', '#0b4239'],
+      frames,
+    };
+  })();
+
+  // ECHO · moonwalk HD, take b: the wrap (operator, 2026-09-30: "little 30 s clips of repetitive dance moves before it
+  // switches to another dance move, moonwalking"). A clip, not a routine: one move in a loop that closes exactly, so it can
+  // play for 30 s without a seam. A 60 cell lattice, 8 px cells on the 480 panel, the creature at 2x in the side view the
+  // acrobat set up (the torso 18 wide and 20 tall, the visor band pushed flush to the face edge with the near eye 2 wide
+  // and the far eye 1 wide in it, the antenna on the back corner), facing right and moonwalking backward, to the left,
+  // across the whole panel. The panel wraps: whatever leaves the left edge comes back in at the right edge on the same
+  // frame, so all of the creature is on the screen in every frame, in one piece or in two, and the loop travels exactly
+  // one panel width (frame 20, were it drawn, would be frame 0 cell for cell).
+  // Why 2x and not 3x: the loop fixes the stride. 60 cells in 4 slides is 15 cells of glide a slide, and with the toe foot
+  // pinned the feet swing those 15 cells under the hips at any scale; at 3x that is half the 27 cell torso and the
+  // footwork hides under it, at 2x it is most of the 18 cell one. And the whole creature is 24 cells wide, so it straddles
+  // the edge on 8 frames of 20, where at 3x the torso alone, 27 wide and leaning, spans about 30 cells and would straddle
+  // it on about half the frames before the hat or a foot is counted.
+  //   glide   3 cells a frame on every frame, at one hold, so the glide never speeds up or slows down.
+  //   feet    the heel toe slide, 4 slides of 5 frames: one foot up on its toe with the heel raised, pinned to the floor
+  //           (its loafer is the same cells on the screen for all 5 frames while the body glides over it), the leg
+  //           straight at the ends of the slide and the knee bent forward as it passes under the body; the other foot flat
+  //           on a straight leg, sliding back at twice the glide, a glint of polish on the floor just behind its toe.
+  //           Between slides the pop: the front foot drops its heel and the back foot snaps up onto its toe, so it walks
+  //           forward while it goes back.
+  //   body    leaning a little into the walk (the top two cells ahead of the hips, in two steps), a one row dip on the
+  //           frames either side of every pop, the near arm loose and swinging against the near foot, shadowed where it
+  //           lies on the torso; the far arm is hidden behind the torso, as it is in a true side view.
+  //   style   a white sock over a bright teal loafer on the near foot (a slate sock and a mid teal loafer on the far one,
+  //           a step back), a dark teal fedora with a bright band and the brim tipped down over the face (HAT turns it
+  //           off), the antenna tip pinging on every pop.
+  // Music: 100 ms a frame and 5 frames a slide, so every pop lands on the beat at 120 bpm, the breakdance cells' tempo, and
+  // the loop is one bar.
+  // Start column: the glide is 3 cells, so every frame keeps the start column's remainder by 3; at a remainder of 2 neither
+  // the antenna nor the near eye ever straddles the edge.
+  // Palette: 0..5 the ECHO palette unchanged (3 is also the hat band and the near loafer; 5 also the near leg, the hat, the
+  // arm's shadow and the torso's bottom row); 6 white (the near sock, the floor glint), 7 the floor line and the far sock,
+  // 8 the far leg (the windmill's blur teal, already seen on the panel: darker than the near leg, never lost on black),
+  // 9 the near arm and the far loafer. Index 6 is not ping here, so nothing in it goes through echoGlitch.
+  // Big tier: 20 frames of 3600 cells are 72 KB of firmware table. One closure, so echoMoonwalkHdB is the only name
+  // it adds to this scope; list it in BENCH.anims or the bench and the export never see it.
+  const echoMoonwalkHdB = (() => {
+    const N = 60;
+    const BODY = 1, EYE = 2, VISOR = 3, PING = 4, LEG = 5, WHITE = 6, FLOOR = 7, FAR = 8, ARM = 9;
+    // Constants: 60 cells of 8 px; 20 frames of 100 ms, 2.0 s a loop, one bar at 120 bpm; glide 3 cells a frame, 60 a
+    // loop (one panel width, wrapped); 4 slides of 5 frames, 15 cells of glide a slide; ankles 6 cells either side of the
+    // hips at the pop; toe leg two bones of 4.25; torso 18 x 20 at 2x, top row 24; floor row 55; lean 2 cells in two
+    // steps; dip 1 row; arm swing 26 degrees; start column 20.
+    const STEP = 100;                                              // ms a frame: 5 a beat at 120 bpm
+    const FRAMES = 20, SLIDE = 5;                                  // 4 slides of 5 frames
+    const V = 3;                                                   // cells the body glides a frame: 60 in 20 frames
+    const FLOOR_ROW = 55;                                          // the floor line; soles stand on its top edge
+    const W = 18, H = 20;                                          // the torso at 2x, side view (the acrobat's)
+    const TOP = 24;                                                // the torso's top row, out of the dip
+    const X0 = 20;                                                 // the torso's back edge on frame 0 (2 more than a multiple of 3)
+    const HIPS = {near: 10, far: 8}, HIP_ROW = 19;                 // leg axes in torso cells; the hips sit in the bottom row
+    const STRIDE = 6;                                              // ankle cells ahead of or behind the hip at the pop
+    const THIGH = 4.25, SHIN = 4.25;                               // the toe leg's two bones; the flat leg is straight
+    const LEG_R = 1.2;                                             // legs 2 cells across
+    const SHOULDER = [9, 8.5], UPPER = 5, FORE = 4, BEND = 18;     // the near arm: root (row, col), bones, elbow degrees
+    const ARM_R = 1.0, HAND_R = 1.5, SWING = 26;                   // arm 2 cells across, hand 3, swing degrees each way
+    const SHINE = 2;                                               // floor cells polished behind the sliding loafer
+    const LIMBS = {near: [LEG, WHITE, VISOR], far: [FAR, FLOOR, ARM]};   // leg, sock, loafer
+    const BAND = [4, 7], BAND_X = 9;                               // visor rows, and its back end (it runs to the face)
+    const NEAR_EYE = [11, 12], FAR_EYE = [16, 16];                 // eye columns in torso cells
+    const HAT = true;                                              // the fedora; false leaves the head bare
+    const DIP = [1, 0, 0, 0, 1];                                   // rows the body sits lower, frame by frame in a slide
+    const lean = r => (r < 8 ? 2 : r < 14 ? 1 : 0);               // forward shift of a torso row: the top leads
+
+    const blank = () => Array.from({length: N}, () => new Array(N).fill(0));
+    const wrap = c => ((c % N) + N) % N;
+    const put = (g, r, c, v) => { if (r >= 0 && r < N) g[r][wrap(c)] = v; };   // rows clip, columns wrap
+    const rad = d => d * Math.PI / 180;
+    const segDist = (px, py, [ax, ay], [bx, by]) => {
+      const vx = bx - ax, vy = by - ay, wx = px - ax, wy = py - ay, l = vx * vx + vy * vy;
+      const t = l ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / l)) : 0;
+      return Math.hypot(wx - t * vx, wy - t * vy);
+    };
+    // Every cell whose centre lies within r of the polyline pts ([x, y] points, x a column, y a row), unwrapped, with
+    // its distance.
+    const capsule = (pts, r) => {
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), out = [];
+      for (let row = Math.floor(Math.min(...ys) - r) - 1; row <= Math.ceil(Math.max(...ys) + r) + 1; row++)
+        for (let col = Math.floor(Math.min(...xs) - r) - 1; col <= Math.ceil(Math.max(...xs) + r) + 1; col++) {
+          let d = pts.length === 1 ? Math.hypot(col + 0.5 - pts[0][0], row + 0.5 - pts[0][1]) : Infinity;
+          for (let i = 0; i + 1 < pts.length; i++) d = Math.min(d, segDist(col + 0.5, row + 0.5, pts[i], pts[i + 1]));
+          if (d <= r) out.push([row, col, d]);
+        }
+      return out;
+    };
+    const sprite = (g, art, r0, c0, map) => art.forEach((line, dr) => [...line].forEach((ch, dc) => { if (map[ch]) put(g, r0 + dr, c0 + dc, map[ch]); }));
+
+    // The loafers, drawn cell by cell from the ankle row down; the sock (s) sits on the leg's two columns, x is the
+    // loafer. Flat: the sock 3 rows over the floor line and the loafer on it, heel back, toe forward. On the toe: the
+    // heel raised 2 rows and the loafer running down at 45 degrees to the toe, flat on the floor. dc places the art's
+    // first column against the leg's axis.
+    const FOOT = {
+      flat: {ankle: FLOOR_ROW - 3, dc: -2, art: ['.ss...', '.xxxx.', 'xxxxxx']},
+      toe: {ankle: FLOOR_ROW - 5, dc: -1, art: ['ss....', 'xx....', '.xx...', '..xx..', '...xxx']},
+    };
+
+    // One frame. k runs 0..19; the arithmetic holds for any k, so k 20 draws frame 0 again.
+    function render(k) {
+      const g = blank();
+      const s = Math.floor(k / SLIDE), j = k % SLIDE;              // the slide, and the frame in it
+      const top = TOP + DIP[j];
+      const bx = X0 - V * k;                                       // the torso's back edge, unwrapped
+      // Ankles relative to their hips: the toe foot comes forward under the body (it stands still on the floor while
+      // the body glides back over it), the flat one slides back. The near foot is on its toe in slides 0 and 2.
+      const toeRel = -STRIDE + 3 * j, flatRel = STRIDE - 3 * j;
+      const nearToe = s % 2 === 0;
+      const feet = {
+        near: {toe: nearToe, rel: nearToe ? toeRel : flatRel},
+        far: {toe: !nearToe, rel: nearToe ? flatRel : toeRel},
+      };
+
+      for (let c = 0; c < N; c++) g[FLOOR_ROW][c] = FLOOR;
+
+      // Legs, far then near, from hips the torso covers. The toe leg is two bones with the knee bent forward, as long
+      // as the reach at the ends of the slide, so it is straight there and bends as the foot passes under the body.
+      const leg = (f, axis, colour, sock, shoe) => {
+        const foot = f.toe ? FOOT.toe : FOOT.flat;
+        const hip = [bx + axis, top + HIP_ROW], ankle = [hip[0] + f.rel, foot.ankle];
+        let pts = [hip, ankle];
+        if (f.toe) {
+          const dx = ankle[0] - hip[0], dy = ankle[1] - hip[1], d = Math.hypot(dx, dy);
+          const ux = dx / d, uy = dy / d, px = uy, py = -ux;       // along the leg, and square to it toward the front
+          const cb = Math.min(1, (THIGH * THIGH + d * d - SHIN * SHIN) / (2 * THIGH * d)), sb = Math.sqrt(1 - cb * cb);
+          pts = [hip, [hip[0] + THIGH * (cb * ux + sb * px), hip[1] + THIGH * (cb * uy + sb * py)], ankle];
+        }
+        for (const [r, c] of capsule(pts, LEG_R)) if (r < foot.ankle) put(g, r, c, colour);
+        sprite(g, foot.art, foot.ankle, ankle[0] + foot.dc, {s: sock, x: shoe});
+        // the sliding loafer polishes the floor just behind its toe, where it has just been
+        if (!f.toe && j > 0) for (let i = 1; i <= SHINE; i++) put(g, FLOOR_ROW, ankle[0] + foot.dc + 5 + i, WHITE);
+      };
+      leg(feet.far, HIPS.far, ...LIMBS.far);
+      leg(feet.near, HIPS.near, ...LIMBS.near);
+
+      // The torso, leaning: row r shifted lean(r) cells forward; its bottom row in the feet teal.
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) put(g, top + r, bx + c + lean(r), r === H - 1 ? LEG : BODY);
+      const inTorso = (r, c) => r >= top && r < top + H && c - bx - lean(r - top) >= 0 && c - bx - lean(r - top) < W;
+
+      // The near arm: upper arm and forearm, the elbow a little bent forward, a round hand; it swings against the near
+      // foot (forward while that foot is back), with a one cell shadow under and behind it where it lies on the torso.
+      const th = -SWING * feet.near.rel / STRIDE;
+      const sh = [bx + SHOULDER[1] + lean(SHOULDER[0]), top + SHOULDER[0]];
+      const el = [sh[0] + UPPER * Math.sin(rad(th)), sh[1] + UPPER * Math.cos(rad(th))];
+      const hand = [el[0] + FORE * Math.sin(rad(th + BEND)), el[1] + FORE * Math.cos(rad(th + BEND))];
+      const arm = new Map(), id = (r, c) => r + ',' + c;
+      for (const [r, c] of [...capsule([sh, el, hand], ARM_R), ...capsule([hand], HAND_R)]) arm.set(id(r, c), [r, c]);
+      for (const [r, c] of arm.values()) for (const [dr, dc] of [[1, 0], [0, -1], [1, -1]])
+        if (!arm.has(id(r + dr, c + dc)) && inTorso(r + dr, c + dc)) put(g, r + dr, c + dc, LEG);
+      for (const [r, c] of arm.values()) put(g, r, c, ARM);
+
+      // The visor band and the eyes, over the arm.
+      for (let r = BAND[0]; r <= BAND[1]; r++) for (let c = BAND_X; c < W; c++) {
+        const eye = (c >= NEAR_EYE[0] && c <= NEAR_EYE[1]) || (c >= FAR_EYE[0] && c <= FAR_EYE[1]);
+        put(g, top + r, bx + c + lean(r), eye ? EYE : VISOR);
+      }
+
+      // The antenna on the back corner, the family's at 2x: a stalk 4 rows tall and a 2 x 2 tip that pings on the pop.
+      for (let r = -6; r < 0; r++) for (let c = 0; c < 2; c++) put(g, top + r, bx + c + lean(0), r < -4 && j === 0 ? PING : BODY);
+
+      // The fedora, tipped forward: the crown with its pinch, the band, the brim dipping over the face; it starts a
+      // column clear of the antenna.
+      if (HAT) sprite(g, [
+        '........lll..lll......',
+        '.......lllllllllll....',
+        '......llllllllllll....',
+        '......vvvvvvvvvvvv....',
+        '...lllllllllllllllll..',
+        '..............llllllll',
+        '...................lll',
+      ], top - 7, bx + lean(0), {l: LEG, v: VISOR});
+      return g;
+    }
+
+    const frames = [];
+    for (let k = 0; k < FRAMES; k++) frames.push({hold: STEP, grid: render(k)});
+
+    return {
+      name: 'ECHO · moonwalk HD (wrap)', key: 'echo_moonwalk_hd_b', fwname: 'echo moonwalk hd b', category: 'Active', size: N,
+      // Big tier, like the other HD cells: 20 frames of 3600 bytes (72 KB) ship only on boards built with SPLASH_BIG.
+      tier: 'big',
+      intent: 'Proposal, take b, the wrap: a 30 s clip of one move on the 60 cell lattice, the creature at 2x in the acrobat\'s side view facing right and moonwalking backward across the whole panel, wrapping out of the left edge and back in at the right on the same frame, gliding 3 cells on every 100 ms frame so the glide never changes speed, one foot pinned on its toe with the heel up while the other slides back flat on a straight leg and leaves a glint of polish on the floor, the heels swapping in a pop on every beat at 120 bpm with a one row dip and an antenna ping, a slight forward lean, the near arm swinging loose against the near foot, a white sock and a bright teal loafer on the near foot and a dark teal fedora with a bright band and a tipped brim; judge whether it reads as walking forward while it goes back, and whether the wrap reads as one creature passing through the edge rather than two pieces.',
+      // 0 transparent, 1 body, 2 eyes, 3 visor, the hat band and the near loafer, 4 ping (the antenna tip on the pop),
+      // 5 near leg, hat, the arm's shadow and the torso's bottom row, 6 white (near sock, floor glint), 7 floor line and
+      // far sock, 8 far leg, 9 near arm and far loafer
+      palette: ['transparent', '#17836f', '#06090b', '#35e0c0', '#6fe9ff', '#0f5a4c', '#eafffb', '#3a4a4c', '#0d4a40', '#21a088'],
+      frames,
+    };
+  })();
+
   // Shared library for the extra creature files (docs/bench/anims_*.js): each of those does
   //   const L = (typeof window !== 'undefined' ? window : globalThis).BENCH_LIB;
   //   L.register([ ...cells ]);
@@ -4051,7 +4429,7 @@
   // A finer cell adds size: 60 (or 40) and builds every frame on that lattice, for example
   //   const big = L.upscale(L.echoBase, 3); L.set(big, 20, 45, 4);
   // is the creature at 3x with one 8 px ping cell just right of the visor.
-  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, echoBreakdanceHd, echoBreakdanceHdB, echoAcrobatHd, ...skinned], spinnerAt, sizeOf};
+  const BENCH = {G, anims: [stock, coffee, coffeeMorning, echo, echoCoffee, echoDoubleCoffee, echoFloat, echoWalk, echoTwoAgents, echoSsh, tokenBurnerRun, ultraShift, ultra, jobDone, love, echoHappy, consult, creditsOut, ctfHoodie, echoLoading, echoKissA, echoSummonA, echoKissB, echoEyeSpin, echoOpenclaw, echoNanoclaw, echoPizza, echoHeadphones, clawdHeadphones, echoSummonHd, ultraBraille, fableGaze, fableEyes, echoPortal, echoBuild, echoMushroom, echoMushroomB, echoMushroomHd, echoMushroomHdB, echoBreakdanceHd, echoBreakdanceHdB, echoAcrobatHd, echoMoonwalkHd, echoMoonwalkHdB, ...skinned], spinnerAt, sizeOf};
   const BENCH_LIB = {G, rows, clone, set, upscale, sizeOf, BASE, blink, shut, ECHO_PALETTE, echoBase, echoPing, echoGlitch, bbox, eyeGeom, skinFrame, spinnerAt, STOCK,
     register(cells) { for (const c of cells) BENCH.anims.push(c); }};
   root.BENCH = BENCH; root.BENCH_LIB = BENCH_LIB;

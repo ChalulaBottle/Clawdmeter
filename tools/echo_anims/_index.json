@@ -293,6 +293,22 @@
     "tier": "big"
   },
   {
+    "filename": "echo_moonwalk_hd.html",
+    "name": "echo moonwalk hd",
+    "category": "Active",
+    "frame_count": 20,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_moonwalk_hd_b.html",
+    "name": "echo moonwalk hd b",
+    "category": "Active",
+    "frame_count": 20,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
     "filename": "echo_breathe.html",
     "name": "echo breathe",
     "category": "Idle",
