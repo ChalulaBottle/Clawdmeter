@@ -16,8 +16,8 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   table hides the new art characteristic), then restart the tray and play a track: expect `art: <id>
   from ble, N bytes in M ms` on serial and `Art <id> shown` in daemon.log; capture the card with art.
   (2) Ask or act on the operator's answer about a dance layout (creature in the middle of the card
-  while pa is "dance"; today the band is about a quarter of the panel). (3) Commit the engine's
-  LAN listener opt-in change (agent in flight). (4) Increment 3, notification centre (no sounds; the
+  while pa is "dance"; today the band is about a quarter of the panel). (3) done: engine LAN art listener is
+  opt-in (433bba8, engine restarted, 8977 on loopback only). (4) Increment 3, notification centre (no sounds; the
   alien clicks play on the PC). Also queued: the 3CHO rename of the Meeting Copilot, the second board
   (never enumerated: data cable), the battery order (PH 2.0, pin 1 GND, pin 2 B+), the installer, the
   Service Changed indication so a flash never needs a re-pair, the tray waiting for the board's `wf`
