@@ -155,6 +155,10 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
         <h3>The pages to come</h3>
         <p class="muted">Integration hooks named now so the port is built for them: a Fox agent status page over the LAN, and a Kismet status page fed by the AEGIS relay rather than Kismet directly. Same screen, more than one meter.</p>
       </div>
+      <div class="panel">
+        <h3>LabDaemon Engine</h3>
+        <p class="muted">A Windows host service registered as the <code>labdaemon</code> MCP server: Spotify playback follows the operator's account, host to board notifications and page overlays relay through the tray, and a hook set makes the splash creature follow what Claude Code is doing, tool by tool.</p>
+      </div>
     </div>
     <div class="help" style="margin-top:22px">
       <ul>
@@ -168,21 +172,41 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
 <!-- Band 4, work: state of the port. Honest tiles; a flagged number is a liability, not a feature. -->
 <section class="band work">
   <main>
-    <p class="kick">State of the port · 2026 09 27</p>
+    <p class="kick">State of the port · 2026 10 02</p>
     <h2>What runs today</h2>
     <div class="tiles">
       <div class="panel tile"><div class="fig">Panel<span class="state live">Live</span></div><div class="cap">ST7701, 480 × 480</div><div class="mean">Splash and usage screens render; the layout is the upstream 480 × 480 layout unchanged.</div></div>
       <div class="panel tile"><div class="fig">Bluetooth<span class="state live">Live</span></div><div class="cap">paired, polling</div><div class="mean">Usage payloads arrive every 60 seconds from the Windows tray daemon.</div></div>
-      <div class="panel tile"><div class="fig">Touch<span class="state pending">Pending</span></div><div class="cap">GT911 silent on the bus</div><div class="mean">Every reset sequence and bus speed tried; the controller never answers. Hardware under inspection.</div></div>
+      <div class="panel tile"><div class="fig">Touch<span class="state pending">Pending</span></div><div class="cap">GT911 confirmed non-responsive</div><div class="mean">Every reset sequence and bus speed tried, and Waveshare's own factory-test firmware reports the same. Development moved to the second board.</div></div>
       <div class="panel tile"><div class="fig">Battery<span class="state pending">Pending</span></div><div class="cap">ADC path written, unverified</div><div class="mean">Reads through the CH32 expander; the icon stays hidden until a pack is fitted and the curve checked.</div></div>
+      <div class="panel tile"><div class="fig">Spotify<span class="state live">Live</span></div><div class="cap">follows playback</div><div class="mean">The card shows the operator's current track, artist, source and progress, pulled from the linked Spotify account.</div></div>
+      <div class="panel tile"><div class="fig">Notify and page<span class="state live">Live</span></div><div class="cap">host overlays</div><div class="mean"><code>python -m labdaemon_engine notify</code> and the page system relay through the tray onto the board's screen.</div></div>
+      <div class="panel tile"><div class="fig">Claude hooks<span class="state live">Live</span></div><div class="cap">creature follows Claude Code</div><div class="mean">Session, prompt and tool events pick the creature on the splash without the operator choosing one.</div></div>
     </div>
     <div style="margin-top:26px" class="panel">
       <dl class="spec">
         <dt>Board</dt><dd>Waveshare ESP32-S3-Touch-LCD-4, revision 4.0 (ESP32-S3 N16R8: 16 MB flash, 8 MB PSRAM)</dd>
         <dt>Build env</dt><dd><code>pio run -d firmware -e waveshare_lcd_4 -t upload --upload-port COM11</code></dd>
-        <dt>Button</dt><dd>BOOT: short press cycles animation or brightness, hold 3 seconds and release to re-pair</dd>
+        <dt>Buttons</dt><dd>PWR taps the creature, approves a prompt or clears a notification, else cycles creature, usage and the live page; PWR double tap sends the previous track command. BOOT is the aux key: a tap sends play or pause, approves a prompt, clears a notification or steps the splash creature and brightness; a double tap sends next track.</dd>
         <dt>Bring-up</dt><dd>Serial pokes over USB: <code>iox</code>, <code>scan</code>, <code>gtseq</code>, <code>bl 128</code>, <code>screenshot</code></dd>
+        <dt>Second board</dt><dd>Waveshare ESP32-C6-Touch-AMOLED-2.16, 480 × 480, in bring up: stock animation table only, no big tier, no Wi-Fi or art yet, advertising over BLE and waiting for data, not yet paired.</dd>
       </dl>
+    </div>
+  </main>
+</section>
+
+<!-- Band 4a, dark: the dance floor. One mechanic, captured live on the board. -->
+<section class="band dark">
+  <main>
+    <p class="kick">On the music card</p>
+    <h2>The dance floor</h2>
+    <p class="muted" style="max-width:70ch">Setting the card's creature field to <code>dance</code> hands it to the dancing daemon. It alternates two pools: a feature for 90 seconds (breakdance, acrobat, rave bunny, dj, rave, mixer) and a clip of a repeating move for 30 seconds (moonwalk, hop, swing, headphones, notes, cartwheel). Each pick is random within its pool and never repeats, and a 1.2 second transition shrinks the outgoing creature to a dot before the next one rises. <code>dance next</code> and <code>dance status</code> poke it from serial.</p>
+    <div class="tiles" style="margin-top:22px">
+      <figure class="media" style="margin:0"><img src="media/lcd4/dancefloor-feature-dj-device.png" alt="The 4 inch panel mid dance floor, showing the DJ feature animation" style="width:100%;height:auto"><figcaption>Feature: DJ, captured on device.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/lcd4/dancefloor-breakdance-hd-device.png" alt="The 4 inch panel mid dance floor, showing the breakdance HD feature animation" style="width:100%;height:auto"><figcaption>Feature: breakdance HD, a headspin on the antenna.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/lcd4/dancefloor-breakdance-hd-2-device.png" alt="The 4 inch panel mid dance floor, showing the breakdance HD windmill" style="width:100%;height:auto"><figcaption>Feature: breakdance HD, the windmill.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/lcd4/dancefloor-clip-notes-device.png" alt="The 4 inch panel mid dance floor, showing the notes clip" style="width:100%;height:auto"><figcaption>Clip: notes, a 30 second repeating move.</figcaption></figure>
+      <figure class="media" style="margin:0"><img src="media/lcd4/dancefloor-transition-device.png" alt="The 4 inch panel mid transition between two dance floor creatures" style="width:100%;height:auto"><figcaption>The 1.2 second shrink-to-a-dot transition between dancers.</figcaption></figure>
     </div>
   </main>
 </section>
@@ -270,7 +294,7 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
     <div class="grid3" style="margin-top:22px">
       <div class="panel">
         <h3>Pages, not screens</h3>
-        <p class="muted">A page registry in the firmware: usage, Fox status, Kismet, home controls, sensors. Each page is JSON over a WebSocket from the host, with a device token and a LAN only bind. A new integration is a host page, not a reflash.</p>
+        <p class="muted">Shipped today: a generic page overlay (title, three lines, a progress bar, a creature) driven by JSON over the board's own BLE link, which is how notifications, the Spotify card and the dance floor already reach the screen. Planned: a page registry over a LAN WebSocket with a device token, for pages like Fox status and Kismet that don't need to ride BLE. A new integration being a host page, not a reflash, holds either way.</p>
       </div>
       <div class="panel">
         <h3>Sensors on the bus</h3>
@@ -288,7 +312,7 @@ footer p{font-size:14px;color:var(--muted);max-width:76ch}
       <ul>
         <li>Order of work, each step gated: touch working, then the page registry and transport with usage as the first page, then Fox status, then the first sensor, then the Home Assistant bridge, then home controls, then the home lab page.</li>
         <li><strong>First host to device to host loop, shipped 2026-09-28:</strong> when Claude Code is about to ask for permission, the panel shows the tool and the command and the button approves it (a tap, once touch works). The device can only say yes; a no is typed in the terminal, and silence hands the prompt back to the terminal after 40 seconds. Same rule as everything else here: the host decides what to ask, the board renders and reports a press.</li>
-        <li>Nothing else in this band exists yet. The state board above is the truth about today.</li>
+        <li>Shipped since: the LabDaemon Engine host service, live Spotify on the card, host notifications and page overlays, the dance floor, and the Claude Code hooks that pick the splash creature. Fox status, Kismet, sensors and Home Assistant are still ahead. The state tiles above are the truth about today.</li>
       </ul>
     </div>
   </main>
