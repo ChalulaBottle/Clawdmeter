@@ -7,6 +7,23 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **STATUS 2026-10-02: docs and landing page ACTUALLY caught up (branch `site-catchup-2026-10-02`, not
+  yet merged into `port/waveshare-lcd-4`, pending operator review).** The 2026-10-01 ~03:00 entry below
+  claimed "docs and landing page updated" — true only for the creature grid; the engine, Spotify, the
+  notify/page system, the dance floor and the Claude Code hooks had never made it onto the public page.
+  README's album-art paragraph was also stale, still describing the parked Wi-Fi/HTTP path instead of
+  the shipped BLE one. Fixed on the review branch: README's BLE art paragraph (marked not-yet-proven,
+  per the GATT re-pair blocker below, which is still open); a new landing-page band for the dance floor
+  using the five existing `dancefloor-*.png` captures; a fourth "LabDaemon Engine" panel; three new
+  state-of-the-port tiles (Spotify, Notify/page, Claude hooks); the touch tile corrected to "confirmed
+  non-responsive" (Waveshare's own factory-test firmware agrees, SYSTEM_CHANGE_LOG.md 2026-09-29); the
+  button-row spec replaced with the real increment-2 table; a second-board spec row; and the "Pages, not
+  screens" panel reworded to separate the shipped BLE page transport from the still-planned LAN
+  WebSocket registry. **Second board correction:** the "never enumerated: data cable" note two bullets
+  down is now stale — it's flashed (`waveshare_amoled_216_c6`, 2026-10-01 afternoon,
+  SYSTEM_CHANGE_LOG.md), advertising over BLE as `D4:05:92:B7:8B:E2`, stock table only, not yet paired.
+  **Exact next action:** operator reviews branch `site-catchup-2026-10-02`, merges into
+  `port/waveshare-lcd-4` to go live (GitHub Pages rebuilds automatically on that push).
 - **STATUS 2026-10-01 ~03:00: increments 1, 2, 2b (board + host), 2c and the big tier are ON THE 4 INCH
   BOARD (table 11e2bc2, 83 animations; dance floor 5ebe84f; BLE art firmware efd5f1f; host art 4ab5e74 +
   5e38b71). Spotify follows the operator's playback (phone or PC, same account). Tray and engine run the
