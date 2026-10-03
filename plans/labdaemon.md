@@ -7,6 +7,14 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **2026-10-03, CULTURE BATCH BUILT, NOT FLASHED (branch feat/idle-shuffle, cf46577 + a38db70):** sixteen culture
+  creatures (`plans/creatures-and-modes.md` § The culture batch) in the big tier: 99 animations with SPLASH_BIG, 73
+  without, all sixteen in the wildcard pool on SPLASH_BIG boards. They overflowed default_16MB's 6.25 MB app0
+  (103.9 %), so the lcd_4 env now uses `max_app_8MB.csv` (one 7.9 MB factory app, nvs unchanged): lcd_4 82.5 %
+  (6,809,891 of 8,257,536 B), amoled_216 unchanged at 3,309,955 B (99.0 %). **Exact next action:** the operator
+  OKs the new partition table, then flash lcd_4 (the flash writes the table; NVS bonds, Wi-Fi credentials and
+  brightness should survive), `anim echo starry night` and a few more on serial, device captures, then README
+  big tier tables and `docs/media/anims` GIFs.
 - **STATUS 2026-10-01 ~03:00: increments 1, 2, 2b (board + host), 2c and the big tier are ON THE 4 INCH
   BOARD (table 11e2bc2, 83 animations; dance floor 5ebe84f; BLE art firmware efd5f1f; host art 4ab5e74 +
   5e38b71). Spotify follows the operator's playback (phone or PC, same account). Tray and engine run the
