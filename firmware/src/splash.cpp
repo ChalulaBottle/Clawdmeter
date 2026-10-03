@@ -88,6 +88,10 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
 static int  forced_idx = -1;
 static char forced_req[24] = "";
 
+// Held creature (see splash_hold_anim): -1 = none. It stands in for the groups,
+// below a host-named one, so the usage poll that names nothing leaves it be.
+static int  hold_idx = -1;
+
 // Mornings (MORNING_FROM..MORNING_TO local, once the daemon has sent the clock):
 // the idle and normal-pace groups mostly show the creature with its coffee.
 // Two mugs on every third day of the year, one otherwise. Two picks in three
@@ -654,9 +658,9 @@ void splash_tick(void) {
 #endif
 
     // Auto-rotate to the next animation in the current group. Suspended while
-    // the host drives the animation — otherwise its choice would be dropped
-    // after SPLASH_ROTATE_INTERVAL_MS.
-    if (forced_idx < 0 && millis() - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) {
+    // the host drives the animation or holds one, or its choice would be
+    // dropped after SPLASH_ROTATE_INTERVAL_MS.
+    if (forced_idx < 0 && hold_idx < 0 && millis() - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) {
         splash_pick_for_current_rate();
     }
 
@@ -673,6 +677,7 @@ void splash_tick(void) {
 
 void splash_next(void) {
     if (SPLASH_ANIM_COUNT == 0) return;
+    hold_idx = -1;   // the button at the desk lets a held creature go
     cur_anim = (cur_anim + 1) % SPLASH_ANIM_COUNT;
     cur_frame = 0;
     frame_started_ms = millis();
@@ -717,9 +722,38 @@ void splash_set_anim(const char *name) {
     Serial.printf("splash: host asked for unknown anim '%s', ignoring\n", name);
 }
 
+bool splash_hold_anim(const char *name) {
+    if (SPLASH_ANIM_COUNT == 0) return false;
+    if (!name || !*name) {
+        if (hold_idx < 0) return true;
+        hold_idx = -1;
+        Serial.println("splash: hold let go, back to usage-rate groups");
+        if (active && forced_idx < 0) splash_pick_for_current_rate();
+        return true;
+    }
+    const int8_t idx = find_anim(name);
+    if (idx < 0) {
+        Serial.printf("splash: no anim '%s' to hold\n", name);
+        return false;
+    }
+    hold_idx = idx;
+    Serial.printf("splash: hold %s (%d cells a side)\n", name, anim_size(&splash_anims[idx]));
+    if (active && forced_idx < 0 && cur_anim != idx) show_anim(idx);
+    return true;
+}
+
+const char* splash_anim_name(void) {
+    return SPLASH_ANIM_COUNT ? splash_anims[cur_anim].name : "";
+}
+
+int splash_anim_count(void) {
+    return SPLASH_ANIM_COUNT;
+}
+
 void splash_pick_for_current_rate(void) {
     if (SPLASH_ANIM_COUNT == 0) return;
     if (forced_idx >= 0) { show_anim(forced_idx); return; }
+    if (hold_idx >= 0)   { show_anim(hold_idx); return; }
     int g = usage_rate_group();
     if (g < 0 || g >= GROUP_COUNT) g = 0;
     if (group_size[g] == 0) return;
@@ -747,7 +781,7 @@ void splash_pick_for_current_rate(void) {
 }
 
 bool splash_is_active(void) { return active; }
-bool splash_host_named(void) { return forced_idx >= 0; }
+bool splash_host_named(void) { return forced_idx >= 0 || hold_idx >= 0; }
 
 void splash_request_full_redraw(void) {
 #if SPLASH_DIRECT_DRAW
