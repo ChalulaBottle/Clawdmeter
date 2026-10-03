@@ -240,7 +240,7 @@ so when several are due in the same second the daemon sends them a quarter secon
 | `wifi.json` | the engine's `wifi set` and `wifi clear`, or you | `{"ssid", "pass"}` | `{"wf", "wp"}`, once, and the file is deleted |
 | `cmd\<ns>.json` | the engine | `{"c", "v", "expires"}`, one verb for the boards | `{"c", "v"}`, once, in name order, and the file is deleted (see Commands) |
 | `events\<ns>.json` | the daemon | `{"btn", "scr", "addr", "ts"}` | nothing: it is for the engine |
-| `board\<address>.json` | the daemon | `{"br", "scr", "an", "fw", "n"}` from the board's report, with `{"cmd", "last", "ts", "addr", "name"}` | nothing: it is the board's answers, for the engine |
+| `board\<address>.json` | the daemon | `{"br", "scr", "an", "fw", "n", "dv", "do"}` from the board's report, with `{"cmd", "last", "ts", "addr", "name"}` | nothing: it is the board's answers, for the engine |
 | `daemon.pages` | the daemon | `{"boards"}`, the boards it last sent a page to | nothing: it is the daemon's own note |
 
 **Text.** Every text field is capped in bytes of `UTF-8`, the way the board caps it, and never
@@ -352,13 +352,20 @@ a value is never cut, since a cut creature name would name another creature. Wit
 linked the files wait, and the first board that links takes those still live. The verbs are
 the board's: `bright` with 0 to 100 (the panel brightness, kept on the board), `anim` with a
 creature name (held on the splash; an empty value lets it go), `screen` with `splash`, `usage`
-or `page`, `dance` with `next`, and `status` with an empty value.
+or `page`, `dance` with `next`, `dview` with `card`, `large` or `full` (how big a page that
+dances, the music card while a track plays, draws its dancer, kept on the board), `dvo` with 0
+to 100 (the opacity of the strip the full view draws over the dancer, kept on the board), and
+`status` with an empty value. The board
+writes each new `bright`, `dview` and `dvo` value to its flash, so a slider is best sent once
+it is let go, not at every step.
 
 The board answers each one on its own: `{"c": verb, "ok": 1}`, `{"c": verb, "err": why}`, or
 for `status` its report. Whatever comes back lands in `board\<address>.json`, the address
 with dashes in place of its colons: the fields of the latest report (`br` the brightness from 0
 to 100, or `-1` on a board that cannot set it, `scr` the screen on top, `an` the creature on
-the splash, `fw` the board's name, `n` how many animations it has), `last` with the latest
+the splash, `fw` the board's name, `n` how many animations it has, `dv` the dance view a
+dancing page gets, `card` on a board without PSRAM, and `do` the overlay opacity; firmware from before
+the dance view reports neither), `last` with the latest
 answer as `{"c", "ok": 1}` or `{"c", "err"}`, `cmd` true, then `ts`, `addr` and `name`. `ts`
 is the time of the latest answer, while the report's fields stay until the next report
 replaces them: ask for `status` after a change to see its effect there. Each link asks its
