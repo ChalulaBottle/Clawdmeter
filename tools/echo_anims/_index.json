@@ -381,6 +381,134 @@
     "palette_size": 7
   },
   {
+    "filename": "echo_creation.html",
+    "name": "echo creation",
+    "category": "Idle",
+    "frame_count": 23,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_crosswalk.html",
+    "name": "echo crosswalk",
+    "category": "Active",
+    "frame_count": 37,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_distracted.html",
+    "name": "echo distracted",
+    "category": "Active",
+    "frame_count": 39,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_galaxy_brain.html",
+    "name": "echo galaxy brain",
+    "category": "Thinking",
+    "frame_count": 39,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_great_wave.html",
+    "name": "echo great wave",
+    "category": "Active",
+    "frame_count": 30,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_melting_clock.html",
+    "name": "echo melting clock",
+    "category": "Idle",
+    "frame_count": 28,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_mona_lisa.html",
+    "name": "echo mona lisa",
+    "category": "Idle",
+    "frame_count": 24,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_pearl_earring.html",
+    "name": "echo pearl earring",
+    "category": "Idle",
+    "frame_count": 31,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_saber_duel.html",
+    "name": "echo saber duel",
+    "category": "Active",
+    "frame_count": 41,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_scream.html",
+    "name": "echo scream",
+    "category": "Active",
+    "frame_count": 36,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_slow_dodge.html",
+    "name": "echo slow dodge",
+    "category": "Active",
+    "frame_count": 42,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_starry_night.html",
+    "name": "echo starry night",
+    "category": "Idle",
+    "frame_count": 38,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_stonks.html",
+    "name": "echo stonks",
+    "category": "Active",
+    "frame_count": 33,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_thinker.html",
+    "name": "echo thinker",
+    "category": "Thinking",
+    "frame_count": 31,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_this_is_fine.html",
+    "name": "echo this is fine",
+    "category": "Idle",
+    "frame_count": 43,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
+    "filename": "echo_vitruvian.html",
+    "name": "echo vitruvian",
+    "category": "Idle",
+    "frame_count": 28,
+    "palette_size": 10,
+    "tier": "big"
+  },
+  {
     "filename": "echo_door.html",
     "name": "echo door",
     "category": "Mode",
