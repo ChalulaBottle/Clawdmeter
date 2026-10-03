@@ -521,6 +521,26 @@ void ble_send_nack(void) {
     }
 }
 
+void ble_send_cmd_reply(const char* msg) {
+    if (state == BLE_STATE_CONNECTED && tx_char && msg && *msg) {
+        tx_char->setValue(msg);
+        tx_char->notify();
+    }
+}
+
+size_t ble_tx_max(void) {
+    if (!server) return 0;
+    size_t room = 0;
+    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
+        const uint16_t h = tx_subs[i];
+        if (h == CONN_HANDLE_NONE) continue;
+        const uint16_t mtu = server->getPeerMTU(h);   // 0 for a link that is gone
+        if (mtu <= 3) continue;
+        if (!room || (size_t)(mtu - 3) < room) room = mtu - 3;
+    }
+    return room;
+}
+
 #ifdef FEATURE_PICTURE
 // The answer to Wi-Fi credentials (main.cpp, handle_wifi_msg, which declares
 // it), in place of the plain ack or nack: {"ack":true,"wf":"ok"} stored, or
@@ -541,19 +561,6 @@ bool ble_send_art(const char* msg) {
     tx_char->setValue(msg);
     tx_char->notify();
     return true;
-}
-
-size_t ble_tx_max(void) {
-    if (!server) return 0;
-    size_t room = 0;
-    for (int i = 0; i < CONFIG_BT_NIMBLE_MAX_CONNECTIONS; i++) {
-        const uint16_t h = tx_subs[i];
-        if (h == CONN_HANDLE_NONE) continue;
-        const uint16_t mtu = server->getPeerMTU(h);   // 0 for a link that is gone
-        if (mtu <= 3) continue;
-        if (!room || (size_t)(mtu - 3) < room) room = mtu - 3;
-    }
-    return room;
 }
 
 uint32_t ble_last_host_write_ms(void) {

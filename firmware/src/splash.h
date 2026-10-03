@@ -35,6 +35,17 @@ void splash_pick_for_current_rate(void);
 // fight the PWR button.
 void splash_set_anim(const char *name);
 
+// Hold the named creature on the splash (the cmd message's anim, cmd.h): it
+// takes the place of the usage-rate groups and stays, with no rotation, until
+// another hold, a hold of "" or NULL (back to the groups), or splash_next (the
+// creature button at the desk). A creature the host names in usage comes first
+// while it lasts and the held one comes back after it. False, with nothing
+// changed, for a name this board's table lacks.
+bool splash_hold_anim(const char *name);
+// The creature on the splash now ("" with no table), and how many the table has.
+const char* splash_anim_name(void);
+int splash_anim_count(void);
+
 // Aus dem LVGL-Flush-Callback zu rufen, sobald der letzte Streifen eines
 // Bilddurchlaufs draussen ist. Der Splash malt auf manchen Boards direkt auf
 // den Panel und muss wissen, wann LVGL fertig ist - sonst uebermalt ein noch
@@ -44,7 +55,8 @@ void splash_note_refresh_done(void);
 // True when splash is currently rendering (used to gate re-picks).
 bool splash_is_active(void);
 
-// True while the host has named an animation (splash_set_anim with a known name).
+// True while the host has named an animation (splash_set_anim with a known name)
+// or holds one (splash_hold_anim).
 bool splash_host_named(void);
 
 // Root container (so ui.cpp can attach a click event).

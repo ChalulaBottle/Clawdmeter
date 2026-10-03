@@ -1104,6 +1104,12 @@ static void page_set_creature(const char* anim) {
     page_place_creature(c);
 }
 
+bool ui_dance_next(void) {
+    if (!dance_on) return false;
+    if (dance_phase == DANCE_PLAY) dance_left = 0;   // a change under way carries on
+    return true;
+}
+
 void ui_dance_serial(const char* arg) {
     const bool next = strcmp(arg, "next") == 0;
     if (!next && strcmp(arg, "status") != 0) {
@@ -1111,8 +1117,7 @@ void ui_dance_serial(const char* arg) {
     } else if (!dance_on) {
         Serial.println("dance: off");
     } else {
-        // next: the change starts on the next pass with the page on top; one under way carries on.
-        if (next && dance_phase == DANCE_PLAY) dance_left = 0;
+        if (next) ui_dance_next();
         // Seconds until the next change starts; while a dancer grows in, all its time is still ahead.
         const uint32_t ms = dance_left + (dance_phase == DANCE_UP ? DANCE_MS[dance_pool] : 0);
         Serial.printf("dance: %s %s, %lu s left%s\n", DANCE_KIND[dance_pool],
@@ -1194,12 +1199,24 @@ bool ui_page_live(void) {
     return page_name[0] != '\0';
 }
 
+// A page in sight goes out of sight, live (the cycle, a tap, the screen verb).
+static void page_put_away(void) {
+    if (!ui_page_visible()) return;
+    lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+    page_hidden = true;
+    Serial.printf("page: %s out of sight, still live\n", page_name);
+}
+
+// The live page, whole, over the screen underneath; its clock and creature carry on.
+static void page_bring_back(void) {
+    page_hidden = false;
+    lv_obj_clear_flag(page_group, LV_OBJ_FLAG_HIDDEN);
+    splash_hide();
+    Serial.printf("page: show %s\n", page_name);
+}
+
 void ui_page_leave(void) {
-    if (ui_page_visible()) {
-        lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
-        page_hidden = true;
-        Serial.printf("page: %s out of sight, still live\n", page_name);
-    }
+    page_put_away();
     ui_show_screen(SCREEN_SPLASH);   // the creature, unless a notification or a prompt covers it
 }
 
@@ -1209,14 +1226,26 @@ void ui_cycle_screens(void) {
     } else if (current_screen == SCREEN_SPLASH) {
         ui_show_screen(SCREEN_USAGE);
     } else if (ui_page_live()) {
-        // The live page, whole, over the usage screen; its clock and creature carry on.
-        page_hidden = false;
-        lv_obj_clear_flag(page_group, LV_OBJ_FLAG_HIDDEN);
-        splash_hide();
-        Serial.printf("page: show %s\n", page_name);
+        page_bring_back();
     } else {
         ui_show_screen(SCREEN_SPLASH);
     }
+}
+
+bool ui_go_to(const char* scr) {
+    if (strcmp(scr, "page") == 0) {
+        if (!ui_page_live()) return false;
+        if (!ui_page_visible()) page_bring_back();
+        return true;
+    }
+    const screen_t want = strcmp(scr, "splash") == 0 ? SCREEN_SPLASH
+                        : strcmp(scr, "usage") == 0  ? SCREEN_USAGE : SCREEN_COUNT;
+    if (want == SCREEN_COUNT) return false;
+    // Showing the splash again would pick the next creature: leave it be.
+    if (!ui_page_visible() && current_screen == want) return true;
+    page_put_away();
+    ui_show_screen(want);
+    return true;
 }
 
 static void init_battery_icons(void) {

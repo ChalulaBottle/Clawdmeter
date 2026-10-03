@@ -62,10 +62,20 @@ void ui_page_leave(void);
 // next dancer, through the shrink to the dot and back; "status" prints the pool
 // (feature or clip), the dancer and the seconds until the next change.
 void ui_dance_serial(const char* arg);
+// The dance floor's next dancer, as `dance next` does; the change starts on the
+// next pass with the page on top. False when no dance is going on.
+bool ui_dance_next(void);
 
 // The screen cycle: creature, usage, the live page when there is one, creature.
 // PWR on every board, and a tap on every board with touch.
 void ui_cycle_screens(void);
+
+// Go to the screen of that name, the cmd message's screen (cmd.h): "splash" or
+// "usage" puts it on top, and a page in sight goes out of sight, live, as with
+// the cycle; "page" brings the live page back whole. Already there: nothing
+// changes. False for "page" while none is live, and for any other name. A
+// prompt or a notification stays over whatever comes up.
+bool ui_go_to(const char* scr);
 
 // What is on top right now, the "scr" of a button event: "approve", "notify",
 // "page" (only while it is in sight and nothing covers it), or the screen

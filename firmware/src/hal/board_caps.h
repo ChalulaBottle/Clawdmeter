@@ -23,6 +23,14 @@ struct BoardCaps {
     // (main.cpp pwr_act), so shared code no longer reads the field; lcd_4 still
     // sets it. Trailing so boards that leave it out get false.
     bool    pwr_toggles_stats;
+    // The panel's brightness cannot be set: the cmd message's bright answers
+    // "no" and its status reports br -1 (cmd.cpp). Trailing, so false for every
+    // board that leaves it out, which is every board today: the AMOLED panels
+    // take a level, lcd_154 dims its backlight by PWM and lcd_4 through its
+    // CH32. lcd_4's TCA9554 revisions (V1 to V3) only switch the backlight on
+    // and off, but which expander a board has is found at boot and this is fixed
+    // at build time, so they count as adjustable.
+    bool    fixed_brightness;
 };
 
 const BoardCaps& board_caps(void);

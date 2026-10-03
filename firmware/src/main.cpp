@@ -14,6 +14,7 @@
 #include "idle.h"
 #include "idle_cfg.h"
 #include "brightness.h"
+#include "cmd.h"
 #ifdef FEATURE_PICTURE
 #include "wifi_link.h"
 #include "art.h"
@@ -213,6 +214,24 @@ static bool handle_wifi_msg(const char* json) {
 }
 #endif
 
+// A named verb from the host (cmd.h): its own message, like notify:
+//   {"c":"bright","v":"40"}   {"c":"screen","v":"page"}   {"c":"status","v":""}
+// v is text; a number there reads as "", which the verbs that need one refuse.
+// Returns true when the message was one, and has answered it then, in place of
+// the plain ack: {"c":"<verb>","ok":1}, {"c":"<verb>","err":"<why>"} or the
+// status report. The gate lets usage payloads through too: with the chime on
+// they carry "c" as well, as the number 1, so the string check and the absent
+// "s" below are what keep them out. Older firmware has no handler and leaves
+// the message to parse_json, whose plain nack tells the host so.
+static bool handle_cmd_msg(const char* json) {
+    if (!strstr(json, "\"c\"")) return false;   // cheap gate, see above
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    if (!doc["c"].is<const char*>() || !doc["s"].isNull()) return false;
+    cmd_run(doc["c"].as<const char*>(), doc["v"] | "");
+    return true;
+}
+
 // True while the page on the panel came from the host; a serial poke's page has
 // no host behind it (see host_page_tick).
 static bool page_from_host = false;
@@ -363,6 +382,15 @@ static bool take_tap(uint8_t* q) {
     return true;
 }
 
+// `cmd <verb> <value>`: a cmd message from the bench (cmd.h). The value is the
+// rest of the line, spaces and all (`cmd anim echo dj`), empty when left off
+// (`cmd status`). The answer goes to a linked host too, as the message's would.
+static void serial_cmd(char* args) {
+    char* value = strchr(args, ' ');
+    if (value) *value++ = '\0';
+    cmd_run(args, value ? value : "");
+}
+
 static void send_screenshot() {
 #ifndef BOARD_HAS_PSRAM
     // A full RGB565 framebuffer doesn't fit in internal SRAM on PSRAM-free
@@ -469,6 +497,8 @@ static void check_serial_cmd() {
             else if (strncmp(cmd_buf, "dance ", 6) == 0) ui_dance_serial(cmd_buf + 6);
             // PWR and aux taps from the bench, down the button path (serial_btn).
             else if (strncmp(cmd_buf, "btn ", 4) == 0)  serial_btn(cmd_buf + 4);
+            // A host verb from the bench, through the cmd message's handler (serial_cmd).
+            else if (strncmp(cmd_buf, "cmd ", 4) == 0)  serial_cmd(cmd_buf + 4);
 #ifdef FEATURE_PICTURE
             // Wi-Fi and the album art: `wifi <ssid>|<password>`, `wifi off`,
             // `wifi status`, `art <base url>`, `art status` (wifi_link.h, art.h).
@@ -790,8 +820,8 @@ void loop() {
                 Serial.println("peek: zurueck zu den Animationen");
             }
         } else if (cur != SCREEN_SPLASH || splash_host_named()) {
-            // on the numbers already, or the host is driving the creature (Claude activity):
-            // no peek, the clock restarts
+            // on the numbers already, or the host is driving the creature (Claude activity,
+            // or one it holds): no peek, the clock restarts
             peek_ref_ms = now_ms;
         } else if (now_ms - peek_ref_ms >= USAGE_PEEK_EVERY_MS) {
             peeking = true;
@@ -842,13 +872,16 @@ void loop() {
         // host message is its own, and only one carrying "s" is usage. Wi-Fi
         // credentials ("wf") sit beside notify and answer for themselves
         // (handle_wifi_msg); a board without Wi-Fi leaves them to parse_json,
-        // which nacks them. An album art header ("ab", boards with
-        // FEATURE_PICTURE) comes next, before the page; its chunks never pass
-        // here (art.h).
+        // which nacks them. A cmd ("c" as text) comes after Wi-Fi and answers
+        // for itself too (handle_cmd_msg). An album art header ("ab", boards
+        // with FEATURE_PICTURE) comes next, before the page; its chunks never
+        // pass here (art.h).
         if (handle_approve_msg(raw) || handle_notify_msg(raw)) {
             ble_send_ack();
         } else if (handle_wifi_msg(raw)) {
             // answered already, with the "wf" reply
+        } else if (handle_cmd_msg(raw)) {
+            // answered already, by cmd_run
 #ifdef FEATURE_PICTURE
         } else if (handle_art_header_msg(raw)) {
             ble_send_ack();   // art.cpp answers for the picture itself: "ok" or "miss"

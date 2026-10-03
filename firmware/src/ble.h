@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 enum ble_state_t {
@@ -19,6 +20,13 @@ bool ble_has_data(void);
 const char* ble_get_data(void);
 void ble_send_ack(void);
 void ble_send_nack(void);
+// The answer to a cmd message (cmd.h) on the TX char, in place of the plain
+// ack: {"c":"<verb>","ok":1}, {"c":"<verb>","err":"<why>"} or the status
+// report. The caller keeps it within ble_tx_max().
+void ble_send_cmd_reply(const char* msg);
+// The most bytes one TX notification carries to every subscribed central: the
+// smallest ATT MTU among them, less 3. 0 while none is subscribed.
+size_t ble_tx_max(void);
 void ble_request_refresh(void);
 // Answer a relayed permission prompt: {"approve":"<id>"} on the TX char. The
 // device only ever says yes; a deny is given in the terminal.
@@ -47,16 +55,12 @@ uint32_t ble_ms_since_host_write(void);
 bool ble_host_listening(void);
 
 #ifdef FEATURE_PICTURE
-#include <stddef.h>
 // Album art over BLE (art.h); boards built without FEATURE_PICTURE have none of
 // this, and no art characteristic.
 // An answer about a picture on the TX char, {"art":"<id>","ok":1} or
 // {"art":"<id>","miss":[...]}, from the loop. False when no central is
 // subscribed to TX. The caller keeps it within ble_tx_max().
 bool ble_send_art(const char* msg);
-// The most bytes one TX notification carries to every subscribed central: the
-// smallest ATT MTU among them, less 3. 0 while none is subscribed.
-size_t ble_tx_max(void);
 // millis() of the owner's last write on RX, the moment the message the loop
 // has just taken came in.
 uint32_t ble_last_host_write_ms(void);

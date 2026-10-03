@@ -7,6 +7,15 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **2026-10-03, INCREMENT 4 (the engine's dashboard, Google, Discord, and the cmd message here):
+  RESUME FROM the engine repo's `plans/dashboard.md` RESUME STATE, which is authoritative for this
+  increment.** Board side committed on branch `feat/cmd-message` (from `ee63a70`): firmware `02631fa`,
+  daemon `2415e13`, and this plan; pushed as that branch only, NOT FLASHED, not merged. Engine side on
+  labdaemon-engine main: `bcfa368` dashboard, `158cfb6` google, `17e982e` discord, `951d041` docs and
+  plan (1130 tests). Next: restart the engine, merge `feat/cmd-message` and `feat/idle-shuffle` into
+  `port/waveshare-lcd-4` (pull first: the local branch is 2 behind origin), build lcd_4, flash with an
+  explicit `--upload-port`, restart the tray, bring-up list in Increment 4 below.
+  **Release branch elease/increment-4** (2026-10-03) = origin/port/waveshare-lcd-4 + feat/cmd-message + feat/idle-shuffle; lcd_4 moves to the stock max_app_8MB partition table (operator OK needed before the flash).
 - **STATUS 2026-10-02: docs and landing page ACTUALLY caught up (branch `site-catchup-2026-10-02`, not
   yet merged into `port/waveshare-lcd-4`, pending operator review).** The 2026-10-01 ~03:00 entry below
   claimed "docs and landing page updated" — true only for the creature grid; the engine, Spotify, the
@@ -142,8 +151,9 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 ## Protocol (settled 2026-09-29 ~21:35; every lane uses these names verbatim)
 
 **Host to board, each its own BLE message, never merged into usage.** Firmware dispatch order:
-`handle_approve_msg || handle_notify_msg || handle_wifi_msg || handle_page_msg || parse_json(requires "s")`,
-then ack (the Wi-Fi message answers for itself, below).
+`handle_approve_msg || handle_notify_msg || handle_wifi_msg || handle_cmd_msg || handle_art_header_msg || handle_page_msg || parse_json(requires "s")`,
+then ack (the Wi-Fi and cmd messages answer for themselves, below; the art header exists in
+`FEATURE_PICTURE` builds only).
 
 | Message | Fields | Clear |
 |---|---|---|
@@ -151,6 +161,13 @@ then ack (the Wi-Fi message answers for itself, below).
 | notify | `nt` title (≤23), `nb` body (≤96), `nx` seconds (default 8) | `{"nt":"","nb":""}` |
 | wifi (increment 2; boards built with `FEATURE_PICTURE` only, today lcd_4) | `wf` SSID (1 to 32 bytes), `wp` password (empty for an open network, 8 to 63 characters, or exactly 64 hex digits) | `{"wf":""}` forgets the network |
 | page | `pg` page name (≤15), `pt` title (≤23), `p1` `p2` `p3` lines (≤40 each), `pp` progress 0..100 or -1, `pa` creature name, "dance" or "", `pi` album art id or absent | `{"pg":""}` |
+| cmd (increment 4) | `c` verb, `v` value as text: `bright` 0 to 100, `anim` a creature name (`""` lets the held one go), `screen` splash, usage or page, `dance` next, `status` empty | none: one verb per message |
+
+**cmd answers:** in place of the plain ack the board answers `{"c":"<verb>","ok":1}` or
+`{"c":"<verb>","err":"<why>"}` (why: `verb`, `value`, `no`, `name`, `no page`, `no dance`), and
+`status` answers `{"c":"status","br","scr","an","fw","n"}` within MTU minus 3 (`br` -1 where the
+brightness cannot be set). Firmware from before has no handler, so the message falls through to
+`parse_json` and gets the plain `{"err":true}`, which the tray reads as "takes no cmds".
 
 **Wi-Fi answers:** in place of the plain ack the board answers `{"ack":true,"wf":"ok"}` (stored or
 forgotten) or `{"err":true,"wf":"no"}` (not stored: refused or NVS failed). A board without Wi-Fi has
@@ -322,6 +339,37 @@ urgent notifications; the panel itself stays visual.
   Windows toast forwarding last (packaged-app restriction makes it unreliable).
 - Housekeeping: tray waits for the board's `wf` answer before deleting wifi.json; art download off
   the engine's main loop.
+
+## Increment 4: the cmd message (2026-10-02, with the engine's dashboard)
+
+Operator 2026-10-02: a browser dashboard with "more options on what the device can do". The build
+plan is the engine repo's `plans/dashboard.md` (lanes A to D); this is the board side, lane D.
+- **Host side:** the engine's `board` controller drops `cmd\<ns>.json` `{c, v, expires}` (actions
+  brightness, creature, release, screen, dance_next, refresh). The tray reads the files in name order
+  every tick, hands each to every linked board, deletes it, and each link sends at most four a tick
+  without waiting for answers. Expired, malformed or undated files are dropped after one log line; a
+  file that cannot be read yet holds back the ones after it, so a later verb never overtakes an
+  earlier one. Answers land in `board\<AA-BB-..>.json`: the status fields plus `cmd`, `last`, `ts`,
+  `addr`, `name`. Each new link asks for one status report. A plain nack within 2 s of a cmd marks
+  the board `cmd` false (`old firmware`).
+- **Board side:** `cmd.h` and `cmd.cpp` (the five verbs), `handle_cmd_msg` after Wi-Fi in main.cpp,
+  serial poke `cmd <verb> <value>`, brightness 0 to 100 in NVS `brt_lvl` (0 maps to 16 of 255),
+  `splash_hold_anim` (the hold survives the usage poll, pauses the idle rotation and the usage peek;
+  `""` or the creature key at the desk lets go), `ui_go_to`, `ui_dance_next`, `ble_tx_max` on every
+  board, trailing BoardCaps flag `fixed_brightness` (false on every board today).
+- **SHIPPED on `feat/cmd-message`, not flashed:** firmware `02631fa`, daemon `2415e13` (daemon tests
+  595 before, 701 after, 2 skipped). Built: lcd_4 4,854,435 of 6,553,600 B (74.1 %), amoled_216
+  3,311,527 of 3,342,336 B (99.1 %, 30,809 B left), amoled_216_c6 2,939,448 of 6,553,600 B (44.9 %);
+  the binaries predate one comment only edit in splash.cpp.
+- **Bring-up after the flash:** `cmd status`, `cmd bright 40`, `cmd bright 0` (the panel must stay
+  visible), `cmd anim echo dj` (held past a 60 s usage poll), `cmd screen usage`, `cmd screen page`
+  (`no page` with no card up), `cmd dance next` with a dancing card; then the dashboard's Ask for a
+  report and `board\<address>.json`. No re-pair: the cmd message uses the existing RX and TX.
+- **Open:** the tray's `_write_json_atomic` retry on PermissionError (a board report can be lost
+  while the engine reads it); an NVS write debounce for brightness; a bounded skip in `take_cmds` for
+  a file that stays unreadable; lcd_4 V1 to V3 (TCA9554) can only switch the backlight; the root
+  README cmd section, the serial poke paragraph and the `fixed_brightness` row in
+  docs/porting/capability-flags.md.
 
 ## Increments (each ends flashed, captured, committed, pushed)
 
