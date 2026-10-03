@@ -7,6 +7,14 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **2026-10-03, CULTURE BATCH BUILT, NOT FLASHED (branch feat/idle-shuffle, cf46577 + a38db70):** sixteen culture
+  creatures (`plans/creatures-and-modes.md` § The culture batch) in the big tier: 99 animations with SPLASH_BIG, 73
+  without, all sixteen in the wildcard pool on SPLASH_BIG boards. They overflowed default_16MB's 6.25 MB app0
+  (103.9 %), so the lcd_4 env now uses `max_app_8MB.csv` (one 7.9 MB factory app, nvs unchanged): lcd_4 82.5 %
+  (6,809,891 of 8,257,536 B), amoled_216 unchanged at 3,309,955 B (99.0 %). **Exact next action:** the operator
+  OKs the new partition table, then flash lcd_4 (the flash writes the table; NVS bonds, Wi-Fi credentials and
+  brightness should survive), `anim echo starry night` and a few more on serial, device captures, then README
+  big tier tables and `docs/media/anims` GIFs.
 - **2026-10-03, INCREMENT 4 (the engine's dashboard, Google, Discord, and the cmd message here):
   RESUME FROM the engine repo's `plans/dashboard.md` RESUME STATE, which is authoritative for this
   increment.** Board side committed on branch `feat/cmd-message` (from `ee63a70`): firmware `02631fa`,
@@ -15,7 +23,8 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   plan (1130 tests). Next: restart the engine, merge `feat/cmd-message` and `feat/idle-shuffle` into
   `port/waveshare-lcd-4` (pull first: the local branch is 2 behind origin), build lcd_4, flash with an
   explicit `--upload-port`, restart the tray, bring-up list in Increment 4 below.
-  **Release branch elease/increment-4** (2026-10-03) = origin/port/waveshare-lcd-4 + feat/cmd-message + feat/idle-shuffle; lcd_4 moves to the stock max_app_8MB partition table (operator OK needed before the flash).
+  **Release branch 
+elease/increment-4** (2026-10-03) = origin/port/waveshare-lcd-4 + feat/cmd-message + feat/idle-shuffle; lcd_4 moves to the stock max_app_8MB partition table (operator OK needed before the flash).
 - **STATUS 2026-10-02: docs and landing page ACTUALLY caught up (branch `site-catchup-2026-10-02`, not
   yet merged into `port/waveshare-lcd-4`, pending operator review).** The 2026-10-01 ~03:00 entry below
   claimed "docs and landing page updated" — true only for the creature grid; the engine, Spotify, the
