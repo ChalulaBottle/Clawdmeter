@@ -82,10 +82,18 @@ WATCH_TICK = 1.0           # state / approve file checks; TICK stays the poll ca
 # built with Wi-Fi: it goes ONCE to every linked board as {"wf": ssid, "wp": pass} ({"wf": ""} for
 # an empty ssid: forget the network) and is removed once a board took it. Nothing of it ever
 # reaches the log.
+# cmd/<ns>.json {"c", "v", "expires"} is a named verb for the boards (the engine's board
+# controller writes it): each goes ONCE, in name order, to every linked board as {"c": verb,
+# "v": value}, and the file is removed. A board answers on TX with {"c": verb, "ok": 1},
+# {"c": verb, "err": why} or, for "status", its report; board/<address, dashes for colons>.json
+# keeps the latest of it for the engine. Older firmware answers a cmd with the plain
+# {"err": true}, which marks that board as one that takes no cmds.
 NOTIFY_FILE = CONFIG_FILE.parent / "notify.json"
 PAGE_FILE = CONFIG_FILE.parent / "page.json"
 EVENT_DIR = CONFIG_FILE.parent / "events"
 WIFI_FILE = CONFIG_FILE.parent / "wifi.json"
+CMD_DIR = CONFIG_FILE.parent / "cmd"
+BOARD_DIR = CONFIG_FILE.parent / "board"
 NOTIFY_TITLE_MAX = 23
 NOTIFY_BODY_MAX = 96
 NOTIFY_SECS_DEFAULT = 8    # seconds on screen when "secs" is left out
@@ -100,6 +108,31 @@ WIFI_SSID_MAX = 32         # ssid, in bytes of UTF-8: the 802.11 limit, and the 
 WIFI_PASS_MIN = 8          # pass, in bytes of UTF-8: empty (an open network), or a WPA passphrase
 WIFI_PASS_MAX = 63         # of 8 to 63 characters, the rule of the board and the engine's wifi set,
 WIFI_PSK = re.compile(r"[0-9A-Fa-f]{64}")   # or pass is a raw key: exactly 64 hex digits, no more
+CMD_VERB_MAX = 15          # "c" is a short word ("bright", "status"); what it means is the board's
+CMD_VERB = re.compile(r"[A-Za-z0-9_-]{1,%d}" % CMD_VERB_MAX)   # its shape: ASCII letters, digits, - or _
+CMD_VALUE_MAX = 32         # "v", in bytes of UTF-8 (a creature name is at most 23); never cut: a longer one is refused
+CMD_WHY_MAX = 23           # a board's "err" as its board/ file keeps it
+# Seconds after a cmd went within which a plain {"err": true} is taken as its answer. The board
+# answers within a few connection events; the rest is room for a busy board.
+CMD_NACK_WAIT = 2.0
+CMD_OLD_FIRMWARE = "old firmware"   # the "err" a board/ file names when a board answered a cmd with the plain nack
+# The cmds one link handles in one tick at most; the rest wait for its next tick. Writes keep
+# WRITE_GAP apart, so a pile of cmds would otherwise hold the tick, and with it the heartbeat,
+# prompts and Quit, for a quarter of a second each.
+CMD_PER_TICK = 4
+# The cmd every board gets once on each new link, so the engine has its report without asking
+# (None sends none).
+LINK_STATUS = {"c": "status", "v": ""}
+BOARD_ADDRESS = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")   # the addresses a board/ file is named after
+# The fields of a status report that a board/ file keeps, each with the check its value passes;
+# a field that fails is left out, the rest of the report kept.
+STATUS_FIELDS = {
+    "br": lambda v: isinstance(v, int) and not isinstance(v, bool) and -1 <= v <= 100,
+    "scr": lambda v: _token_ok(v, EVENT_FIELD_MAX),
+    "an": lambda v: isinstance(v, str) and len(v) <= ANIM_MAX,
+    "fw": lambda v: isinstance(v, str) and 0 < len(v) <= 40,
+    "n": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 9999,
+}
 # The board holds ONE incoming message until its loop reads it (firmware ble.cpp
 # rx_buf), so a second write landing first overwrites the first. Writes to one board
 # keep this many seconds apart; in practice only a same-tick burst (state resend,
@@ -722,6 +755,99 @@ def _drop_wifi_file(stamp: tuple) -> str | None:
     return None
 
 
+def read_cmd_file(path: Path) -> tuple[dict, float] | None:
+    """The board message in one cmd file and the Unix time it lapses: ({"c": verb, "v": value},
+    expires). "c" is a short word (CMD_VERB: ASCII letters, digits, - or _, up to CMD_VERB_MAX)
+    whose meaning is the board's; "v" is text of at most CMD_VALUE_MAX bytes of UTF-8, a whole
+    number goes as its digits, and a missing or null one is empty. A value is never cut, since a
+    cut creature name would name another creature or none.
+
+    Malformed, or past its "expires" (or without one): None after a log line, and the file is
+    sent to no board. A file that cannot be read right now raises the OSError: it is not
+    malformed, and the caller reads it again.
+    """
+    raw = path.read_bytes()
+    try:
+        data = json.loads(raw)  # from bytes, so a BOM or UTF-16 (PowerShell Out-File) still parses
+    except ValueError as e:
+        log(f"Cmd {path.name} malformed, dropped: {e}")
+        return None
+    if not isinstance(data, dict):
+        log(f"Cmd {path.name} malformed (not a JSON object), dropped")
+        return None
+    verb = data.get("c")
+    value = data.get("v")
+    if value is None:
+        value = ""
+    elif isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if not (isinstance(verb, str) and CMD_VERB.fullmatch(verb) and _wifi_text_ok(value, CMD_VALUE_MAX)):
+        log(f"Cmd {path.name} malformed (needs a verb in c of up to {CMD_VERB_MAX} ASCII letters,"
+            f" digits, - or _, and a text v of up to {CMD_VALUE_MAX} bytes), dropped")
+        return None
+    expires = data.get("expires")
+    if _seconds_left(expires) <= 0:
+        log(f"Cmd {path.name} ({verb}) expired before a board took it, dropped")
+        return None
+    return {"c": verb, "v": value}, float(expires)
+
+
+def _cmd_names() -> list[str]:
+    """The cmd files the engine has finished writing, in name order: names that end in .json and
+    do not start with a dot (a file still being written). No folder: none."""
+    try:
+        names = os.listdir(CMD_DIR)
+    except OSError:
+        return []
+    return sorted(n for n in names if n.endswith(".json") and not n.startswith("."))
+
+
+_CMD_TAKEN: set = set()   # cmd files handed out (or dropped) whose removal is still owed: never handed out again
+_CMD_UNREAD: set = set()  # cmd files found unreadable, logged once each and read again every tick
+
+
+def take_cmds() -> None:
+    """Hand every waiting cmd file, in name order, to every board linked right now, then remove
+    it. Each link sends its share on its own tick (Session.send_cmds), so no board waits on
+    another one's writes. Every link's tick calls this; it never awaits, so a file is taken
+    once, by whichever link comes first.
+
+    A malformed file, or one past its "expires", goes to no board and is removed after its log
+    line. One that cannot be read right now (another program holding it) is read again next
+    tick, logged once, and the files after it wait for it: a later verb never overtakes an
+    earlier one. One whose removal fails is never handed out again; the removal is tried again
+    every tick.
+    """
+    names = _cmd_names()
+    _CMD_TAKEN.intersection_update(names)
+    _CMD_UNREAD.intersection_update(names)
+    for name in names:
+        path = CMD_DIR / name
+        fresh = name not in _CMD_TAKEN
+        if fresh:
+            try:
+                cmd = read_cmd_file(path)
+            except FileNotFoundError:
+                continue                          # taken back by its writer
+            except OSError as e:
+                if name not in _CMD_UNREAD:
+                    _CMD_UNREAD.add(name)
+                    log(f"Cmd {name} unreadable, will try again: {e.strerror or type(e).__name__}")
+                break                             # the files after it wait: name order holds
+            _CMD_UNREAD.discard(name)
+            if cmd is not None:
+                for session in list(_LIVE_LINKS):
+                    session.queue_cmd(*cmd)
+            _CMD_TAKEN.add(name)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            if fresh:
+                log(f"Cmd {name} not removed yet, it will not go again: {e.strerror or type(e).__name__}")
+            continue
+        _CMD_TAKEN.discard(name)
+
+
 async def poll_api(token: str) -> dict | None:
     headers = dict(API_HEADERS_TEMPLATE)
     headers["Authorization"] = f"Bearer {token}"
@@ -975,10 +1101,18 @@ def _fit(payload: dict, limit: int) -> dict | None:
 
 
 class Session:
-    def __init__(self, client: BleakClient, address: str = "") -> None:
+    def __init__(self, client: BleakClient, address: str = "", name: str = DEVICE_NAME) -> None:
         self.client = client
         self.address = address  # the board's BLE address, stamped on its button events
+        self.name = name  # the board's Bluetooth name, for its board/ file
         self.refresh_requested = asyncio.Event()
+        # The cmd message: what take_cmds handed this link, sent on its own tick, and what the
+        # board has said to cmds on this link, which its board/ file keeps (_write_report).
+        self._cmds: list[tuple[dict, float]] = []  # (message, expires), oldest first
+        self._cmd_waiting: tuple[str, float] | None = None  # the verb last sent, and when, until answered
+        self._status: dict = {}  # the fields of the board's latest status report
+        self._last: dict | None = None  # its answer to the latest cmd: {"c", "ok": 1} or {"c", "err"}
+        self._cmd_ok: bool | None = None  # whether it takes cmds; None until it has answered one
         self._last_write = -math.inf  # time.monotonic() of the previous write (WRITE_GAP)
         # One write at a time on this link, whichever task asks: relay_wifi writes to every
         # board from one link's task, while a board's own write may be under way.
@@ -999,9 +1133,10 @@ class Session:
 
     def _on_tx(self, _char, data: bytearray) -> None:
         """Notifies from the board. Acks are noise; {"approve": id} is an answer, {"btn",
-        "scr"} a button press, which goes to events/ for the engine, and {"art": id, "ok"} or
-        {"art": id, "miss"} the board's answer about a picture (_art_heard). Anything else
-        is dropped."""
+        "scr"} a button press, which goes to events/ for the engine, {"art": id, "ok"} or
+        {"art": id, "miss"} the board's answer about a picture (_art_heard), and {"c": verb, ...}
+        its answer to a cmd (_cmd_heard). The plain {"err": true} may be older firmware turning
+        a cmd down (_nack_heard). Anything else is dropped."""
         try:
             msg = json.loads(bytes(data).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
@@ -1014,6 +1149,12 @@ class Session:
         if "art" in msg:
             self._art_heard(msg)
             return
+        if "c" in msg:
+            self._cmd_heard(msg)
+            return
+        if msg == {"err": True}:
+            self._nack_heard()
+            return
         request_id = msg.get("approve")
         if request_id is None:
             return
@@ -1022,6 +1163,84 @@ class Session:
             return
         log(f"Device approved {request_id}")
         write_decision(request_id, "allow")
+
+    # The cmd message: take_cmds hands a link its share, the link's tick sends it, and the
+    # board's answers come back through _on_tx, never waited on.
+
+    def queue_cmd(self, msg: dict, expires: float) -> None:
+        """A cmd message for this board, sent on this link's next tick (send_cmds)."""
+        self._cmds.append((msg, expires))
+
+    async def send_cmds(self) -> None:
+        """Send the cmds handed to this link, oldest first, each as its own message, at most
+        CMD_PER_TICK of them a tick; the rest go on the next one. One that lapsed while it
+        waited is dropped after a log line. The board's answer is not waited for: it comes in
+        on TX (_cmd_heard, _nack_heard)."""
+        for _ in range(min(len(self._cmds), CMD_PER_TICK)):
+            msg, expires = self._cmds.pop(0)
+            if time.time() >= expires:
+                log(f"Cmd {msg['c']} expired before it went, dropped")
+                continue
+            if await self.write_payload(msg):
+                self._cmd_waiting = (msg["c"], time.monotonic())
+
+    def _cmd_heard(self, msg: dict) -> None:
+        """The board's answer to a cmd: {"c": verb, "ok": 1}, {"c": verb, "err": why}, or for
+        "status" its report {"c": "status", "br", "scr", "an", "fw", "n"}. A report replaces the
+        status fields the board/ file keeps (each field checked, STATUS_FIELDS); every answer
+        becomes the file's "last" and shows the board takes cmds. An answer naming no verb of
+        the right shape is dropped after a log line ("?" is the board's name for a verb it
+        could not repeat)."""
+        verb = msg.get("c")
+        board = self.address or "address unknown"   # TX callbacks run without the link's log tag
+        if not (isinstance(verb, str) and (CMD_VERB.fullmatch(verb) or verb == "?")):
+            log(f"Device answered a cmd with a bad verb, ignoring: {verb!r} ({board})")
+            return
+        self._cmd_waiting = None
+        if "err" in msg:
+            self._last = {"c": verb, "err": _text(msg["err"], CMD_WHY_MAX) or "?"}
+            log(f"Cmd {verb} refused: {self._last['err']} ({board})")
+        else:
+            self._last = {"c": verb, "ok": 1}
+            if verb == "status":
+                self._status = {k: msg[k] for k, ok in STATUS_FIELDS.items() if k in msg and ok(msg[k])}
+                log(f"Cmd status: {self._status} ({board})")
+            else:
+                log(f"Cmd {verb} done ({board})")
+        self._cmd_ok = True
+        self._write_report()
+
+    def _nack_heard(self) -> None:
+        """A plain {"err": true}: what firmware from before the cmd message answers one with (it
+        has no handler, and parse_json takes only a message with "s"). Taken as the answer to
+        the cmd last sent when that went within CMD_NACK_WAIT and has had no answer yet; the
+        board/ file then says the board takes no cmds. Any other plain nack (credentials on a
+        board without Wi-Fi, a refused art header) is left alone. A board that answers a cmd
+        properly later is marked as taking them again."""
+        waiting, self._cmd_waiting = self._cmd_waiting, None
+        if waiting is None or time.monotonic() - waiting[1] > CMD_NACK_WAIT:
+            return
+        if self._cmd_ok is not False:
+            log(f"Cmd {waiting[0]} answered with a plain nack: firmware without the cmd message"
+                f" ({self.address or 'address unknown'})")
+        self._cmd_ok = False
+        self._last = {"c": waiting[0], "err": CMD_OLD_FIRMWARE}
+        self._write_report()
+
+    def _write_report(self) -> None:
+        """board/<address, dashes for colons>.json for the engine: the board's latest status
+        fields with "cmd" (whether it takes cmds), "last" (its answer to the latest cmd), "ts",
+        "addr" and "name". Written whole, by atomic replace. A link without a board address of
+        the usual shape writes none; a failed write is logged, never raised."""
+        if not BOARD_ADDRESS.fullmatch(self.address or ""):
+            return
+        report = dict(self._status)
+        report.update({"cmd": self._cmd_ok, "last": self._last, "ts": time.time(),
+                       "addr": self.address, "name": self.name})
+        try:
+            _write_json_atomic(BOARD_DIR / f"{self.address.replace(':', '-')}.json", report)
+        except OSError as e:
+            log(f"Board report write failed: {e}")
 
     async def setup_tx_subscription(self) -> None:
         # Optional like the refresh subscription: without it usage still flows,
@@ -1539,9 +1758,14 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
     log("Connected")
     address = getattr(device, "address", device)
     address = address if isinstance(address, str) else ""
-    session = Session(client, address)
+    name = getattr(device, "name", None)
+    session = Session(client, address, name if isinstance(name, str) and name else DEVICE_NAME)
     await session.setup_refresh_subscription()
     await session.setup_tx_subscription()
+    if session._tx_ok and LINK_STATUS:
+        # The board's report, once per link, so the engine has one without asking: its answer
+        # lands in board/. A link that cannot hear the board would ask in vain.
+        session.queue_cmd(dict(LINK_STATUS), math.inf)
 
     last_poll = 0.0  # D-03: poll immediately on first connect
     used_successfully = False
@@ -1630,6 +1854,10 @@ async def connect_and_run(device, stop_event: asyncio.Event, tray_state=None,
                     _note_page(address, False)
             # Wi-Fi credentials: once to every linked board, then the file goes.
             last_wifi = await relay_wifi(last_wifi)
+            # Verbs for the boards (cmd/): each file handed to every linked board, then gone;
+            # this board's share goes out here, and its answers land in board/ from _on_tx.
+            take_cmds()
+            await session.send_cmds()
             now = time.time()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:

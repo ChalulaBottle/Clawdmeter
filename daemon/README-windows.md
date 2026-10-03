@@ -238,7 +238,9 @@ so when several are due in the same second the daemon sends them a quarter secon
 | `page.json` | the engine | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi", "expires"}` | `{"pg", "pt", "p1", "p2", "p3", "pp", "pa", "pi"}` |
 | `art\<id>.jpg` | the engine | the album picture for a page's `pi`, at most 24 KB | the picture in chunks, when a page names it (see Album art) |
 | `wifi.json` | the engine's `wifi set` and `wifi clear`, or you | `{"ssid", "pass"}` | `{"wf", "wp"}`, once, and the file is deleted |
+| `cmd\<ns>.json` | the engine | `{"c", "v", "expires"}`, one verb for the boards | `{"c", "v"}`, once, in name order, and the file is deleted (see Commands) |
 | `events\<ns>.json` | the daemon | `{"btn", "scr", "addr", "ts"}` | nothing: it is for the engine |
+| `board\<address>.json` | the daemon | `{"br", "scr", "an", "fw", "n"}` from the board's report, with `{"cmd", "last", "ts", "addr", "name"}` | nothing: it is the board's answers, for the engine |
 | `daemon.pages` | the daemon | `{"boards"}`, the boards it last sent a page to | nothing: it is the daemon's own note |
 
 **Text.** Every text field is capped in bytes of `UTF-8`, the way the board caps it, and never
@@ -335,10 +337,41 @@ open, is logged once and read again every second until it opens. Each board keep
 credentials in its own flash, so the file is needed once, not at every start. A board that
 links after the file is gone does not get it: write the file again for that board.
 
+**Commands.** A file in `cmd` is one named verb for the boards, `{"c": verb, "v": value,
+"expires"}`, written whole like the others under a name that sorts in the order the verbs
+should go (the engine uses nanosecond times, as for `events`). Every second the daemon reads
+the files in name order, hands each one to every board linked at that moment and deletes it.
+A file that cannot be opened for a moment (another program holding it) holds back the ones
+after it, so a later verb never overtakes an earlier one. Each board's link then sends its
+share as a message of its own, `{"c", "v"}`, at most four a second (more wait for the next
+second), never waiting on another board, and never waiting for the answer. A file past its
+`expires`, or without one, is deleted after a log line and goes to no board. So is a file that
+is not valid JSON, whose verb is not a word of up to 15 ASCII letters, digits, `-` or `_`, or
+whose value is not text of up to 32 bytes. A whole number as the value goes as its digits, and
+a value is never cut, since a cut creature name would name another creature. With no board
+linked the files wait, and the first board that links takes those still live. The verbs are
+the board's: `bright` with 0 to 100 (the panel brightness, kept on the board), `anim` with a
+creature name (held on the splash; an empty value lets it go), `screen` with `splash`, `usage`
+or `page`, `dance` with `next`, and `status` with an empty value.
+
+The board answers each one on its own: `{"c": verb, "ok": 1}`, `{"c": verb, "err": why}`, or
+for `status` its report. Whatever comes back lands in `board\<address>.json`, the address
+with dashes in place of its colons: the fields of the latest report (`br` the brightness from 0
+to 100, or `-1` on a board that cannot set it, `scr` the screen on top, `an` the creature on
+the splash, `fw` the board's name, `n` how many animations it has), `last` with the latest
+answer as `{"c", "ok": 1}` or `{"c", "err"}`, `cmd` true, then `ts`, `addr` and `name`. `ts`
+is the time of the latest answer, while the report's fields stay until the next report
+replaces them: ask for `status` after a change to see its effect there. Each link asks its
+board for a report once, as soon as it can hear the board's answers, so the file is there
+without anyone asking. A board on firmware from before the commands answers one with the
+plain `{"err": true}`: its file then says `cmd` false, with `last` naming the verb and the
+error `old firmware`, and the log says so once for the link. Flash that board to use the verbs.
+
 **Several boards.** The daemon links every board bonded to this PC whose Bluetooth name is
 ECHO_LabDaemon or one of its older names (ECHO_MiniDaemon, Clawdmeter). Each board gets its
 own link and its own reconnect backoff, and every message goes to every linked board, so all
-of them show the same prompts, notifications and pages. Usage is the one exception: each link
+of them show the same prompts, notifications and pages and take the same commands, each board
+answering in its own `board` file. Usage is the one exception: each link
 polls it on its own schedule, so two boards can show numbers up to a minute apart, and the API
 is asked once a minute for each board. An approve or a button press
 from any board counts, and its event carries that board's address. Connects take turns, one
