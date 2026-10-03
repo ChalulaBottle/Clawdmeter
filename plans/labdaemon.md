@@ -7,6 +7,13 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **2026-10-03 ~13:55, INCREMENT 5 (the dance view) BUILT, NOT FLASHED:** firmware `72ec2e7` and daemon
+  `da89160` on `feat/dance-view`, merged into `release/increment-4` (this checkout); engine `e205b1c` on
+  labdaemon-engine main (the dashboard's Dance view), engine not restarted. **Exact next action:** the
+  operator flashes lcd_4 (`$env:PLATFORMIO_OFFLINE = "1"`, then in `firmware`
+  `pio run -e waveshare_lcd_4 -t upload --upload-port COM11`), restarts the tray (it runs this checkout's
+  `daemon` folder and drops `dv` and `do` until it restarts) and the engine on 8976, then the bring up in
+  Increment 5 below.
 - **2026-10-03 ~11:55:** engine and tray run increment 4 (engine main 97d7b32; this checkout on `release/increment-4`). Operator OKed the lcd_4 8 MB app partition. Release builds pass (lcd_4, amoled_216, amoled_216_c6); daemon suite 701 passed. **Exact next action:** operator flashes lcd_4 (`pio run -e waveshare_lcd_4 -t upload --upload-port COM11`), then the bring-up in the engine repo's plans/dashboard.md.
 - **2026-10-03, CULTURE BATCH BUILT, NOT FLASHED (branch feat/idle-shuffle, cf46577 + a38db70):** sixteen culture
   creatures (`plans/creatures-and-modes.md` § The culture batch) in the big tier: 99 animations with SPLASH_BIG, 73
@@ -24,8 +31,7 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
   plan (1130 tests). Next: restart the engine, merge `feat/cmd-message` and `feat/idle-shuffle` into
   `port/waveshare-lcd-4` (pull first: the local branch is 2 behind origin), build lcd_4, flash with an
   explicit `--upload-port`, restart the tray, bring-up list in Increment 4 below.
-  **Release branch 
-elease/increment-4** (2026-10-03) = origin/port/waveshare-lcd-4 + feat/cmd-message + feat/idle-shuffle; lcd_4 moves to the stock max_app_8MB partition table (operator OK needed before the flash).
+  **Release branch `release/increment-4`** (2026-10-03) = origin/port/waveshare-lcd-4 + feat/cmd-message + feat/idle-shuffle; lcd_4 moves to the stock max_app_8MB partition table (operator OK needed before the flash).
 - **STATUS 2026-10-02: docs and landing page ACTUALLY caught up (branch `site-catchup-2026-10-02`, not
   yet merged into `port/waveshare-lcd-4`, pending operator review).** The 2026-10-01 ~03:00 entry below
   claimed "docs and landing page updated" — true only for the creature grid; the engine, Spotify, the
@@ -171,12 +177,13 @@ then ack (the Wi-Fi and cmd messages answer for themselves, below; the art heade
 | notify | `nt` title (≤23), `nb` body (≤96), `nx` seconds (default 8) | `{"nt":"","nb":""}` |
 | wifi (increment 2; boards built with `FEATURE_PICTURE` only, today lcd_4) | `wf` SSID (1 to 32 bytes), `wp` password (empty for an open network, 8 to 63 characters, or exactly 64 hex digits) | `{"wf":""}` forgets the network |
 | page | `pg` page name (≤15), `pt` title (≤23), `p1` `p2` `p3` lines (≤40 each), `pp` progress 0..100 or -1, `pa` creature name, "dance" or "", `pi` album art id or absent | `{"pg":""}` |
-| cmd (increment 4) | `c` verb, `v` value as text: `bright` 0 to 100, `anim` a creature name (`""` lets the held one go), `screen` splash, usage or page, `dance` next, `status` empty | none: one verb per message |
+| cmd (increment 4; `dview` and `dvo` increment 5) | `c` verb, `v` value as text: `bright` 0 to 100, `anim` a creature name (`""` lets the held one go), `screen` splash, usage or page, `dance` next, `dview` card, large or full, `dvo` 0 to 100, `status` empty | none: one verb per message |
 
 **cmd answers:** in place of the plain ack the board answers `{"c":"<verb>","ok":1}` or
 `{"c":"<verb>","err":"<why>"}` (why: `verb`, `value`, `no`, `name`, `no page`, `no dance`), and
-`status` answers `{"c":"status","br","scr","an","fw","n"}` within MTU minus 3 (`br` -1 where the
-brightness cannot be set). Firmware from before has no handler, so the message falls through to
+`status` answers `{"c":"status","br","scr","an","fw","n","dv","do"}` within MTU minus 3 (`br` -1 where the
+brightness cannot be set; `dv` and `do` since increment 5, `dv` card on a board without PSRAM, which
+answers `no` to `dview` large or full and to `dvo`). Firmware from before has no handler, so the message falls through to
 `parse_json` and gets the plain `{"err":true}`, which the tray reads as "takes no cmds".
 
 **Wi-Fi answers:** in place of the plain ack the board answers `{"ack":true,"wf":"ok"}` (stored or
@@ -380,6 +387,60 @@ plan is the engine repo's `plans/dashboard.md` (lanes A to D); this is the board
   a file that stays unreadable; lcd_4 V1 to V3 (TCA9554) can only switch the backlight; the root
   README cmd section, the serial poke paragraph and the `fixed_brightness` row in
   docs/porting/capability-flags.md.
+
+## Increment 5: the dance view (2026-10-03, the dancer bigger, a music video view)
+
+Operator 2026-10-03: make "the creature dancing when music is playing" larger, "a close up that almost
+over takes the screen imitating a music video view", as an option in settings, "or full view"; "We
+can even blur or make it somewhat tranparent."
+- **The setting:** `dview` card, large or full (default large) and `dvo` 0 to 100 (the full view's
+  strip opacity, default 55), kept in NVS (namespace `clawdmeter`, keys `dview` and `dvo`, written only
+  on a change). It sizes only a page that dances (`pa` `dance`: the Spotify card while a track plays,
+  or a composed card that asks for the dance floor). Every other page keeps the card with all three
+  lines, the music card while paused too (`pa` `echo headphones`, `p2` paused). **Decided at
+  integration:** the first build sized every creature card, which hid `p2` and `p3` on weather,
+  countdown (its date), focus, github and the paused music card (engine review finding 1); one
+  predicate in ui.cpp (`page_dancing`) flips it back if the operator wants every card.
+- **Layout on the 480 px panels:** card unchanged (160 px creature in its band, HD dancers 120).
+  Large: the dancer at 360 px (at 60,20) for every lattice, then two compact lines (`pt`, then `p1`
+  dimmed, mono 18) and a 12 px bar; `p2` and `p3` hidden; album art on lcd_4 a 44 px thumbnail beside
+  the two lines. Full: the dancer at 480 px (at 0,0) under a strip from y 386, black at `dvo`, with the
+  same two lines and a 6 px bar. The 1.2 s change of dancer runs at the view's size. Notify and
+  approve still draw over the page in every view.
+- **No blur:** a blur is a filter pass over every pixel the dancer redraws, too much for the ESP32
+  beside an RGB panel that scans out of the same PSRAM; the strip's opacity is the see through option.
+- **Cost:** the mini creature paints and redraws only the bounding box of the cells that changed, as
+  the full screen splash does (the whole canvas after a switch or a resize, and while it is scaled for
+  a change of dancer). Bench `docs/bench/dance-view.html` (open it live; the still is
+  `docs/media/dance-view-modes.png`), pixels redrawn per second while dancing, the pool average on
+  lcd_4: card 75,404 (118,616 before), large 471,757 (2.05 frames' worth), full 838,679 (3.64). A
+  change of dancer costs about 7.7 frames' worth in large and 13.8 in full over 1.2 s, twice per
+  122 s round. **Winner:** large as the default, full as the option.
+- **Protocol:** cmd verbs `dview` and `dvo` (rows above), answered `{"c","ok":1}` or `err` (`value`;
+  `no` on a board without PSRAM, the two C6 boards, which keep card); `status` adds `dv` and `do`;
+  serial `cmd dview full`, `cmd dvo 30`. The tray keeps `dv` and `do` in `board\<address>.json`
+  (`STATUS_FIELDS`; daemon suite 717 passed, 2 skipped). Engine `e205b1c`: `board` actions
+  `dance_view(mode)` and `overlay(level)`, the dashboard's Dance view (Card, Large, Full) with an
+  Overlay slider shown with Full; 1869 tests.
+- **Gestures:** a touch long press (0.4 s) on a dancing page steps card, large, full on boards with
+  working touch; on any other page it is a tap. No button gesture on any board (lcd_4: BOOT hold is
+  pairing, PWR hold is the power chip, every tap on the page is taken; AMOLED boards: BOOT is HID
+  Space), so lcd_4 is set from the dashboard, the CLI or serial.
+- **SHIPPED on `feat/dance-view`, merged into `release/increment-4`, NOT FLASHED:** firmware `72ec2e7`,
+  daemon `da89160`. Built offline: lcd_4 6,815,675 of 8,257,536 B (82.5 %), amoled_216 3,315,859 of
+  3,342,336 B (99.2 %, 26,477 B left, 984 B over the d6ba550 baseline), amoled_216_c6 2,942,922 of
+  6,553,600 B (44.9 %); no new compiler warnings. The 460,800 B canvas is made the first time a page
+  shows a creature; if PSRAM refuses it the board logs `page: no buffer for the big dancer, card view`
+  and stays in card.
+- **Bring up after the flash:** `cmd status` (`dv` large, `do` 55); play a track (the dancer large,
+  title and artist, a thin bar); `cmd dview full` (the dancer over the whole panel, the title and the
+  artist on the strip); `cmd dvo 30`; pause the track (the card with all its lines and paused); play
+  again (full again); reboot, then `cmd status` (still full and 30). Watch a change of dancer in full
+  with BLE traffic running: if the panel tears or goes dark, `cmd dview large`.
+- **Open:** the tray restart (the merge changed `daemon`, and a running tray drops `dv` and `do` until
+  it restarts; the dashboard then shows a picked view until the board refuses it or reports again);
+  the engine restart for the dashboard; proof on hardware of the strip position, NVS surviving a
+  reboot, and the long press on a board with working touch.
 
 ## Increments (each ends flashed, captured, committed, pushed)
 
