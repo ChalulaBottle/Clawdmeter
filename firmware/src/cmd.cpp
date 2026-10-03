@@ -54,9 +54,11 @@ static int parse_pct(const char* v) {
 
 // The report (cmd.h). Table names and board names are plain ASCII with no quote
 // or backslash, so they go in as they are. When the whole would not fit one TX
-// notification the creature's name gives up its end; the rest is under 100
-// bytes, and the boards ask for an MTU of 256.
-#define STATUS_FMT "{\"c\":\"status\",\"br\":%d,\"scr\":\"%s\",\"an\":\"%.*s\",\"fw\":\"%s\",\"n\":%d}"
+// notification the creature's name gives up its end; the rest is at most 111
+// bytes (with the longest board name, 26), so a whole report with a 23
+// character name is 134, under CMD_REPLY_MAX, and the boards ask for an MTU of
+// 256, which carries 253.
+#define STATUS_FMT "{\"c\":\"status\",\"br\":%d,\"scr\":\"%s\",\"an\":\"%.*s\",\"fw\":\"%s\",\"n\":%d,\"dv\":\"%s\",\"do\":%d}"
 
 static void send_status(void) {
     const int br   = board_caps().fixed_brightness ? -1 : brightness_pct();
@@ -64,13 +66,15 @@ static void send_status(void) {
     const char* an  = splash_anim_name();
     const char* fw  = board_caps().name;
     const int n    = splash_anim_count();
+    const char* dv  = ui_dance_view_name();
+    const int dop  = ui_dance_opa();
     size_t room = ble_tx_max();   // 0 with nobody on TX: serial takes it whole
     if (!room || room > CMD_REPLY_MAX) room = CMD_REPLY_MAX;
     char msg[CMD_REPLY_MAX + 1];
     // Everything but the creature's name first, to see how much of it fits.
-    const int rest = snprintf(msg, sizeof(msg), STATUS_FMT, br, scr, 0, "", fw, n);
+    const int rest = snprintf(msg, sizeof(msg), STATUS_FMT, br, scr, 0, "", fw, n, dv, dop);
     const int keep = (int)room - rest;
-    snprintf(msg, sizeof(msg), STATUS_FMT, br, scr, keep > 0 ? keep : 0, an, fw, n);
+    snprintf(msg, sizeof(msg), STATUS_FMT, br, scr, keep > 0 ? keep : 0, an, fw, n, dv, dop);
     reply(msg);
 }
 
@@ -95,6 +99,10 @@ void cmd_run(const char* verb, const char* value) {
     } else if (strcmp(verb, "dance") == 0) {
         if (strcmp(value, "next") != 0) why = "value";
         else if (!ui_dance_next())      why = "no dance";
+    } else if (strcmp(verb, "dview") == 0) {
+        why = ui_dance_view_set(value);
+    } else if (strcmp(verb, "dvo") == 0) {
+        why = ui_dance_opa_set(parse_pct(value));
     } else {
         answer(verb_echo(verb), "verb");
         return;

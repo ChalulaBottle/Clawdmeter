@@ -66,6 +66,25 @@ void ui_dance_serial(const char* arg);
 // next pass with the page on top. False when no dance is going on.
 bool ui_dance_next(void);
 
+// The dance view, the cmd message's dview and dvo (cmd.h): how big a page that
+// dances (pa "dance", the music card while a track plays) draws its dancer.
+// "card" is the card as it always was; "large" the dancer as big as the panel
+// allows over two compact lines, the title and p1 (the track and the artist on
+// the music card), and a thinner bar; "full" the dancer over the whole panel
+// with those two lines and a thin bar on a strip along the bottom, drawn over
+// it at the overlay opacity, 0 to 100. A page with a fixed creature (the music
+// card while paused, every other card) or none keeps the card, all three lines
+// in sight. Both kept in NVS, written only on a change.
+// Returns NULL when taken, otherwise why not: "value" (no such view, or not a
+// percentage: pass -1 for one that did not parse) or "no" (a board without
+// PSRAM has the card only, and no overlay to set).
+const char* ui_dance_view_set(const char* name);
+const char* ui_dance_opa_set(int pct);
+// The view a page that dances gets on this board ("card" on one without PSRAM)
+// and the opacity.
+const char* ui_dance_view_name(void);
+int ui_dance_opa(void);
+
 // The screen cycle: creature, usage, the live page when there is one, creature.
 // PWR on every board, and a tap on every board with touch.
 void ui_cycle_screens(void);

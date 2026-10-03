@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include <time.h>
 #include <esp_random.h>
+#include <Preferences.h>
 #include "logo.h"
 #include "icons.h"
 #include "hal/board_caps.h"
@@ -722,7 +723,9 @@ static void notify_tick(void) {
 // lines, the bar along the bottom edge. An empty slot stays empty; nothing moves.
 // Boards built with FEATURE_PICTURE have a second layout for a page with album
 // art (pi): the square beside the title and the lines, the band below them
-// (page_art_init).
+// (page_art_init). A page that dances (pa "dance", the music card while a track
+// plays) takes the dance view (below), which can make the dancer most of the
+// panel or all of it.
 #define PAGE_NAME_MAX   15   // protocol limits, plans/labdaemon.md "Protocol"
 #define PAGE_TITLE_MAX  23
 #define PAGE_LINE_MAX   40
@@ -733,19 +736,113 @@ static lv_obj_t* page_lbl_title   = nullptr;
 static lv_obj_t* page_lbl_line[3] = {nullptr, nullptr, nullptr};
 static lv_obj_t* page_bar         = nullptr;
 static lv_obj_t* page_band        = nullptr;   // holds the creature, centred
+static lv_obj_t* page_strip       = nullptr;   // under the two lines in the full view
 static lv_obj_t* page_creature    = nullptr;   // the one mini creature (splash.cpp), made on first use
 static int       page_creature_px = 0;
+static bool      page_creature_on = false;     // a creature is on the band
 static char      page_name[PAGE_NAME_MAX + 1] = "";
 static char      page_anim[PAGE_ANIM_MAX + 1] = "";   // what the creature was asked to show; "" = none
 static char      page_txt_title[PAGE_TITLE_MAX + 1] = "";       // the texts last set on the labels
 static char      page_txt_line[3][PAGE_LINE_MAX + 1] = { "", "", "" };
 static bool      page_hidden = false;   // left by the cycle or a tap; page_name stays, the page is live
 
+// The dance view (operator, 2026-10-03: "a close up that almost overtakes the
+// screen imitating a music video view"): how big the dance floor draws its
+// dancer (pa "dance": the music card while a track plays).
+//   card   the card as it always was, the creature in its band between the
+//          title and the three lines
+//   large  the creature as big as the panel allows over two compact lines, the
+//          title in the lines' type and p1 (the track and the artist on the
+//          music card), and a bar half the card's height; p2 and p3 go, album
+//          art turns into a thumbnail beside the two lines
+//   full   a music video: the creature over the whole panel, the same two lines
+//          and a thin bar on a strip along the bottom, drawn over the creature
+//          at the overlay opacity (0 to 100)
+// Every other page keeps the card in every view, all three lines in sight: one
+// with a fixed creature (the music card while paused, which says so in p2, and
+// every other controller's card) or none. Both settings live in NVS (namespace
+// clawdmeter, keys dview and dvo), written only when they change.
+// Large and full draw the mini creature at up to the panel's size, 460,800 B at
+// 480 px, which only PSRAM holds: boards without it keep the card and refuse
+// the other two (cmd.h, "no"). No blur: blurring the dancer is a filter pass
+// over every px it redraws, too much for this ESP32 beside an RGB panel that
+// scans out of the same PSRAM; the strip's opacity is the see-through option.
+enum dance_view_t : uint8_t { DVIEW_CARD, DVIEW_LARGE, DVIEW_FULL, DVIEW_COUNT };
+static const char* const DVIEW_NAME[DVIEW_COUNT] = { "card", "large", "full" };
+#define DVIEW_OPA_DEFAULT 55
+#ifdef BOARD_HAS_PSRAM
+static bool    dview_big = true;     // large and full can be drawn (false once their buffer is refused)
+#else
+static bool    dview_big = false;
+#endif
+static uint8_t dview     = DVIEW_LARGE;          // the setting
+static uint8_t dview_opa = DVIEW_OPA_DEFAULT;    // the strip's opacity, percent
+
+// Where the card's parts sit in one layout, inside the page's margin.
+struct PageGeom {
+    int16_t text_x, line0_y;                  // the title and the lines, a pitch apart
+    int16_t band_x, band_y, band_w, band_h;   // the creature's band; the creature is centred in it
+    int16_t bar_y, bar_h;
+};
+#define PAGE_GEOM_ART DVIEW_COUNT             // the card with album art (FEATURE_PICTURE)
+static PageGeom page_geom[DVIEW_COUNT + 1];   // card, large, full, the card with art
+static int16_t  page_px[DVIEW_COUNT];         // the creature's size in each view
+static int16_t  page_pitch = 0;               // line to line
+static int16_t  page_gap   = 0;
+static int16_t  page_thumb = 0;               // the album art's side beside the two lines (large, full)
+static bool     page_long  = false;           // this touch has been a long press
+static uint8_t  page_view  = DVIEW_CARD;      // the view page_layout last laid the page out in
+
+static void page_layout(void);
+
+// The view the setting gives on this board: the card where the big two cannot be drawn.
+static uint8_t dview_now(void) {
+    return dview_big ? dview : DVIEW_CARD;
+}
+
+// True while the page dances: pa "dance" with a dancer on the band, the one
+// creature the dance view sizes. Read from page_anim, not dance_on:
+// page_set_creature sets dance_on only after dance_switch has placed the first
+// dancer, and placing it lays the page out.
+static bool page_dancing(void) {
+    return page_creature_on && strcmp(page_anim, "dance") == 0;
+}
+
+// The view the page wants now: the setting while it dances, the card otherwise.
+static uint8_t page_view_wanted(void) {
+    return page_dancing() ? dview_now() : DVIEW_CARD;
+}
+
+static void set_hidden(lv_obj_t* o, bool hidden) {
+    if (hidden) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    else        lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+// A setting in NVS, written only when it changed (a host slider sends many).
+static void dview_store(const char* key, uint8_t v) {
+    Preferences prefs;
+    prefs.begin("clawdmeter", false);
+    prefs.putUChar(key, v);
+    prefs.end();
+}
+
 // A tap on the page is the cycle's step from it: the creature comes up and the
-// page goes out of sight, live, its updates landing unseen (ui_page_leave).
-static void page_click_cb(lv_event_t* e) {
-    (void)e;
-    ui_page_leave();
+// page goes out of sight, live, its updates landing unseen (ui_page_leave). A
+// long press while the page dances is the next dance view instead, on boards
+// with working touch; LVGL still sends the click on its release, which the flag
+// set here swallows. On any other page a long press is a tap.
+static void page_touch_cb(lv_event_t* e) {
+    const lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        page_long = false;
+    } else if (code == LV_EVENT_LONG_PRESSED) {
+        if (page_dancing() && dview_big) {
+            page_long = true;
+            ui_dance_view_set(DVIEW_NAME[(dview_now() + 1) % DVIEW_COUNT]);
+        }
+    } else if (!page_long) {   // LV_EVENT_CLICKED
+        ui_page_leave();
+    }
 }
 
 // The dance floor: pa "dance" puts the two pools on the band in turn, a
@@ -787,44 +884,39 @@ static uint32_t      dance_last    = 0;          // lv_tick when that was last c
 // stands empty in the panel colour, so a new track moves the text once, not
 // twice; a picture that fails leaves the card without art. The square sits
 // centred in the room the layout keeps for it and takes the size of its
-// picture, never scaled or stretched (page_art_square).
+// picture, never stretched (page_art_place). In the large and full views it is
+// a thumbnail beside the two lines instead, the picture scaled down into it.
 enum page_art_t : uint8_t { PAGE_ART_NONE, PAGE_ART_COMING, PAGE_ART_SHOWN };
-
-struct PageGeom {            // where the text and the band sit in one layout
-    int16_t text_x, text_w;  // the title and the three lines
-    int16_t line0_y;         // the first line; the other two follow a pitch apart
-    int16_t band_y, band_h;  // the creature's band, the full width
-};
 
 static lv_obj_t*  page_art_box = nullptr;    // the square, with the picture centred in it
 static lv_obj_t*  page_art_img = nullptr;
-static int        page_art_room = 0;         // the side of the room the layout keeps for the square
+static const lv_image_dsc_t* page_art_pic = nullptr;   // the picture on the square, NULL while empty
+static int        page_art_room = 0;         // the side of the room the card keeps for the square
 static int        page_art_px   = 0;         // the square's side while it waits for a picture
-static int        page_pitch   = 0;          // line to line
-static PageGeom   page_geom[2];              // [0] without art, [1] with
 static page_art_t page_art     = PAGE_ART_NONE;
 static char       page_pi[ART_ID_MAX + 1]     = "";   // the page's picture; "" none
 static char       page_art_id[ART_ID_MAX + 1] = "";   // the picture on the square now
 static bool       page_pi_warned = false;             // a pi the board will not fetch has been logged
 
-// The square at w by h, centred in its room at the card's top left.
-static void page_art_square(int w, int h) {
-    lv_obj_set_size(page_art_box, w, h);
-    lv_obj_set_pos(page_art_box, (page_art_room - w) / 2, (page_art_room - h) / 2);
-}
-
-static void page_art_layout(bool art) {
-    const PageGeom& g = page_geom[art ? 1 : 0];
-    lv_obj_set_pos(page_lbl_title, g.text_x, 0);
-    lv_obj_set_width(page_lbl_title, g.text_w);
-    for (int i = 0; i < 3; i++) {
-        lv_obj_set_pos(page_lbl_line[i], g.text_x, g.line0_y + i * page_pitch);
-        lv_obj_set_width(page_lbl_line[i], g.text_w);
+// The square at its picture's size (page_art_px a side while it is empty):
+// centred in its room at the card's top left, or as a thumbnail page_thumb a
+// side at (0, y) with the picture scaled down into it. Shown while the page
+// has a picture or one on its way.
+static void page_art_place(bool thumb, int y) {
+    if (!page_art_box) return;
+    const int w   = page_art_pic ? (int)page_art_pic->header.w : page_art_px;
+    const int h   = page_art_pic ? (int)page_art_pic->header.h : page_art_px;
+    const int big = w > h ? w : h;
+    if (thumb && big > 0) {
+        lv_obj_set_size(page_art_box, w * page_thumb / big, h * page_thumb / big);
+        lv_obj_set_pos(page_art_box, 0, y);
+        lv_image_set_scale(page_art_img, (uint32_t)(page_thumb * LV_SCALE_NONE / big));
+    } else {
+        lv_obj_set_size(page_art_box, w, h);
+        lv_obj_set_pos(page_art_box, (page_art_room - w) / 2, (page_art_room - h) / 2);
+        lv_image_set_scale(page_art_img, LV_SCALE_NONE);
     }
-    lv_obj_set_pos(page_band, 0, g.band_y);
-    lv_obj_set_height(page_band, g.band_h > 0 ? g.band_h : 1);   // the creature is centred in it and follows
-    if (art) lv_obj_clear_flag(page_art_box, LV_OBJ_FLAG_HIDDEN);
-    else     lv_obj_add_flag(page_art_box, LV_OBJ_FLAG_HIDDEN);
+    set_hidden(page_art_box, page_art == PAGE_ART_NONE);
 }
 
 // Match the card to its picture: on the square, on its way (the square empty)
@@ -838,17 +930,15 @@ static void page_art_sync(void) {
     const page_art_t want = pic ? PAGE_ART_SHOWN : coming ? PAGE_ART_COMING : PAGE_ART_NONE;
     if (want == page_art && (!pic || strcmp(page_art_id, page_pi) == 0)) return;
     if (pic) {
-        page_art_square((int)pic->header.w, (int)pic->header.h);   // the square is its picture: no frame round it
         lv_image_set_src(page_art_img, pic);
-        lv_obj_clear_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
         strlcpy(page_art_id, page_pi, sizeof(page_art_id));
     } else {
-        page_art_square(page_art_px, page_art_px);
-        lv_obj_add_flag(page_art_img, LV_OBJ_FLAG_HIDDEN);
         page_art_id[0] = '\0';
     }
-    if ((want == PAGE_ART_NONE) != (page_art == PAGE_ART_NONE)) page_art_layout(want != PAGE_ART_NONE);
-    page_art = want;
+    set_hidden(page_art_img, !pic);
+    page_art_pic = pic;
+    page_art     = want;
+    page_layout();   // the square at its picture's size, the text and the band around it
 }
 
 // The page's pi: an id art.cpp will fetch, or none. One it will not fetch
@@ -878,11 +968,7 @@ static void page_art_set(const char* pi) {
 // px on both paths), no more than the room, centred in it. Makes the square and
 // starts art.cpp at its size. No room for the band under it: no art layout,
 // the card goes without.
-static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y,
-                          int band_y, int band_h, int line0_y) {
-    page_pitch = pitch;
-    page_geom[0] = { 0, L.content_w, (int16_t)line0_y, (int16_t)band_y, (int16_t)band_h };
-
+static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y) {
     const int half    = (L.content_w - gap) / 2;
     const int room    = L.idle_px < half ? L.idle_px : half;
     const int px      = ART_PX < room ? ART_PX : room;
@@ -897,16 +983,16 @@ static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y
         Serial.println("page: no room for album art on this layout");
         return;
     }
-    page_geom[1] = { (int16_t)text_x, (int16_t)(L.content_w - text_x), (int16_t)a_line0,
-                     (int16_t)a_band_y, (int16_t)a_band_h };
-    // The one mini creature keeps the size it was made at: small enough for both bands.
+    page_geom[PAGE_GEOM_ART] = { (int16_t)text_x, (int16_t)a_line0, 0, (int16_t)a_band_y,
+                                 (int16_t)L.content_w, (int16_t)a_band_h, (int16_t)bar_y, (int16_t)L.bar_h };
+    // The creature has one size in the card: small enough for both bands.
     if (a_band_h < page_creature_px) page_creature_px = a_band_h;
     page_art_room = room;
     page_art_px   = px;
 
-    // Panel colour while empty, no border; not clickable, so a tap still lands on the page.
+    // Panel colour while empty, no border; not clickable, so a tap still lands
+    // on the page. page_art_place sizes and places it.
     page_art_box = lv_obj_create(page_group);
-    page_art_square(px, px);
     lv_obj_set_style_bg_color(page_art_box, COL_PANEL, 0);
     lv_obj_set_style_bg_opa(page_art_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(page_art_box, 0, 0);
@@ -925,6 +1011,53 @@ static void page_art_init(int gap, int title_h, int line_h, int pitch, int bar_y
 }
 #endif
 
+// Lay the card out for what it shows now: the dance view while the page dances,
+// the card otherwise, either with or without album art. On a change of the
+// view, of the creature being there, of the page dancing or not
+// (page_place_creature) or of the art (page_art_sync).
+static void page_layout(void) {
+    const uint8_t v = page_view_wanted();
+    page_view = v;
+    bool art = false;
+#ifdef FEATURE_PICTURE
+    art = page_art != PAGE_ART_NONE;
+#endif
+    const bool card = v == DVIEW_CARD;
+    const PageGeom& g = page_geom[card && art ? PAGE_GEOM_ART : v];
+    const int tx = g.text_x + (!card && art ? page_thumb + page_gap : 0);
+    // Large and full keep two compact lines: the title (the track, on the music
+    // card) in the lines' type, then p1 (the artist) dimmed; p2 and p3 go.
+    const lv_font_t* line_font = &font_mono_18;
+    lv_obj_set_style_text_font(page_lbl_title, card ? L.title_font : line_font, 0);
+    lv_obj_set_size(page_lbl_title, L.content_w - tx,
+                    card ? L.title_font->line_height : line_font->line_height);
+    lv_obj_set_pos(page_lbl_title, tx, card ? 0 : g.line0_y);
+    for (int i = 0; i < 3; i++) {
+        lv_obj_set_pos(page_lbl_line[i], tx, g.line0_y + (card ? i : i + 1) * page_pitch);
+        lv_obj_set_width(page_lbl_line[i], L.content_w - tx);
+    }
+    lv_obj_set_style_text_color(page_lbl_line[0], card ? COL_TEXT : COL_DIM, 0);
+    set_hidden(page_lbl_line[1], !card);
+    set_hidden(page_lbl_line[2], !card);
+    set_hidden(page_strip, v != DVIEW_FULL);
+    lv_obj_set_pos(page_band, g.band_x, g.band_y);
+    lv_obj_set_size(page_band, g.band_w, g.band_h > 0 ? g.band_h : 1);   // the creature is centred in it
+    lv_obj_set_pos(page_bar, 0, g.bar_y);
+    lv_obj_set_height(page_bar, g.bar_h);
+#ifdef FEATURE_PICTURE
+    page_art_place(v != DVIEW_CARD, g.line0_y);
+#endif
+    if (!page_creature_on) return;
+    // Square pixels when the big creature is scaled for a change of dancer, and
+    // a cheaper transform; the card keeps the smoothing it always had.
+    lv_image_set_antialias(page_creature, v == DVIEW_CARD);
+    if (!splash_mini_set_px(page_px[v])) {
+        Serial.println("page: no buffer for the big dancer, card view");
+        dview_big = false;   // its buffer was made for the card only; the card always fits
+        page_layout();
+    }
+}
+
 static void init_page_overlay(lv_obj_t* scr) {
     const int gap       = L.scr_h >= 300 ? 12 : 6;
     const int inner_h   = L.scr_h - 2 * L.margin;
@@ -936,6 +1069,40 @@ static void init_page_overlay(lv_obj_t* scr) {
     const int line0_y   = bar_y - gap - line_h - 2 * pitch;
     const int band_y    = title_h + gap;
     const int band_h    = line0_y - gap - band_y;
+    // Large: two lines and a bar half the card's under the creature, which takes
+    // the height left, no more than the width: 360 px on the 480 px panels, which
+    // the 20, 40 and 60 cell lattices all divide, so every dancer is one size.
+    const int lg_bar_h  = L.bar_h / 2;
+    const int lg_bar_y  = inner_h - lg_bar_h;
+    const int lg_line0  = lg_bar_y - gap - line_h - pitch;
+    const int lg_px     = lg_line0 - gap < L.content_w ? lg_line0 - gap : L.content_w;
+    // Full: the creature on the whole panel; the two lines and a bar a quarter of
+    // the card's on the strip, which starts a gap above the first line.
+    const int fl_bar_h  = L.bar_h / 4;
+    const int fl_bar_y  = inner_h - fl_bar_h;
+    const int fl_line0  = fl_bar_y - gap - line_h - pitch;
+    const int strip_y   = fl_line0 - gap;
+
+    page_pitch = pitch;
+    page_gap   = gap;
+    page_thumb = line_h + pitch;   // as tall as the two compact lines
+    page_geom[DVIEW_CARD]  = { 0, (int16_t)line0_y, 0, (int16_t)band_y, (int16_t)L.content_w,
+                               (int16_t)band_h, (int16_t)bar_y, L.bar_h };
+    page_geom[DVIEW_LARGE] = { 0, (int16_t)lg_line0, 0, 0, (int16_t)L.content_w,
+                               (int16_t)lg_px, (int16_t)lg_bar_y, (int16_t)lg_bar_h };
+    page_geom[DVIEW_FULL]  = { 0, (int16_t)fl_line0, (int16_t)-L.margin, (int16_t)-L.margin,
+                               L.scr_w, L.scr_h, (int16_t)fl_bar_y, (int16_t)fl_bar_h };
+    page_px[DVIEW_LARGE] = lg_px;
+    page_px[DVIEW_FULL]  = L.scr_w < L.scr_h ? L.scr_w : L.scr_h;
+    {   // the dance view as last set
+        Preferences prefs;
+        prefs.begin("clawdmeter", true);
+        dview     = prefs.getUChar("dview", DVIEW_LARGE);
+        dview_opa = prefs.getUChar("dvo", DVIEW_OPA_DEFAULT);
+        prefs.end();
+        if (dview >= DVIEW_COUNT) dview = DVIEW_LARGE;
+        if (dview_opa > 100)      dview_opa = DVIEW_OPA_DEFAULT;
+    }
 
     page_group = lv_obj_create(scr);
     lv_obj_set_pos(page_group, 0, 0);
@@ -946,21 +1113,19 @@ static void init_page_overlay(lv_obj_t* scr) {
     lv_obj_set_style_radius(page_group, 0, 0);
     lv_obj_set_style_pad_all(page_group, L.margin, 0);
     lv_obj_clear_flag(page_group, LV_OBJ_FLAG_SCROLLABLE);
-    // Clickable so a tap ends here (and leaves the page); none reach the splash toggle underneath.
+    // Clickable so a tap ends here (and leaves the page); none reach the splash
+    // toggle underneath. A long press is the next dance view (page_touch_cb).
     lv_obj_add_flag(page_group, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(page_group, page_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(page_group, page_touch_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(page_group, page_touch_cb, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(page_group, page_touch_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_flag(page_group, LV_OBJ_FLAG_HIDDEN);
 
-    // One line; what doesn't fit ends in an ellipsis.
-    page_lbl_title = lv_label_create(page_group);
-    lv_label_set_text(page_lbl_title, "");
-    lv_obj_set_style_text_font(page_lbl_title, L.title_font, 0);
-    lv_obj_set_style_text_color(page_lbl_title, COL_TEXT, 0);
-    lv_obj_set_size(page_lbl_title, L.content_w, title_h);
-    lv_label_set_long_mode(page_lbl_title, LV_LABEL_LONG_DOT);
-    lv_obj_align(page_lbl_title, LV_ALIGN_TOP_LEFT, 0, 0);
-
-    // The creature's band. Not clickable, so a tap on the creature still lands on the page.
+    // The creature's band and the full view's strip come first: LVGL draws a
+    // parent's children in the order they were made, so the title, the lines,
+    // the bar and the art made after them all draw over the creature, which the
+    // full view spreads under every one of them. Not clickable, so a tap on the
+    // creature still lands on the page.
     page_band = lv_obj_create(page_group);
     lv_obj_set_pos(page_band, 0, band_y);
     lv_obj_set_size(page_band, L.content_w, band_h > 0 ? band_h : 1);
@@ -970,6 +1135,30 @@ static void init_page_overlay(lv_obj_t* scr) {
     lv_obj_clear_flag(page_band, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(page_band, LV_OBJ_FLAG_CLICKABLE);
     page_creature_px = band_h < L.idle_px ? band_h : L.idle_px;
+
+    // The full view's strip, over the creature and under the title and the
+    // lines, from a gap above the title's row to the panel's bottom edge, the
+    // panel's width. No border; not clickable, so a tap still lands on the
+    // page. bg_opa only, which LVGL blends in place (an obj opa would render it
+    // through a layer).
+    page_strip = lv_obj_create(page_group);
+    lv_obj_set_pos(page_strip, -L.margin, strip_y);
+    lv_obj_set_size(page_strip, L.scr_w, inner_h + L.margin - strip_y);
+    lv_obj_set_style_bg_color(page_strip, COL_BG, 0);
+    lv_obj_set_style_bg_opa(page_strip, (lv_opa_t)(dview_opa * 255 / 100), 0);
+    lv_obj_set_style_border_width(page_strip, 0, 0);
+    lv_obj_set_style_radius(page_strip, 0, 0);
+    lv_obj_clear_flag(page_strip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(page_strip, LV_OBJ_FLAG_HIDDEN);
+
+    // One line; what doesn't fit ends in an ellipsis.
+    page_lbl_title = lv_label_create(page_group);
+    lv_label_set_text(page_lbl_title, "");
+    lv_obj_set_style_text_font(page_lbl_title, L.title_font, 0);
+    lv_obj_set_style_text_color(page_lbl_title, COL_TEXT, 0);
+    lv_obj_set_size(page_lbl_title, L.content_w, title_h);
+    lv_label_set_long_mode(page_lbl_title, LV_LABEL_LONG_DOT);
+    lv_obj_align(page_lbl_title, LV_ALIGN_TOP_LEFT, 0, 0);
 
     // Three lines, one line each, the first in full text colour and the other
     // two dimmed; what doesn't fit ends in an ellipsis.
@@ -990,8 +1179,10 @@ static void init_page_overlay(lv_obj_t* scr) {
     lv_obj_add_flag(page_bar, LV_OBJ_FLAG_HIDDEN);
 
 #ifdef FEATURE_PICTURE
-    page_art_init(gap, title_h, line_h, pitch, bar_y, band_y, band_h, line0_y);   // the layout with art
+    page_art_init(gap, title_h, line_h, pitch, bar_y);   // the card with art
 #endif
+    page_px[DVIEW_CARD] = page_creature_px;   // after the card with art, which may make it smaller
+    page_layout();
 }
 
 bool ui_page_visible(void) {
@@ -1000,15 +1191,24 @@ bool ui_page_visible(void) {
 
 // The one mini creature (splash.cpp) pointed at `anim`: made here the first
 // time a page asks for one, re-pointed with splash_mini_set_anim after that,
-// never made twice. NULL when the table has no such name; the creature then
-// keeps what it had.
+// never made twice. It is made at the card's size with a buffer for the
+// biggest view the board has; page_layout sizes it for the view once it is on
+// the band. NULL when the table has no such name; the creature then keeps what
+// it had.
 static lv_obj_t* page_creature_at(const char* anim) {
     if (page_creature_px <= 0) return nullptr;
-    if (!page_creature) return page_creature = splash_mini_create(page_band, anim, page_creature_px);
+    if (!page_creature) {
+        return page_creature = splash_mini_create(page_band, anim, page_creature_px,
+                                                  dview_big ? page_px[DVIEW_FULL] : 0);
+    }
     return splash_mini_set_anim(anim) ? page_creature : nullptr;
 }
 
-// Put `c` on the band, or with NULL take the creature off it.
+// Put `c` on the band, or with NULL take the creature off it. The page is laid
+// out again when the creature comes or goes (a creature that comes back is sized
+// for the view it lands in) and when the page starts or stops dancing with a
+// creature on the band throughout: a paused track turns the dance floor into
+// echo headphones, which takes the card again.
 static void page_place_creature(lv_obj_t* c) {
     if (c) {
         lv_obj_align(c, LV_ALIGN_CENTER, 0, 0);   // its edge follows the animation's lattice
@@ -1016,6 +1216,42 @@ static void page_place_creature(lv_obj_t* c) {
     } else if (page_creature) {
         lv_obj_add_flag(page_creature, LV_OBJ_FLAG_HIDDEN);
     }
+    const bool came_or_went = (c != nullptr) != page_creature_on;
+    page_creature_on = c != nullptr;
+    if (came_or_went || page_view_wanted() != page_view) page_layout();
+}
+
+const char* ui_dance_view_set(const char* name) {
+    uint8_t v = 0;
+    while (v < DVIEW_COUNT && strcmp(name, DVIEW_NAME[v]) != 0) v++;
+    if (v == DVIEW_COUNT) return "value";
+    if (v != DVIEW_CARD && !dview_big) return "no";
+    if (v != dview) {
+        dview = v;
+        dview_store("dview", v);
+        Serial.printf("page: dance view %s\n", DVIEW_NAME[v]);
+        if (page_group) page_layout();
+    }
+    return nullptr;
+}
+
+const char* ui_dance_opa_set(int pct) {
+    if (!dview_big) return "no";
+    if (pct < 0 || pct > 100) return "value";
+    if (pct != dview_opa) {
+        dview_opa = (uint8_t)pct;
+        dview_store("dvo", dview_opa);
+        if (page_strip) lv_obj_set_style_bg_opa(page_strip, (lv_opa_t)(pct * 255 / 100), 0);
+    }
+    return nullptr;
+}
+
+const char* ui_dance_view_name(void) {
+    return DVIEW_NAME[dview_now()];
+}
+
+int ui_dance_opa(void) {
+    return dview_opa;
 }
 
 // A random entry of `pool` that this board's table has, other than the pool's
@@ -1720,7 +1956,7 @@ static void apply_battery_visibility(void) {
 }
 
 // A tap on the creature or the usage screen: the next screen of the cycle
-// (a tap on the page has its own, page_click_cb, to the same end).
+// (a tap on the page has its own, page_touch_cb, to the same end).
 static void global_click_cb(lv_event_t* e) {
     (void)e;
     ui_cycle_screens();

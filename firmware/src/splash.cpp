@@ -490,32 +490,70 @@ static void render_frame(const splash_anim_def_t *a, uint16_t frame) {
 //      (e.g. the idle "sleeping" indicator). Self-contained — its own canvas and
 //      buffer, independent of the full-screen splash above. There is exactly one
 //      for the program's life: made by the first splash_mini_create, re-pointed
-//      at other animations after that, never allocated twice. ----
+//      at other animations after that, never allocated twice. The page's dance
+//      view draws it at up to the panel's size (ui.cpp), so it takes the
+//      splash's rule: only what changed is painted and redrawn. ----
 static lv_obj_t  *mini_canvas = NULL;
 static lv_obj_t  *mini_parent = NULL;   // where the one mini creature lives
 static uint16_t  *mini_buf = NULL;
-static int        mini_px = 0;          // the size asked for when it was made
+static int        mini_px = 0;          // the size it is drawn at now
+static int        mini_cap = 0;         // the largest px its buffer holds
 static int        mini_cell = 0;
 static int        mini_w = 0;
 static const splash_anim_def_t *mini_anim = NULL;
+static const uint8_t *mini_shown = NULL;   // the frame the buffer holds; NULL: paint every cell
 static uint16_t   mini_frame = 0;
 static uint32_t   mini_started = 0;
 
+// Cells [gx0..gx1] of lattice row gy (`row`, its cells) into the buffer: one px
+// row built in place, copied down the height of the cell.
+static void mini_paint(const uint8_t *row, const uint16_t *pal, int gy, int gx0, int gx1) {
+    uint16_t *dst = &mini_buf[gy * mini_cell * mini_w + gx0 * mini_cell];
+    uint16_t *p = dst;
+    for (int gx = gx0; gx <= gx1; gx++) {
+        const uint16_t color = cell_color(pal, row[gx]);
+        for (int i = 0; i < mini_cell; i++) *p++ = color;
+    }
+    for (int dy = 1; dy < mini_cell; dy++) memcpy(dst + dy * mini_w, dst, (size_t)(p - dst) * 2);
+}
+
+// The buffer brought to the current frame: every cell after a switch or a new
+// size (mini_shown NULL), otherwise the changed span of each lattice row, and
+// LVGL redraws only their bounding box. A whole 480 px canvas is 230,400 px a
+// frame; a dancer moving a limb should not cost the panel that. While the
+// canvas is scaled (a change of dancer) the box is not where it is drawn, so
+// the whole canvas is redrawn then (the transform smears on a part, see above).
 static void mini_render(void) {
     if (!mini_buf || !mini_anim) return;
     const int s = anim_size(mini_anim);
     const uint8_t *cells = anim_cells(mini_anim, mini_frame);
-    const uint16_t *pal = mini_anim->palette;
+    const bool all = !mini_shown;
+    int bx0 = s, by0 = s, bx1 = -1, by1 = -1;
     for (int gy = 0; gy < s; gy++) {
-        for (int gx = 0; gx < s; gx++) {
-            const uint16_t color = cell_color(pal, cells[gy * s + gx]);
-            for (int dy = 0; dy < mini_cell; dy++) {
-                uint16_t *dst = &mini_buf[(gy * mini_cell + dy) * mini_w + gx * mini_cell];
-                for (int dx = 0; dx < mini_cell; dx++) dst[dx] = color;
-            }
-        }
+        const uint8_t *row = cells + gy * s;
+        int x0 = 0, x1 = s - 1;
+        if (!all && !row_span(mini_shown + gy * s, row, s, &x0, &x1)) continue;
+        mini_paint(row, mini_anim->palette, gy, x0, x1);
+        if (x0 < bx0) bx0 = x0;
+        if (x1 > bx1) bx1 = x1;
+        if (gy < by0) by0 = gy;
+        by1 = gy;
     }
-    if (mini_canvas) lv_obj_invalidate(mini_canvas);
+    mini_shown = cells;
+    if (!mini_canvas || bx1 < 0) return;           // the same picture: nothing to redraw
+    if (all || lv_image_get_scale(mini_canvas) != LV_SCALE_NONE) {
+        lv_obj_invalidate(mini_canvas);
+        return;
+    }
+    lv_obj_update_layout(mini_canvas);
+    lv_area_t box;
+    lv_obj_get_coords(mini_canvas, &box);
+    const int32_t ox = box.x1, oy = box.y1;
+    box.x1 = ox + bx0 * mini_cell;
+    box.y1 = oy + by0 * mini_cell;
+    box.x2 = ox + (bx1 + 1) * mini_cell - 1;
+    box.y2 = oy + (by1 + 1) * mini_cell - 1;
+    lv_obj_invalidate_area(mini_canvas, &box);
 }
 
 // Edge in px of `a` drawn as a mini creature of about `px`: whole cells, any
@@ -538,19 +576,25 @@ bool splash_anim_known(const char *anim_name) {
     return anim_named(anim_name) != NULL;
 }
 
-// Show `a` from its first frame. The canvas takes the edge this animation needs
-// at mini_px; the buffer was made for the largest one, so it always fits.
-static void mini_point_at(const splash_anim_def_t *a) {
-    mini_anim  = a;
-    mini_w     = mini_side(a, mini_px);
-    mini_cell  = mini_w / anim_size(a);
-    mini_frame = 0;
-    mini_started = millis();
+// The canvas at the edge the animation needs at mini_px, every cell painted;
+// the buffer was made for the largest one at mini_cap, so it always fits.
+static void mini_fit(void) {
+    mini_w     = mini_side(mini_anim, mini_px);
+    mini_cell  = mini_w / anim_size(mini_anim);
+    mini_shown = NULL;
     lv_canvas_set_buffer(mini_canvas, mini_buf, mini_w, mini_w, LV_COLOR_FORMAT_RGB565);
     mini_render();
 }
 
-lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
+// Show `a` from its first frame.
+static void mini_point_at(const splash_anim_def_t *a) {
+    mini_anim  = a;
+    mini_frame = 0;
+    mini_started = millis();
+    mini_fit();
+}
+
+lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px, int cap_px) {
     const splash_anim_def_t *a = anim_named(anim_name);
     if (!a) return NULL;                  // unknown name: whatever exists keeps running
     if (mini_canvas) {
@@ -563,23 +607,27 @@ lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px) {
         if (a != mini_anim) mini_point_at(a);
         return mini_canvas;
     }
-    // One buffer for the largest art any table row needs at this px (at px 160
-    // a 20 cell lattice is 160 px and a 60 cell one 120 px), so re-pointing it
-    // later never allocates.
-    int cap = 0;
-    for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
-        const int side = mini_side(&splash_anims[i], px);
-        if (side > cap) cap = side;
-    }
 #ifdef BOARD_HAS_PSRAM
     const uint32_t caps = MALLOC_CAP_SPIRAM;
 #else
     const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
 #endif
-    mini_buf = (uint16_t*)heap_caps_malloc((size_t)cap * cap * 2, caps);
-    if (!mini_buf) {
+    // One buffer for the largest art any table row needs at cap_px (at px 160
+    // a 20 cell lattice is 160 px and a 60 cell one 120 px), so re-pointing or
+    // resizing it later never allocates. Short of that much, one for px, and
+    // the sizes over it are refused (splash_mini_set_px).
+    if (cap_px < px) cap_px = px;
+    for (int want = cap_px; !mini_buf; want = px) {
+        int cap = 0;
+        for (int i = 0; i < SPLASH_ANIM_COUNT; i++) {
+            const int side = mini_side(&splash_anims[i], want);
+            if (side > cap) cap = side;
+        }
+        mini_buf = (uint16_t*)heap_caps_malloc((size_t)cap * cap * 2, caps);
+        mini_cap = want;
+        if (mini_buf) break;
         Serial.printf("splash: mini creature buffer (%d px) alloc failed\n", cap);
-        return NULL;
+        if (want == px) return NULL;
     }
     mini_px = px;
     mini_canvas = lv_canvas_create(parent);
@@ -593,6 +641,15 @@ bool splash_mini_set_anim(const char *anim_name) {
     const splash_anim_def_t *a = anim_named(anim_name);
     if (!a) return false;
     if (a != mini_anim) mini_point_at(a);
+    return true;
+}
+
+bool splash_mini_set_px(int px) {
+    if (!mini_canvas || px <= 0 || px > mini_cap) return false;
+    if (px != mini_px) {
+        mini_px = px;
+        mini_fit();   // the same frame, every cell at the new size
+    }
     return true;
 }
 

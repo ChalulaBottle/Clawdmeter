@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dance view bench</title>
+<meta name="description" content="The page's dancing creature in the three dance views, card, large and full, side by side on the 480 px panel: one master clock, the firmware's layout numbers, and the redraw cost of each view measured from the creature frames under the firmware's diff rule.">
+<style>
+:root{--bg:#06090b;--surf:#0c1214;--surf2:#111a1d;--line:#1d2b2f;--edge:#2c4045;--text:#d8e6e6;--muted:#7d9698;--echo:#35e0c0;--warn:#e0b25a;
+  --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,monospace;--head:Bahnschrift,"Segoe UI Semibold",system-ui,sans-serif}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f2f6f5;--surf:#fff;--surf2:#eef3f2;--line:#cfdad8;--edge:#a9bbb8;--text:#0f1a1a;--muted:#4a5f5e;--echo:#0e8a74;--warn:#8a6a1c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--mono);padding:16px}
+h1{font:800 22px/1.1 var(--head);text-transform:uppercase;letter-spacing:.02em;margin:0 0 4px}
+h3{font:800 14px/1.2 var(--head);text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 14px;max-width:110ch}
+.master{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 12px;background:var(--surf2);border:1px solid var(--line);margin-bottom:14px}
+.master label{display:flex;gap:8px;align-items:center;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.master select{font:12px var(--mono);background:var(--surf);color:var(--text);border:1px solid var(--edge);padding:6px 8px}
+button{font:700 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;padding:9px 12px;background:var(--surf);color:var(--text);border:1px solid var(--edge);cursor:pointer;
+  clip-path:polygon(0 6px,6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%)}
+button.primary{background:var(--echo);color:#03110e;border-color:var(--echo)}
+input[type=range]{accent-color:var(--echo)}
+#clock{color:var(--muted);font-size:12px;min-width:46ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),504px));gap:12px;justify-content:start}
+.cell{background:var(--surf);border:1px solid var(--line);padding:12px;min-width:0;
+  clip-path:polygon(0 12px,12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%)}
+.cell h2{font:800 15px/1.2 var(--head);text-transform:uppercase;margin:0 0 2px}
+.cell .intent{color:var(--muted);font-size:12px;margin:0 0 10px;min-height:4.4em}
+canvas.panel{display:block;width:100%;max-width:480px;height:auto;image-rendering:pixelated;background:#000;border:1px solid var(--line)}
+.meta{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
+.meta b{color:var(--text);font-weight:600}
+.meta .k{display:inline-block;min-width:9ch;color:var(--muted)}
+.cost{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.wide{margin-top:16px;padding:12px;background:var(--surf);border:1px solid var(--line);max-width:1536px}
+table{border-collapse:collapse;font-size:12px;width:100%}
+th,td{text-align:right;padding:3px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{color:var(--muted);font-weight:600}
+tr.off td{color:var(--muted);opacity:.55}
+.verdict p{margin:0 0 8px;max-width:120ch}
+.verdict b{color:var(--echo)}
+.help{color:var(--warn);font-size:12px;max-width:120ch}
+.help ul{list-style:none;padding:0;margin:6px 0 0}
+.help li{margin:0 0 4px}
+.help li::before{content:"\28FF  "}
+</style>
+</head>
+<body>
+<h1>Dance view bench</h1>
+<p class="sub">The music card's dancing creature in the three dance views on the 480 by 480 panel, side by side on one clock: the same dancer, the same frame, the same card text in every cell, and the change of dancer (the 1.2 s shrink to a dot and back) at the same instant. Every position is the firmware's (ui.cpp, init_page_overlay and page_layout) and each cell prints its own. The pools and their order rules are the dance floor's: a feature for 90 s, then a clip for 30 s.</p>
+
+<div class="master">
+  <button class="primary" id="play">Pause</button>
+  <button id="next">Next dancer</button>
+  <label>Overlay opacity <input type="range" id="opa" min="0" max="100" value="55"> <span id="opav">55</span></label>
+  <label><input type="checkbox" id="art"> Album art</label>
+  <label>Board <select id="board">
+    <option value="lcd4">4 inch, waveshare_lcd_4 (HD dancers, album art)</option>
+    <option value="a216">2.16, waveshare_amoled_216 (20 cell dancers only)</option>
+  </select></label>
+  <span id="clock"></span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<section class="wide verdict" id="verdict"></section>
+
+<section class="wide">
+  <h3>Redraw cost per dancer, settled</h3>
+  <table id="costs"></table>
+</section>
+
+<section class="wide help">
+  <h3 style="color:var(--warn)">How to read this</h3>
+  <ul>
+    <li>Cost is measured, not timed. For every frame of a dancer the box of cells that differ from the frame before is what the firmware paints and hands LVGL to redraw (splash.cpp, mini_render); its area in panel px, summed over the dancer's loop and divided by the loop's length, is px redrawn a second. A frame's worth is 230,400 px (480 by 480). The dance floor average weights the features 3 to 1 against the clips, their 90 s and 30 s, each pool's members equally (the picks are random). The change of dancer is counted at LVGL's 33 ms refresh, each step redrawing the larger of the two scaled squares.</li>
+    <li>No browser time is shown on purpose: it would measure this PC, not the board. On the 4 inch board every redrawn px passes through PSRAM about four times (painted into the canvas, read, written to LVGL's draw buffer, copied into the framebuffer the RGB panel scans out), which is why the redraw count is the number that matters.</li>
+    <li>The dominant state is dancing: two changes of dancer of 1.2 s each per 122.4 s round, so the dancers dance 98 percent of the time. Decide on that column, not on the change.</li>
+    <li>Type is a stand in: the panel draws Tiempos 56 for the title and a mono 18 for the lines as bitmap fonts. Line boxes and positions match the firmware; glyph shapes do not. The album art is a stand in pattern, not a real cover.</li>
+    <li>The overlay is see through, never blurred. A blur would be a filter pass over every px the dancer redraws, on top of everything counted here, on an ESP32 whose RGB panel scans out of the same PSRAM; the strip's opacity (0 to 100, LVGL bg_opa of percent times 255 over 100) is the transparent option.</li>
+    <li>A still capture of this page lies about it: it shows one frame of one dancer, never the change of dancer, never the frame rate, never the redraw. Read it live. Deep links: <code>#swap</code> changes dancer every 4 s (the loud state), <code>#still</code> holds one fixed frame for captures, <code>#amoled</code> starts on the 2.16 board.</li>
+  </ul>
+</section>
+
+<script>
+// A script that fails says so on the page instead of leaving three black squares.
+window.addEventListener('error', e => document.body.insertAdjacentHTML('afterbegin', '<pre style="color:#e0b25a">bench error: ' + e.message + '</pre>'));
+</script>
+<script src="anims.js"></script>
+<script src="anims_replace.js"></script>
+<script src="anims_moves.js"></script>
+<script>
+(function () {
+  'use strict';
+  const B = window.BENCH;
+
+  // ---- The firmware's numbers (ui.cpp compute_layout and init_page_overlay, 480 px boards) ----
+  const P = 480, M = 20, CW = P - 2 * M, IH = P - 2 * M;   // margin 20, content 440 by 440
+  const GAP = 12, LINE_H = 19, LINE_BASE = 4, PITCH = LINE_H + 6;   // font_mono_18: line height 19, base line 4
+  const TITLE_H = 58, TITLE_BASE = 12, BAR_H = 24, IDLE_PX = 160;   // font_tiempos_56; L.bar_h; L.idle_px
+  const ART_PX = 128;                                                // art.h
+  const COL = {bg: '#000000', panel: '#1f1f1e', text: '#faf9f5', dim: '#b0aea5', accent: '#d97757', barbg: '#2a2a28'};
+
+  const barY = IH - BAR_H;                                   // 416
+  const line0 = barY - GAP - LINE_H - 2 * PITCH;             // 335
+  const bandY = TITLE_H + GAP;                               // 70
+  const bandH = line0 - GAP - bandY;                         // 253
+  let cardPx = Math.min(bandH, IDLE_PX);                     // 160
+  // the card with album art (page_art_init)
+  const half = Math.trunc((CW - GAP) / 2), room = Math.min(IDLE_PX, half), artPx = Math.min(ART_PX, room);
+  const textX = room + GAP, linesH = LINE_H + 2 * PITCH;
+  let aLine0 = room - linesH; if (aLine0 < TITLE_H + GAP) aLine0 = TITLE_H + GAP;
+  const topH = Math.max(aLine0 + linesH, room), aBandY = topH + GAP, aBandH = barY - GAP - aBandY;
+  if (aBandH < cardPx) cardPx = aBandH;
+  // large
+  const lgBarH = BAR_H / 2, lgBarY = IH - lgBarH, lgLine0 = lgBarY - GAP - LINE_H - PITCH;
+  const lgPx = Math.min(lgLine0 - GAP, CW);                  // 360
+  // full
+  const flBarH = BAR_H / 4, flBarY = IH - flBarH, flLine0 = flBarY - GAP - LINE_H - PITCH, stripY = flLine0 - GAP;
+  const flPx = P;
+  const THUMB = LINE_H + PITCH;                              // 44
+
+  // local coordinates, inside the page's 20 px padding, as the firmware's PageGeom
+  const GEOM = {
+    card:    {textX: 0,     line0,          band: [0, bandY, CW, bandH],    bar: [barY, BAR_H],     px: cardPx},
+    cardArt: {textX,        line0: aLine0,  band: [0, aBandY, CW, aBandH],  bar: [barY, BAR_H],     px: cardPx},
+    large:   {textX: 0,     line0: lgLine0, band: [0, 0, CW, lgPx],         bar: [lgBarY, lgBarH],  px: lgPx},
+    full:    {textX: 0,     line0: flLine0, band: [-M, -M, P, P],           bar: [flBarY, flBarH],  px: flPx},
+  };
+  const VIEWS = [
+    {key: 'card', name: 'Card', intent: 'Today\'s card, unchanged: the track as the title, the creature in its band (160 px, an HD dancer 120 px), artist, device and length, and the 24 px bar. The one change under it is the redraw: only the changed cells now, not the whole creature every frame.'},
+    {key: 'large', name: 'Large (default)', intent: 'The creature as big as the panel allows over two compact lines, the track and the artist, and a 12 px bar: 360 px, which 20, 40 and 60 cell lattices all divide, so every dancer is one size. Nothing is drawn over it; album art shrinks to a 44 px thumbnail.'},
+    {key: 'full', name: 'Full', intent: 'A music video: the creature on the whole 480 px panel at its native cell size, the track and the artist on a strip along the bottom at the overlay opacity, and a 6 px bar. Notifications and prompts still cover it.'},
+  ];
+
+  // ---- The dance floor (ui.cpp) ----
+  const POOLS = [
+    ['echo breakdance hd', 'echo acrobat hd', 'echo rave bunny hd', 'echo dj', 'echo rave', 'echo mixer'],
+    ['echo moonwalk hd', 'echo hop', 'echo swing', 'echo headphones', 'echo notes', 'echo cartwheel'],
+  ];
+  const KIND = ['feature', 'clip'], POOL_MS = [90000, 30000], HALF_MS = 600, DOT = 8 / 256;
+  const BOARDS = {
+    lcd4: {big: true, art: true, label: '4 inch (lcd_4)'},
+    a216: {big: false, art: false, label: '2.16 (amoled_216)'},
+  };
+  const byFw = name => B.anims.find(a => a.fwname === name);
+  const sizeOf = a => B.sizeOf(a);
+  const side = (n, px) => n * Math.max(1, Math.floor(px / n));   // splash.cpp mini_side
+  // On the board's table: present, not bench only, big tier only where SPLASH_BIG is built.
+  const onBoard = (a, board) => a && !a.benchOnly && (a.tier !== 'big' || BOARDS[board].big);
+
+  // ---- One frame of a dancer, one px a cell, cached; drawn scaled with no smoothing ----
+  const cache = new Map();
+  function frameCanvas(a, i) {
+    const key = a.fwname + '#' + i;
+    if (cache.has(key)) return cache.get(key);
+    const n = sizeOf(a), g = a.frames[i].grid;
+    const c = document.createElement('canvas'); c.width = c.height = n;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(n, n);
+    const rgb = a.palette.map(h => h === 'transparent' ? [0, 0, 0] : [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16)));
+    for (let r = 0; r < n; r++) for (let q = 0; q < n; q++) {
+      const v = g[r][q], o = (r * n + q) * 4, col = rgb[v] || [255, 0, 255];
+      img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    cache.set(key, c);
+    return c;
+  }
+
+  // ---- Settled cost, the firmware's diff rule ----
+  function boxCells(a, b, n) {
+    let x0 = n, y0 = n, x1 = -1, y1 = -1;
+    for (let r = 0; r < n; r++) {
+      const ra = a[r], rb = b[r];
+      for (let q = 0; q < n; q++) if (ra[q] !== rb[q]) { if (q < x0) x0 = q; if (q > x1) x1 = q; if (r < y0) y0 = r; y1 = r; }
+    }
+    return x1 < 0 ? 0 : (x1 - x0 + 1) * (y1 - y0 + 1);
+  }
+  const VIEW_PX = {card: cardPx, large: lgPx, full: flPx};
+  const costOf = new Map();
+  function cost(a) {
+    if (costOf.has(a)) return costOf.get(a);
+    const n = sizeOf(a), F = a.frames.length;
+    let cells = 0, ms = 0;
+    for (let i = 0; i < F; i++) { cells += boxCells(a.frames[i].grid, a.frames[(i + 1) % F].grid, n); ms += a.frames[i].hold; }
+    const out = {n, F, ms, fps: F * 1000 / ms};
+    for (const v of Object.keys(VIEW_PX)) {
+      const s = side(n, VIEW_PX[v]), cell = s / n;
+      out[v] = cells * 1000 / ms * cell * cell;
+      out[v + 'Side'] = s;
+    }
+    out.cardToday = out.cardSide * out.cardSide * out.fps;   // before: the whole creature repainted every frame
+    costOf.set(a, out);
+    return out;
+  }
+  function swapPx(s) {   // a change of dancer at LVGL's 33 ms refresh, the larger scaled square each step
+    let total = 0, prev = 1;
+    for (let t = 33; t <= 1233; t += 33) {
+      const tt = Math.min(t, 1200);
+      const k = tt < HALF_MS ? Math.max(DOT, (HALF_MS - tt) / HALF_MS) : Math.max(DOT, (tt - HALF_MS) / HALF_MS);
+      const m = Math.max(prev, k); total += (s * m) * (s * m); prev = k;
+    }
+    return total;
+  }
+  function floorAverage(board, v) {
+    const mean = p => { const l = POOLS[p].map(byFw).filter(a => onBoard(a, board)); return l.reduce((t, a) => t + cost(a)[v], 0) / l.length; };
+    return 0.75 * mean(0) + 0.25 * mean(1);
+  }
+  const fmt = x => Math.round(x).toLocaleString('en-US');
+  const ffe = x => (x / (P * P)).toFixed(2);
+
+  // ---- State, one for every cell ----
+  const url = location.hash;
+  const st = {
+    board: url === '#amoled' ? 'a216' : 'lcd4', playing: url !== '#still', opa: 55, art: false,
+    pool: 0, prev: [-1, -1], cur: null, frame: 0, frameT: 0, phase: 'play', left: POOL_MS[0], scale: 1,
+    pp: 42, swapEvery: url === '#swap' ? 4000 : 0, swapT: 0,
+  };
+  let seed = 973;                                            // mulberry32: the same sequence on every load
+  const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  function pick(p) {
+    const c = []; POOLS[p].forEach((nm, i) => { if (i !== st.prev[p] && onBoard(byFw(nm), st.board)) c.push(i); });
+    return c.length ? c[Math.floor(rnd() * c.length)] : st.prev[p];
+  }
+  function switchDancer(first) {
+    let p = first ? 0 : st.pool ^ 1, k = pick(p);
+    if (k < 0) { p ^= 1; k = pick(p); }
+    st.pool = p; st.prev[p] = k; st.cur = byFw(POOLS[p][k]); st.frame = 0; st.frameT = 0;
+  }
+  function restart() {
+    st.prev = [-1, -1]; seed = 973;
+    if (url === '#still') {                                  // a fixed frame for captures
+      st.pool = 0; st.prev[0] = st.board === 'lcd4' ? 0 : 3; st.cur = byFw(POOLS[0][st.prev[0]]);
+      st.frame = Math.min(4, st.cur.frames.length - 1); st.frameT = 0;   // breakdance hd 4: upright, arms up
+    } else switchDancer(true);
+    st.phase = 'play'; st.left = POOL_MS[st.pool]; st.scale = 1;
+  }
+
+  function tick(dt) {
+    if (!st.playing) return;
+    st.pp = (st.pp + dt / 2680) % 100;                       // a 4:28 track
+    if (st.swapEvery && st.phase === 'play') { st.swapT += dt; if (st.swapT >= st.swapEvery) { st.swapT = 0; st.left = 0; } }
+    // the dancer's own frames
+    const a = st.cur; st.frameT += dt;
+    while (st.frameT >= a.frames[st.frame].hold) { st.frameT -= a.frames[st.frame].hold; st.frame = (st.frame + 1) % a.frames.length; }
+    // the dance clock (dance_tick)
+    if (dt < st.left) st.left -= dt;
+    else if (st.phase === 'play') { st.phase = 'down'; st.left = HALF_MS; }
+    else if (st.phase === 'down') { switchDancer(false); st.phase = 'up'; st.left = HALF_MS; }
+    else { st.phase = 'play'; st.left = POOL_MS[st.pool]; }
+    st.scale = st.phase === 'play' ? 1 : Math.max(DOT, (st.phase === 'down' ? st.left : HALF_MS - st.left) / HALF_MS);
+  }
+
+  // ---- Stand in album art, 128 px ----
+  const art = document.createElement('canvas'); art.width = art.height = ART_PX;
+  (() => {
+    const c = art.getContext('2d');
+    c.fillStyle = '#1c3b4a'; c.fillRect(0, 0, ART_PX, ART_PX);
+    for (let i = 0; i < 6; i++) { c.fillStyle = i % 2 ? '#2f6f73' : '#d9b36c'; c.beginPath(); c.arc(64, 74, 58 - i * 9, 0, Math.PI * 2); c.fill(); }
+    c.fillStyle = '#0e1c24'; c.fillRect(0, 0, ART_PX, 26);
+    c.fillStyle = '#f2e6cf'; c.font = 'bold 15px Georgia, serif'; c.fillText('STAND IN', 8, 18);
+  })();
+
+  // ---- One panel ----
+  // The engine's music card (controllers/spotify.py _render): pt the track, p1 the artist,
+  // p2 the device, p3 the track's length.
+  const TEXT = {pt: 'Hoppipolla', p1: 'Sigur Ros', p2: 'Desk speaker', p3: '4:28'};
+  function fit(ctx, s, w) {                                   // LV_LABEL_LONG_DOT
+    if (ctx.measureText(s).width <= w) return s;
+    while (s.length && ctx.measureText(s + '...').width > w) s = s.slice(0, -1);
+    return s + '...';
+  }
+  function bar(ctx, x, y, w, h, pp) {
+    const r = Math.min(6, h / 2);
+    ctx.fillStyle = COL.barbg; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+    const iw = Math.round(w * pp / 100);
+    if (iw > 0) { ctx.fillStyle = COL.accent; ctx.beginPath(); ctx.roundRect(x, y, Math.max(iw, 2 * r), h, r); ctx.fill(); }
+  }
+  function layoutOf(view) {
+    const art = st.art && BOARDS[st.board].art;
+    const g = view === 'card' ? (art ? GEOM.cardArt : GEOM.card) : GEOM[view];
+    const tx = g.textX + (view !== 'card' && art ? THUMB + GAP : 0);
+    return {g, art, tx};
+  }
+  function drawPanel(ctx, view) {
+    const {g, art: hasArt, tx} = layoutOf(view);
+    ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, P, P);
+    // the title, card only
+    if (view === 'card') {
+      ctx.font = '56px Georgia, "Times New Roman", serif'; ctx.fillStyle = COL.text; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(fit(ctx, TEXT.pt, CW - tx), M + tx, M + TITLE_H - TITLE_BASE);
+    }
+    // the creature, centred in its band (LV_ALIGN_CENTER), scaled about its middle for a change of dancer
+    const a = st.cur, n = sizeOf(a), s = side(n, g.px);
+    const [bx, by, bw, bh] = g.band;
+    const cx = M + bx + Math.trunc(bw / 2) - Math.trunc(s / 2), cy = M + by + Math.trunc(bh / 2) - Math.trunc(s / 2);
+    const piv = Math.trunc((s - 1) / 2), ds = s * st.scale;
+    ctx.imageSmoothingEnabled = false;
+    ctx.save(); ctx.beginPath(); ctx.rect(M + bx, M + by, bw, bh); ctx.clip();
+    ctx.drawImage(frameCanvas(a, st.frame), cx + piv - piv * st.scale, cy + piv - piv * st.scale, ds, ds);
+    ctx.restore();
+    // the strip, full only
+    if (view === 'full') {
+      ctx.fillStyle = `rgba(0,0,0,${Math.floor(st.opa * 255 / 100) / 255})`;
+      ctx.fillRect(0, M + stripY, P, IH + M - stripY);
+    }
+    // the lines: p1 to p3 in the card; in large and full the title in the lines' type, then p1 dimmed
+    ctx.font = '18px "Cascadia Mono", Consolas, ui-monospace, monospace'; ctx.textBaseline = 'alphabetic';
+    const lines = view === 'card' ? [TEXT.p1, TEXT.p2, TEXT.p3] : [TEXT.pt, TEXT.p1];
+    lines.forEach((t, i) => { ctx.fillStyle = i ? COL.dim : COL.text; ctx.fillText(fit(ctx, t, CW - tx), M + tx, M + g.line0 + i * PITCH + LINE_H - LINE_BASE); });
+    bar(ctx, M, M + g.bar[0], CW, g.bar[1], st.pp);
+    // the album art: its square in the card, a thumbnail beside the lines otherwise
+    if (hasArt) {
+      ctx.imageSmoothingEnabled = true;
+      if (view === 'card') ctx.drawImage(art, M + Math.trunc((room - artPx) / 2), M + Math.trunc((room - artPx) / 2), artPx, artPx);
+      else ctx.drawImage(art, M, M + g.line0, THUMB, THUMB);
+    }
+    return {cx, cy, s, n};
+  }
+
+  // ---- Cells ----
+  const grid = document.getElementById('grid');
+  const cells = VIEWS.map(v => {
+    const d = document.createElement('div'); d.className = 'cell';
+    d.innerHTML = `<h2>${v.name}</h2><p class="intent">${v.intent}</p><canvas class="panel" width="${P}" height="${P}"></canvas><div class="meta"></div>`;
+    grid.appendChild(d);
+    return {v, cv: d.querySelector('canvas'), ctx: d.querySelector('canvas').getContext('2d'), meta: d.querySelector('.meta')};
+  });
+  const abs = (x, y) => `${M + x}, ${M + y}`;
+  function constants(view) {
+    const {g, art: hasArt, tx} = layoutOf(view), [bx, by, bw, bh] = g.band;
+    const sizes = [20, 40, 60].map(n => `${n} cells ${side(n, g.px)} px (${Math.floor(side(n, g.px) / n)} px cells)`).join(', ');
+    const rows = [
+      `<span class="k">panel</span>${P} by ${P}, margin ${M}, every value below in panel px`,
+      `<span class="k">creature</span>${sizes}`,
+      `<span class="k">band</span>at ${abs(bx, by)}, ${bw} by ${bh}, the creature centred in it`,
+      view === 'card' ? `<span class="k">title</span>at ${abs(tx, 0)}, ${CW - tx} wide, ${TITLE_H} tall, Tiempos 56`
+                      : `<span class="k">title</span>at ${abs(tx, g.line0)}, ${CW - tx} wide, ${LINE_H} tall, in the lines' mono 18`,
+      view === 'card' ? `<span class="k">lines</span>p1, p2, p3 at x ${M + tx}, y ${[0, 1, 2].map(i => M + g.line0 + i * PITCH).join(', ')}, ${CW - tx} wide`
+                      : `<span class="k">lines</span>p1 dimmed at ${abs(tx, g.line0 + PITCH)}, ${CW - tx} wide; p2 and p3 not drawn`,
+      `<span class="k">bar</span>at ${abs(0, g.bar[0])}, ${CW} by ${g.bar[1]}`,
+    ];
+    if (view === 'full') rows.push(`<span class="k">strip</span>at 0, ${M + stripY}, ${P} by ${IH + M - stripY}, black at ${st.opa} percent (bg_opa ${Math.floor(st.opa * 255 / 100)})`);
+    if (hasArt) rows.push(view === 'card' ? `<span class="k">art</span>${artPx} px square at ${abs(Math.trunc((room - artPx) / 2), Math.trunc((room - artPx) / 2))}` : `<span class="k">art</span>${THUMB} px thumbnail at ${abs(0, g.line0)}, scale ${Math.trunc(THUMB * 256 / ART_PX)} of 256`);
+    return rows.join('<br>');
+  }
+
+  function render() {
+    const a = st.cur, c = cost(a);
+    cells.forEach(cell => {
+      const {cx, cy, s, n} = drawPanel(cell.ctx, cell.v.key);
+      const lit = a.frames[st.frame].grid.reduce((t, r) => t + r.filter(Boolean).length, 0);
+      const v = cell.v.key, avg = floorAverage(st.board, v);
+      cell.meta.innerHTML = constants(v) +
+        `<div class="cost"><span class="k">now</span><b>${a.fwname}</b>, ${KIND[st.pool]}, lattice ${n} by ${n}, ${s} px at ${cx}, ${cy}, frame ${st.frame} of ${a.frames.length}, cells lit ${lit} of ${n * n}` +
+        `<br><span class="k">this one</span>${fmt(c[v])} px redrawn a second, ${ffe(c[v])} frames' worth` +
+        (v === 'card' ? `<br><span class="k">before</span>${fmt(c.cardToday)} px a second when every frame repainted the whole creature` : '') +
+        `<br><span class="k">floor</span><b>${fmt(avg)} px a second, ${ffe(avg)} frames' worth</b>, dancing, the pool average on the ${BOARDS[st.board].label}` +
+        `<br><span class="k">change</span>${fmt(swapPx(s))} px in 1.2 s for this dancer, ${ffe(swapPx(s))} frames' worth</div>`;
+    });
+    const pct = st.phase === 'play' ? `${Math.ceil(st.left / 1000)} s left` : 'changing dancer';
+    document.getElementById('clock').textContent = `${st.playing ? 'playing' : 'paused'}, ${a.fwname}, ${KIND[st.pool]}, ${pct}`;
+  }
+
+  function costTable() {
+    const head = '<tr><th>dancer</th><th>pool</th><th>lattice</th><th>frames a second</th><th>card before</th><th>card</th><th>large</th><th>full</th></tr>';
+    const rows = POOLS.flatMap((pool, p) => pool.map(nm => {
+      const a = byFw(nm); if (!a) return `<tr class="off"><td>${nm}</td><td>${KIND[p]}</td><td colspan="6">not in the bench files</td></tr>`;
+      const c = cost(a), on = onBoard(a, st.board);
+      return `<tr class="${on ? '' : 'off'}"><td>${nm}${on ? '' : ' (not on this board)'}</td><td>${KIND[p]}</td><td>${c.n}</td><td>${c.fps.toFixed(1)}</td>` +
+        ['cardToday', 'card', 'large', 'full'].map(k => `<td>${fmt(c[k])}</td>`).join('') + '</tr>';
+    }));
+    const avg = ['cardToday', 'card', 'large', 'full'].map(k => floorAverage(st.board, k));
+    rows.push(`<tr><td><b>dance floor average</b></td><td>3 to 1</td><td></td><td></td>${avg.map(x => `<td><b>${fmt(x)}</b><br>${ffe(x)} frames</td>`).join('')}</tr>`);
+    document.getElementById('costs').innerHTML = head + rows.join('');
+    // the verdict, on this board's numbers
+    const [, card, large, full] = avg;
+    const sw = k => swapPx(k);
+    document.getElementById('verdict').innerHTML = `<h3>Recommendation: <b>large</b> as the default, full one verb away</h3>
+      <p>Decided on the dominant state, dancing, which is 98 percent of the dance floor's time. On the ${BOARDS[st.board].label} the dancers redraw ${fmt(large)} px a second in large (${ffe(large)} frames' worth) against ${fmt(full)} in full (${ffe(full)}): full costs ${(full / large).toFixed(2)} times as much for a dancer only a third wider, and at any opacity above zero its strip sits over the bottom ${IH + M - stripY} px of the dancer, where its feet and floor are. Large puts the dancer at 360 px, two and a quarter times the card's 160 (three times an HD dancer's 120), with both lines on plain black and nothing blended over it.</p>
+      <p>Full is the music video the operator asked for and stays a setting: <code>dview full</code>, with the strip's opacity on <code>dvo</code>. While dancing it redraws the same px as the idle splash does for the same dancer full screen, plus the strip's blend where they cross, and the 4 inch board already runs that splash. Its change of dancer is the burst: ${ffe(sw(flPx))} frames' worth in 1.2 s against ${ffe(sw(lgPx))} in large, twice per 122.4 s round. The card drops to ${fmt(card)} px a second from ${fmt(avg[0])} now that only the changed cells are redrawn.</p>`;
+  }
+
+  // ---- Controls ----
+  const $ = id => document.getElementById(id);
+  $('play').onclick = e => { st.playing = !st.playing; e.target.textContent = st.playing ? 'Pause' : 'Play'; render(); };
+  $('next').onclick = () => { if (st.phase === 'play') st.left = 0; if (!st.playing) { st.playing = true; $('play').textContent = 'Pause'; } };
+  $('opa').oninput = e => { st.opa = +e.target.value; $('opav').textContent = st.opa; render(); };
+  $('art').onchange = e => { st.art = e.target.checked; render(); };
+  $('board').onchange = e => { st.board = e.target.value; $('art').disabled = !BOARDS[st.board].art; restart(); costTable(); render(); };
+  if (st.board === 'a216') $('board').value = 'a216';
+  $('art').disabled = !BOARDS[st.board].art;
+  if (!st.playing) $('play').textContent = 'Play';
+
+  restart(); costTable(); render();
+  let last = performance.now(), lastKey = '';
+  function frame(now) {
+    const dt = Math.min(100, now - last); last = now;
+    tick(dt);
+    const key = [st.cur.fwname, st.frame, st.scale.toFixed(3), Math.floor(st.pp), st.phase, Math.ceil(st.left / 1000)].join('|');
+    if (key !== lastKey) { lastKey = key; render(); }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
