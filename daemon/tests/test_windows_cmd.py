@@ -29,7 +29,8 @@ BOARD = "E8:3D:C1:F7:6F:21"
 BOARD_B = "D4:05:92:B7:8B:E2"
 STATUS = {"c": "status", "v": ""}
 BRIGHT = {"c": "bright", "v": "40"}
-REPORT = {"c": "status", "br": 77, "scr": "splash", "an": "echo dj", "fw": "Waveshare LCD 4", "n": 83}
+REPORT = {"c": "status", "br": 77, "scr": "splash", "an": "echo dj", "fw": "Waveshare LCD 4", "n": 83,
+          "dv": "large", "do": 55}
 FIELDS = {k: v for k, v in REPORT.items() if k != "c"}
 BIG = "1" + "0" * 400   # a JSON integer too long for a float
 
@@ -175,7 +176,8 @@ def test_the_protocol_constants(relay_files):
     assert mod.CMD_NACK_WAIT == 2.0
     assert mod.CMD_PER_TICK == 4
     assert mod.CMD_OLD_FIRMWARE == "old firmware"
-    assert set(mod.STATUS_FIELDS) == {"br", "scr", "an", "fw", "n"}
+    assert set(mod.STATUS_FIELDS) == {"br", "scr", "an", "fw", "n", "dv", "do"}
+    assert mod.DANCE_VIEWS == ("card", "large", "full")
 
 
 def test_every_link_asks_for_the_report():
@@ -536,6 +538,8 @@ def test_a_status_report_fills_the_file_and_later_answers_keep_it(relay_files, l
     ("an", "x" * 24), ("an", None),
     ("fw", ""), ("fw", "x" * 41), ("fw", 1),
     ("n", -1), ("n", 1.5), ("n", "83"), ("n", False),
+    ("dv", "huge"), ("dv", ""), ("dv", "Full"), ("dv", 1), ("dv", ["full"]),
+    ("do", 101), ("do", -1), ("do", "55"), ("do", True), ("do", 5.5),
 ])
 def test_a_status_field_that_fails_its_check_is_left_out_and_the_rest_kept(relay_files, logs, field, value):
     s = _session()
@@ -549,6 +553,23 @@ def test_a_board_that_cannot_set_brightness_reports_br_minus_one(relay_files, lo
     s = _session()
     _hear(s, {**REPORT, "br": -1})
     assert _report(relay_files)["br"] == -1
+
+
+@pytest.mark.parametrize("field, value", [("dv", "card"), ("dv", "large"), ("dv", "full"), ("do", 0), ("do", 100)])
+def test_the_dance_view_and_its_overlay_opacity_are_kept(relay_files, logs, field, value):
+    """The board's dview and dvo as its report gives them (firmware cmd.cpp), for the dashboard."""
+    s = _session()
+    _hear(s, {**REPORT, field: value})
+    assert _report(relay_files)[field] == value
+
+
+def test_a_report_from_before_the_dance_view_keeps_the_rest(relay_files, logs):
+    """Firmware from before the dance view reports no dv and no do; the file then has neither."""
+    s = _session()
+    _hear(s, {k: v for k, v in REPORT.items() if k not in ("dv", "do")})
+    report = _report(relay_files)
+    assert "dv" not in report and "do" not in report
+    assert report["br"] == 77 and report["n"] == 83
 
 
 def test_an_unknown_verb_comes_back_as_a_question_mark(relay_files, logs):

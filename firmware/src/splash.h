@@ -73,11 +73,18 @@ lv_obj_t* splash_get_root(void);
 // later call from the same parent re-points it at the new animation (and
 // returns it); a call from another parent returns NULL and changes nothing. Its
 // edge follows the animation's lattice, so align it again after a change.
-lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px);
+// cap_px (0 or less: px) is the largest size splash_mini_set_px may ask for
+// later; the buffer is made for it, or for px when that much is not to be had.
+// Each frame paints and redraws only the cells that changed since the last.
+lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px, int cap_px = 0);
 // Re-point the existing mini creature at another animation, from its first
 // frame. False when none has been made yet or the name is unknown; the creature
 // then keeps what it had.
 bool splash_mini_set_anim(const char *anim_name);
+// Draw the existing mini creature at about px from now on (the page's dance
+// view): whole cells as at creation, the same frame, all of it repainted. False,
+// with nothing changed, when none has been made or px is over its buffer.
+bool splash_mini_set_px(int px);
 // Advance its frame when due; does nothing while it is hidden.
 void splash_mini_tick(void);
 // True when this board's table has an animation of that name (the lookup the

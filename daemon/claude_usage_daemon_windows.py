@@ -124,6 +124,7 @@ CMD_PER_TICK = 4
 # (None sends none).
 LINK_STATUS = {"c": "status", "v": ""}
 BOARD_ADDRESS = re.compile(r"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")   # the addresses a board/ file is named after
+DANCE_VIEWS = ("card", "large", "full")   # "dv", how big a dancing page draws its dancer (the board's dview)
 # The fields of a status report that a board/ file keeps, each with the check its value passes;
 # a field that fails is left out, the rest of the report kept.
 STATUS_FIELDS = {
@@ -132,6 +133,8 @@ STATUS_FIELDS = {
     "an": lambda v: isinstance(v, str) and len(v) <= ANIM_MAX,
     "fw": lambda v: isinstance(v, str) and 0 < len(v) <= 40,
     "n": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 9999,
+    "dv": lambda v: isinstance(v, str) and v in DANCE_VIEWS,
+    "do": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100,
 }
 # The board holds ONE incoming message until its loop reads it (firmware ble.cpp
 # rx_buf), so a second write landing first overwrites the first. Writes to one board
@@ -1186,11 +1189,11 @@ class Session:
 
     def _cmd_heard(self, msg: dict) -> None:
         """The board's answer to a cmd: {"c": verb, "ok": 1}, {"c": verb, "err": why}, or for
-        "status" its report {"c": "status", "br", "scr", "an", "fw", "n"}. A report replaces the
-        status fields the board/ file keeps (each field checked, STATUS_FIELDS); every answer
-        becomes the file's "last" and shows the board takes cmds. An answer naming no verb of
-        the right shape is dropped after a log line ("?" is the board's name for a verb it
-        could not repeat)."""
+        "status" its report {"c": "status", "br", "scr", "an", "fw", "n", "dv", "do"}. A report
+        replaces the status fields the board/ file keeps (each field checked, STATUS_FIELDS);
+        every answer becomes the file's "last" and shows the board takes cmds. An answer naming
+        no verb of the right shape is dropped after a log line ("?" is the board's name for a
+        verb it could not repeat)."""
         verb = msg.get("c")
         board = self.address or "address unknown"   # TX callbacks run without the link's log tag
         if not (isinstance(verb, str) and (CMD_VERB.fullmatch(verb) or verb == "?")):
