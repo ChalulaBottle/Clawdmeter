@@ -42,17 +42,71 @@ static uint32_t frame_started_ms = 0;
 static uint32_t last_pick_ms = 0;
 static bool active = false;
 
-// While splash is showing, auto-cycle to the next animation in the current
-// rate-driven group every this many ms.
-#define SPLASH_ROTATE_INTERVAL_MS 20000
+// While splash is showing, auto-cycle to another animation after a random
+// stretch between these two bounds (a fixed beat made the rotation feel like
+// a playlist on repeat).
+#define SPLASH_ROTATE_MIN_MS 14000
+#define SPLASH_ROTATE_MAX_MS 32000
+static uint32_t rotate_after_ms = SPLASH_ROTATE_MIN_MS;
 
-// Usage-rate animation groups: 4 groups × up to 4 animations each.
+// Usage-rate animation groups: 4 groups × up to 14 animations each.
 // Filled at init by matching literal names from splash_anims[].
 #define GROUP_COUNT 4
 #define GROUP_MAX   14
 static int8_t  group_lists[GROUP_COUNT][GROUP_MAX];
 static uint8_t group_size[GROUP_COUNT] = {0};
-static uint8_t group_rotation[GROUP_COUNT] = {0};
+
+// Each group is drawn as a shuffle bag: every member once in a random order,
+// then a fresh shuffle, so nothing repeats until the whole group has played
+// and the order differs on every pass and every boot (esp_random is the
+// hardware RNG, seeded by the radio).
+static uint8_t group_order[GROUP_COUNT][GROUP_MAX];
+static uint8_t group_left[GROUP_COUNT] = {0};
+
+// The wildcard pool: ambient creatures that belong to no usage group, so they
+// used to be reachable only by pressing a button. One pick in three on the calm
+// groups and one in five on the busy ones comes from here instead. Creatures
+// that stand for a Claude state (model names, ultracode, agents, credits out,
+// job done) are left out on purpose: shown at random they would lie. Names
+// missing from a board's table are skipped, so the big tier ones only appear
+// on SPLASH_BIG boards.
+static const char* WILD_NAMES[] = {
+    "echo float", "echo walk", "echo love", "echo kiss", "echo kiss b", "echo eye spin",
+    "echo portal", "echo door", "echo cartwheel", "echo glance", "echo hop", "echo swing",
+    "echo high five", "echo catch", "echo bubble", "echo notes", "echo ponder", "echo code",
+    "echo consult", "echo build", "echo openclaw", "echo nanoclaw", "echo ssh", "ctf hoodie",
+    "fable gaze", "fable eyes", "echo dj", "echo rave", "echo mixer", "echo summon hd",
+    "echo mushroom b", "echo mushroom hd b", "echo breakdance hd", "echo breakdance hd b",
+    "echo acrobat hd", "echo moonwalk hd", "echo moonwalk hd b", "echo rave bunny hd",
+    "echo rave bunny hd b",
+};
+#define WILD_MAX (sizeof(WILD_NAMES) / sizeof(WILD_NAMES[0]))
+static int8_t  wild_list[WILD_MAX];
+static uint8_t wild_order[WILD_MAX];
+static uint8_t wild_size = 0;
+static uint8_t wild_left = 0;
+
+static inline uint32_t rnd(uint32_t n) { return n ? esp_random() % n : 0; }
+
+static void shuffle(uint8_t *order, uint8_t n) {
+    for (uint8_t i = 0; i < n; i++) order[i] = i;
+    for (uint8_t i = n; i > 1; i--) {
+        uint8_t j = (uint8_t)rnd(i);
+        uint8_t t = order[i - 1]; order[i - 1] = order[j]; order[j] = t;
+    }
+}
+
+// The next member of a shuffle bag; `avoid` (the animation on screen) is
+// never drawn twice in a row when the bag holds anything else.
+static int8_t bag_draw(const int8_t *list, uint8_t *order, uint8_t *left, uint8_t size, int avoid) {
+    if (size == 0) return -1;
+    for (int tries = 0; tries < 2; tries++) {
+        if (*left == 0) { shuffle(order, size); *left = size; }
+        int8_t idx = list[order[--(*left)]];
+        if (idx != avoid || size == 1) return idx;
+    }
+    return list[order[*left ? --(*left) : 0]];
+}
 
 static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
     // Every animation in splash_anims[] should appear in exactly one group,
@@ -89,9 +143,9 @@ static int  forced_idx = -1;
 static char forced_req[24] = "";
 
 // Mornings (MORNING_FROM..MORNING_TO local, once the daemon has sent the clock):
-// the idle and normal-pace groups mostly show the creature with its coffee.
-// Two mugs on every third day of the year, one otherwise. Two picks in three
-// come from here so the other creatures still get a turn.
+// the idle and normal-pace groups often show the creature with its coffee.
+// Two mugs on every third day of the year, one otherwise. One pick in three,
+// at random, comes from here so the other creatures still get most turns.
 #define MORNING_FROM 6
 #define MORNING_TO   10
 static const char* MORNING_NAMES[] = { "echo morning", "echo coffee", "echo double coffee" };
@@ -124,9 +178,8 @@ static int morning_pick(void) {
     int hour, yday;
     if (morning_size == 0 || !ui_local_time(&hour, &yday)) return -1;
     if (hour < MORNING_FROM || hour >= MORNING_TO) return -1;
-    uint8_t turn = morning_rotation++;
-    if (turn % 3 == 2) return -1;
-    int8_t idx = morning_list[turn % morning_size];
+    if (rnd(3) != 0) return -1;
+    int8_t idx = morning_list[morning_rotation++ % morning_size];
     if (morning_double_idx >= 0 && yday % 3 == 0 && strcmp(splash_anims[idx].name, "echo coffee") == 0) {
         idx = morning_double_idx;   // a two-mug day
     }
@@ -135,6 +188,13 @@ static int morning_pick(void) {
 
 static void resolve_group_lists(void) {
     resolve_morning_list();
+    wild_size = 0;
+    wild_left = 0;
+    for (size_t s = 0; s < WILD_MAX; s++) {
+        int8_t idx = find_anim(WILD_NAMES[s]);
+        if (idx >= 0) wild_list[wild_size++] = idx;
+    }
+    for (int g = 0; g < GROUP_COUNT; g++) group_left[g] = 0;
     for (int g = 0; g < GROUP_COUNT; g++) {
         group_size[g] = 0;
         for (int s = 0; s < GROUP_MAX; s++) {
@@ -655,8 +715,8 @@ void splash_tick(void) {
 
     // Auto-rotate to the next animation in the current group. Suspended while
     // the host drives the animation — otherwise its choice would be dropped
-    // after SPLASH_ROTATE_INTERVAL_MS.
-    if (forced_idx < 0 && millis() - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) {
+    // after rotate_after_ms.
+    if (forced_idx < 0 && millis() - last_pick_ms >= rotate_after_ms) {
         splash_pick_for_current_rate();
     }
 
@@ -732,13 +792,19 @@ void splash_pick_for_current_rate(void) {
             Serial.printf("splash: morning -> %s\n", splash_anims[idx].name);
         }
     }
+    const char *from = idx >= 0 ? "morning" : "group";
+    if (idx < 0 && wild_size > 0 && rnd(g <= 1 ? 3 : 5) == 0) {
+        idx = bag_draw(wild_list, wild_order, &wild_left, wild_size, cur_anim);
+        from = "wild";
+    }
     if (idx < 0) {
-        uint8_t slot = group_rotation[g] % group_size[g];
-        group_rotation[g]++;
-        idx = group_lists[g][slot];
+        idx = bag_draw(group_lists[g], group_order[g], &group_left[g], group_size[g], cur_anim);
     }
     if (idx < 0) return;
 
+    rotate_after_ms = SPLASH_ROTATE_MIN_MS + rnd(SPLASH_ROTATE_MAX_MS - SPLASH_ROTATE_MIN_MS + 1);
+    Serial.printf("splash: %s -> %s for %lu s\n", from, splash_anims[idx].name,
+                  (unsigned long)(rotate_after_ms / 1000));
     cur_anim = (uint16_t)idx;
     cur_frame = 0;
     frame_started_ms = millis();
