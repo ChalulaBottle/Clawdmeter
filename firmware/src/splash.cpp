@@ -79,6 +79,15 @@ static const char* WILD_NAMES[] = {
     "echo mushroom b", "echo mushroom hd b", "echo breakdance hd", "echo breakdance hd b",
     "echo acrobat hd", "echo moonwalk hd", "echo moonwalk hd b", "echo rave bunny hd",
     "echo rave bunny hd b",
+#ifdef SPLASH_BIG
+    // The culture batch (docs/bench/anims_culture_*.js): famous paintings, memes and
+    // pop culture moments with the ECHO creature in every role, all big tier. Listed
+    // inside the #ifdef so the stock 2.16 binary does not grow by a single byte.
+    "echo creation", "echo crosswalk", "echo distracted", "echo galaxy brain",
+    "echo great wave", "echo melting clock", "echo mona lisa", "echo pearl earring",
+    "echo saber duel", "echo scream", "echo slow dodge", "echo starry night",
+    "echo stonks", "echo thinker", "echo this is fine", "echo vitruvian",
+#endif
 };
 #define WILD_MAX (sizeof(WILD_NAMES) / sizeof(WILD_NAMES[0]))
 static int8_t  wild_list[WILD_MAX];
