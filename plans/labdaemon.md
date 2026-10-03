@@ -7,6 +7,7 @@ test the hooks, and it must run on the smaller board too (both plugged in, both 
 
 ## RESUME STATE
 
+- **2026-10-03 ~11:55:** engine and tray run increment 4 (engine main 97d7b32; this checkout on `release/increment-4`). Operator OKed the lcd_4 8 MB app partition. Release builds pass (lcd_4, amoled_216, amoled_216_c6); daemon suite 701 passed. **Exact next action:** operator flashes lcd_4 (`pio run -e waveshare_lcd_4 -t upload --upload-port COM11`), then the bring-up in the engine repo's plans/dashboard.md.
 - **2026-10-03, CULTURE BATCH BUILT, NOT FLASHED (branch feat/idle-shuffle, cf46577 + a38db70):** sixteen culture
   creatures (`plans/creatures-and-modes.md` § The culture batch) in the big tier: 99 animations with SPLASH_BIG, 73
   without, all sixteen in the wildcard pool on SPLASH_BIG boards. They overflowed default_16MB's 6.25 MB app0
